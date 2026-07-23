@@ -1,0 +1,30 @@
+# Build
+/build/
+/cmake-build-*/
+/out/
+compile_commands.json
+
+# Local dependency cache (downloaded RPMs / extracted prefix)
+/.deps/
+
+# Editor / IDE
+/.idea/
+/.vscode/
+/.cache/
+*.user
+*.user.*
+CMakeLists.txt.user
+
+# Objects / binaries
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.app
+
+# OS
+.DS_Store
+Thumbs.db

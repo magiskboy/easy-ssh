@@ -1,0 +1,167 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    # QTermWidget relies on Unix PTY — native Windows is not buildable yet.
+    continue-on-error: ${{ matrix.experimental }}
+    defaults:
+      run:
+        shell: bash
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-amd64
+            os_family: linux
+            experimental: false
+
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+            os_family: linux
+            experimental: false
+
+          - runner: macos-15
+            target: macos-arm64
+            os_family: macos
+            experimental: false
+
+          - runner: macos-15-intel
+            target: macos-amd64
+            os_family: macos
+            experimental: false
+
+          - runner: windows-2025
+            target: windows-amd64
+            os_family: windows
+            experimental: true
+
+          - runner: windows-11-arm
+            target: windows-arm64
+            os_family: windows
+            experimental: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Skip unsupported Windows build
+        if: matrix.os_family == 'windows'
+        run: |
+          echo "::warning title=Windows not supported yet::QTermWidget uses Unix PTY APIs (termios/unistd) and does not build on native Windows. Add a ConPTY-backed terminal before enabling Windows CI artifacts."
+          exit 1
+
+      - name: Install Linux packages
+        if: matrix.os_family == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            git \
+            qt6-base-dev \
+            qt6-tools-dev \
+            qt6-tools-dev-tools \
+            qt6-l10n-tools \
+            libgl1-mesa-dev \
+            libssh-dev \
+            qtkeychain-qt6-dev
+
+      - name: Install macOS packages
+        if: matrix.os_family == 'macos'
+        run: |
+          brew update
+          brew install cmake ninja pkg-config qt libssh qtkeychain
+          {
+            echo "CMAKE_PREFIX_PATH=$(brew --prefix qt):$(brew --prefix qtkeychain):$(brew --prefix libssh)"
+          } >> "$GITHUB_ENV"
+          echo "$(brew --prefix qt)/bin" >> "$GITHUB_PATH"
+
+      - name: Build QTermWidget
+        if: matrix.os_family != 'windows'
+        env:
+          PREFIX: ${{ github.workspace }}/.deps/prefix
+        run: |
+          chmod +x .github/scripts/build-qtermwidget.sh
+          .github/scripts/build-qtermwidget.sh
+          {
+            echo "CMAKE_PREFIX_PATH=${PREFIX}${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+            echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+            echo "LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            echo "DYLD_FALLBACK_LIBRARY_PATH=${PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure
+        if: matrix.os_family != 'windows'
+        run: |
+          cmake -S . -B build-release \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"
+
+      - name: Build
+        if: matrix.os_family != 'windows'
+        run: cmake --build build-release --parallel
+
+      - name: Package
+        if: matrix.os_family != 'windows'
+        run: |
+          chmod +x .github/scripts/package.sh
+          .github/scripts/package.sh "${{ matrix.target }}" build-release dist
+
+      - name: Upload artifact
+        if: matrix.os_family != 'windows' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: easy-ssh-${{ matrix.target }}
+          path: dist/easy-ssh-${{ matrix.target }}.*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Create release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: easy-ssh-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lah release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
