@@ -1,36 +1,467 @@
 #!/usr/bin/env bash
-# Package the built binary for upload / release.
+# Package a self-contained Easy SSH tree for upload / release.
+# Usage: package.sh <target-triple> <binary-dir> [out-dir]
 set -euo pipefail
 
-TARGET="${1:?usage: package.sh <target-triple>}"
-BINARY_DIR="${2:?usage: package.sh <target> <binary-dir>}"
+TARGET="${1:?usage: package.sh <target-triple> <binary-dir> [out-dir]}"
+BINARY_DIR="${2:?usage: package.sh <target> <binary-dir> [out-dir]}"
 OUT_DIR="${3:-dist}"
 
 mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
+BINARY_DIR="$(cd "$BINARY_DIR" && pwd)"
+
 STAGE="$OUT_DIR/stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 
-if [[ -f "$BINARY_DIR/easy-ssh.exe" ]]; then
-  cp "$BINARY_DIR/easy-ssh.exe" "$STAGE/"
-  ARCHIVE="easy-ssh-${TARGET}.zip"
+log() { printf 'package: %s\n' "$*"; }
+
+# ---------------------------------------------------------------------------
+# Install project into the stage prefix (runs Qt deploy install(SCRIPT)).
+# ---------------------------------------------------------------------------
+log "Installing into $STAGE"
+cmake --install "$BINARY_DIR" --prefix "$STAGE"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+find_binary() {
+  if [[ -x "$STAGE/bin/easy-ssh" ]]; then
+    echo "$STAGE/bin/easy-ssh"
+  elif [[ -x "$STAGE/easy-ssh" ]]; then
+    echo "$STAGE/easy-ssh"
+  elif [[ -f "$STAGE/bin/easy-ssh.exe" ]]; then
+    echo "$STAGE/bin/easy-ssh.exe"
+  elif [[ -f "$STAGE/easy-ssh.exe" ]]; then
+    echo "$STAGE/easy-ssh.exe"
+  else
+    return 1
+  fi
+}
+
+stage_libdir() {
+  # Prefer Libraries= from qt.conf written by Qt deploy.
+  local conf=""
+  if [[ -f "$STAGE/bin/qt.conf" ]]; then
+    conf="$STAGE/bin/qt.conf"
+  elif [[ -f "$STAGE/qt.conf" ]]; then
+    conf="$STAGE/qt.conf"
+  fi
+  if [[ -n "$conf" ]]; then
+    local libs
+    libs="$(sed -n 's/^Libraries *= *//p' "$conf" | head -1 | tr -d '\r')"
+    if [[ -n "$libs" ]]; then
+      echo "$STAGE/$libs"
+      return 0
+    fi
+  fi
+  if [[ -d "$STAGE/lib64" ]]; then
+    echo "$STAGE/lib64"
+  else
+    echo "$STAGE/lib"
+  fi
+}
+
+qt_plugin_src() {
+  if command -v qtpaths6 >/dev/null 2>&1; then
+    qtpaths6 --plugin-dir
+  elif command -v qtpaths >/dev/null 2>&1; then
+    qtpaths --plugin-dir
+  elif command -v qmake6 >/dev/null 2>&1; then
+    qmake6 -query QT_INSTALL_PLUGINS
+  elif command -v qmake >/dev/null 2>&1; then
+    qmake -query QT_INSTALL_PLUGINS
+  else
+    return 1
+  fi
+}
+
+should_bundle_linux_lib() {
+  local path="$1"
+  local base
+  base="$(basename "$path")"
+  case "$base" in
+    # Always skip hard system/loader libs.
+    ld-linux*.so*|libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*)
+      return 1 ;;
+    libstdc++.so*|libgcc_s.so*|libc++.so*|libc++abi.so*)
+      return 1 ;;
+    # App + Qt runtime.
+    libssh.so*|libqtermwidget*.so*|libqt6keychain.so*|libqtkeychain.so*|libQt6Keychain.so*)
+      return 0 ;;
+    libQt6*.so*|libqt6*.so*)
+      return 0 ;;
+  esac
+  case "$path" in
+    */.deps/prefix/*|*/Cellar/*|*/opt/homebrew/*|*/Qt/*|*/aqtInstall*|*/Qt/6.*)
+      return 0 ;;
+  esac
+  return 1
+}
+
+copy_lib_into() {
+  local src="$1"
+  local libdir="$2"
+  mkdir -p "$libdir"
+  local base real realbase
+  base="$(basename "$src")"
+  [[ -e "$libdir/$base" ]] && return 0
+  real="$(readlink -f "$src")"
+  realbase="$(basename "$real")"
+  cp -a "$real" "$libdir/"
+  if [[ "$base" != "$realbase" ]]; then
+    ln -sfn "$realbase" "$libdir/$base"
+  fi
+  log "  + $base"
+}
+
+bundle_linux_plugins() {
+  local libdir="$1"
+  local plugins_dest
+  # Match qt.conf Plugins= when present.
+  local conf="$STAGE/bin/qt.conf"
+  local plugins_rel="lib64/qt6/plugins"
+  if [[ -f "$conf" ]]; then
+    local p
+    p="$(sed -n 's/^Plugins *= *//p' "$conf" | head -1 | tr -d '\r')"
+    [[ -n "$p" ]] && plugins_rel="$p"
+  elif [[ "$(basename "$libdir")" == "lib" ]]; then
+    plugins_rel="lib/qt6/plugins"
+  fi
+  plugins_dest="$STAGE/$plugins_rel"
+
+  if [[ -d "$plugins_dest/platforms" ]] && compgen -G "$plugins_dest/platforms/libq*" >/dev/null; then
+    log "Qt plugins already present under $plugins_rel"
+    return 0
+  fi
+
+  local src
+  src="$(qt_plugin_src)" || {
+    log "warning: could not locate Qt plugins directory"
+    return 0
+  }
+  log "Copying Qt plugins from $src → $plugins_rel"
+  mkdir -p "$plugins_dest"
+  local group
+  for group in platforms imageformats iconengines styles tls networkinformation \
+               platforminputcontexts platformthemes xcbglintegrations \
+               wayland-shell-integration wayland-decoration-client \
+               wayland-graphics-integration-client; do
+    if [[ -d "$src/$group" ]]; then
+      cp -a "$src/$group" "$plugins_dest/"
+    fi
+  done
+}
+
+bundle_linux_deps() {
+  local bin
+  bin="$(find_binary)" || {
+    echo "error: easy-ssh binary not found under $STAGE after install" >&2
+    find "$STAGE" -maxdepth 3 -type f | head -50 >&2 || true
+    exit 1
+  }
+
+  local libdir
+  libdir="$(stage_libdir)"
+  mkdir -p "$libdir"
+  log "Bundling runtime deps into $libdir"
+
+  local line path
+  while IFS= read -r line; do
+    path="$(sed -n 's/.*=> \(.*\) (0x.*/\1/p' <<<"$line")"
+    [[ -n "$path" && -e "$path" ]] || continue
+    if should_bundle_linux_lib "$path"; then
+      copy_lib_into "$path" "$libdir"
+    fi
+  done < <(ldd "$bin" 2>/dev/null || true)
+
+  local pass
+  for pass in 1 2 3 4; do
+    local changed=0
+    local lib
+    shopt -s nullglob
+    for lib in "$libdir"/*.so*; do
+      [[ -f "$lib" && ! -L "$lib" ]] || continue
+      while IFS= read -r line; do
+        path="$(sed -n 's/.*=> \(.*\) (0x.*/\1/p' <<<"$line")"
+        [[ -n "$path" && -e "$path" ]] || continue
+        if should_bundle_linux_lib "$path"; then
+          local base
+          base="$(basename "$path")"
+          if [[ ! -e "$libdir/$base" ]]; then
+            copy_lib_into "$path" "$libdir"
+            changed=1
+          fi
+        fi
+      done < <(ldd "$lib" 2>/dev/null || true)
+    done
+    shopt -u nullglob
+    [[ "$changed" -eq 0 ]] && break
+  done
+
+  bundle_linux_plugins "$libdir"
+
+  # Ensure qt.conf Prefix/Libraries/Plugins are coherent with what we produced.
+  local conf="$STAGE/bin/qt.conf"
+  local lib_rel
+  lib_rel="$(basename "$libdir")"
+  if [[ ! -f "$conf" ]]; then
+    cat >"$conf" <<EOF
+[Paths]
+Prefix = ..
+Libraries = ${lib_rel}
+Plugins = ${lib_rel}/qt6/plugins
+EOF
+    log "Wrote $conf"
+  fi
+}
+
+bundle_macos_deps() {
+  local app=""
+  local apps=("$STAGE"/*.app)
+  if [[ -d "${apps[0]:-}" ]]; then
+    app="${apps[0]}"
+  else
+    echo "error: .app bundle not found under $STAGE" >&2
+    ls -la "$STAGE" >&2 || true
+    exit 1
+  fi
+
+  local macdeployqt=""
+  if command -v macdeployqt >/dev/null 2>&1; then
+    macdeployqt="$(command -v macdeployqt)"
+  elif [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+    local p
+    IFS=':' read -ra _prefixes <<<"$CMAKE_PREFIX_PATH"
+    for p in "${_prefixes[@]}"; do
+      if [[ -x "$p/bin/macdeployqt" ]]; then
+        macdeployqt="$p/bin/macdeployqt"
+        break
+      fi
+    done
+  fi
+
+  local -a libpaths=()
+  if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+    local p
+    IFS=':' read -ra _prefixes <<<"$CMAKE_PREFIX_PATH"
+    for p in "${_prefixes[@]}"; do
+      [[ -d "$p/lib" ]] && libpaths+=(-libpath="$p/lib")
+    done
+  fi
+
+  if [[ -n "$macdeployqt" ]]; then
+    log "Running macdeployqt on $app"
+    "$macdeployqt" "$app" "${libpaths[@]}" -always-overwrite || true
+  else
+    log "warning: macdeployqt not found; relying on CMake deploy script only"
+  fi
+
+  local bin
+  bin="$(find "$app/Contents/MacOS" -type f -perm -111 | head -1 || true)"
+  local frameworks="$app/Contents/Frameworks"
+  mkdir -p "$frameworks"
+
+  copy_macos_lib() {
+    local src="$1"
+    local base
+    base="$(basename "$src")"
+    [[ -e "$frameworks/$base" ]] && return 0
+    cp -a "$src" "$frameworks/"
+    log "  + $base"
+    if command -v install_name_tool >/dev/null 2>&1 && [[ -n "$bin" ]]; then
+      install_name_tool -change "$src" "@executable_path/../Frameworks/$base" "$bin" 2>/dev/null || true
+      local id
+      id="$(otool -D "$frameworks/$base" 2>/dev/null | tail -1 | awk '{print $1}')"
+      if [[ -n "$id" ]]; then
+        install_name_tool -id "@executable_path/../Frameworks/$base" "$frameworks/$base" 2>/dev/null || true
+        install_name_tool -change "$id" "@executable_path/../Frameworks/$base" "$bin" 2>/dev/null || true
+      fi
+    fi
+  }
+
+  if [[ -n "$bin" ]]; then
+    local dep
+    while IFS= read -r dep; do
+      dep="${dep#	}"
+      dep="$(awk '{print $1}' <<<"$dep")"
+      [[ -e "$dep" ]] || continue
+      case "$(basename "$dep")" in
+        libssh*.dylib|libqtermwidget*.dylib|*qt*keychain*.dylib|Qt*.framework|libQt6*.dylib)
+          if [[ "$dep" == *".framework"* ]]; then
+            continue
+          fi
+          copy_macos_lib "$dep"
+          ;;
+      esac
+    done < <(otool -L "$bin" 2>/dev/null | tail -n +2 || true)
+  fi
+}
+
+bundle_windows_deps() {
+  local exe
+  exe="$(find_binary)" || {
+    echo "error: easy-ssh.exe not found under $STAGE" >&2
+    exit 1
+  }
+
+  local windeployqt=""
+  if command -v windeployqt >/dev/null 2>&1; then
+    windeployqt="$(command -v windeployqt)"
+  elif command -v windeployqt6 >/dev/null 2>&1; then
+    windeployqt="$(command -v windeployqt6)"
+  fi
+
+  if [[ -n "$windeployqt" ]]; then
+    log "Running windeployqt on $exe"
+    "$windeployqt" --release --no-translations "$exe" || \
+      "$windeployqt" "$exe" || true
+  else
+    log "warning: windeployqt not found; relying on CMake deploy script only"
+  fi
+
+  local -a names=(ssh.dll libssh.dll qtermwidget6.dll qt6keychain.dll qtkeychain.dll)
+  if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+    local p name found dest
+    dest="$(dirname "$exe")"
+    for p in ${CMAKE_PREFIX_PATH//;/ }; do
+      [[ -d "$p" ]] || continue
+      for name in "${names[@]}"; do
+        found="$(find "$p" -name "$name" 2>/dev/null | head -1 || true)"
+        if [[ -n "$found" ]]; then
+          cp -a "$found" "$dest/"
+          log "  + $name"
+        fi
+      done
+    done
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Archive
+# ---------------------------------------------------------------------------
+archive_linux() {
+  local archive="easy-ssh-${TARGET}.tar.gz"
+  local wrap="$OUT_DIR/wrap"
+  rm -rf "$wrap"
+  mkdir -p "$wrap/easy-ssh"
+  shopt -s dotglob
+  mv "$STAGE"/* "$wrap/easy-ssh/"
+  shopt -u dotglob
+  tar -C "$wrap" -czf "$OUT_DIR/$archive" easy-ssh
+  rm -rf "$wrap"
+  log "Created $OUT_DIR/$archive"
+  ls -lh "$OUT_DIR/$archive"
+}
+
+archive_macos() {
+  local archive="easy-ssh-${TARGET}.dmg"
+  local app=""
+  local apps=("$STAGE"/*.app)
+  if [[ -d "${apps[0]:-}" ]]; then
+    app="${apps[0]}"
+  else
+    echo "error: no .app to package" >&2
+    exit 1
+  fi
+
+  local macdeployqt=""
+  if command -v macdeployqt >/dev/null 2>&1; then
+    macdeployqt="$(command -v macdeployqt)"
+  fi
+
+  if [[ -n "$macdeployqt" ]]; then
+    log "Creating DMG via macdeployqt"
+    rm -f "${app%.app}.dmg"
+    if "$macdeployqt" "$app" -dmg -always-overwrite; then
+      local produced="${app%.app}.dmg"
+      if [[ -f "$produced" ]]; then
+        mv "$produced" "$OUT_DIR/$archive"
+        log "Created $OUT_DIR/$archive"
+        ls -lh "$OUT_DIR/$archive"
+        return 0
+      fi
+    fi
+  fi
+
+  if command -v hdiutil >/dev/null 2>&1; then
+    log "Creating DMG via hdiutil"
+    local vol="$OUT_DIR/dmg-root"
+    rm -rf "$vol"
+    mkdir -p "$vol"
+    cp -R "$app" "$vol/"
+    ln -s /Applications "$vol/Applications"
+    rm -f "$OUT_DIR/$archive"
+    hdiutil create -volname "Easy SSH" -srcfolder "$vol" -ov -format UDZO "$OUT_DIR/$archive"
+    rm -rf "$vol"
+    log "Created $OUT_DIR/$archive"
+    ls -lh "$OUT_DIR/$archive"
+    return 0
+  fi
+
+  archive="easy-ssh-${TARGET}.tar.gz"
+  tar -C "$STAGE" -czf "$OUT_DIR/$archive" "$(basename "$app")"
+  log "Created $OUT_DIR/$archive (tar.gz fallback)"
+  ls -lh "$OUT_DIR/$archive"
+}
+
+archive_windows() {
+  local nsis
+  nsis="$(find "$BINARY_DIR" -maxdepth 2 \( -name 'easy-ssh-*.exe' -o -name '*-win64.exe' \) 2>/dev/null | head -1 || true)"
+  if [[ -n "$nsis" ]]; then
+    local dest="easy-ssh-${TARGET}-setup.exe"
+    cp -a "$nsis" "$OUT_DIR/$dest"
+    log "Created $OUT_DIR/$dest"
+    ls -lh "$OUT_DIR/$dest"
+    return 0
+  fi
+
+  local archive="easy-ssh-${TARGET}.zip"
+  local wrap="$OUT_DIR/wrap"
+  rm -rf "$wrap"
+  mkdir -p "$wrap/easy-ssh"
+  shopt -s dotglob
+  mv "$STAGE"/* "$wrap/easy-ssh/"
+  shopt -u dotglob
   (
-    cd "$STAGE"
+    cd "$wrap"
     if command -v 7z >/dev/null 2>&1; then
-      7z a -tzip "../$ARCHIVE" ./*
+      7z a -tzip "$OUT_DIR/$archive" easy-ssh
+    elif command -v zip >/dev/null 2>&1; then
+      zip -r "$OUT_DIR/$archive" easy-ssh
     else
-      powershell -NoProfile -Command "Compress-Archive -Path * -DestinationPath '../$ARCHIVE'"
+      powershell -NoProfile -Command "Compress-Archive -Path 'easy-ssh' -DestinationPath '$OUT_DIR/$archive'"
     fi
   )
-elif [[ -f "$BINARY_DIR/easy-ssh" ]]; then
-  cp "$BINARY_DIR/easy-ssh" "$STAGE/"
-  ARCHIVE="easy-ssh-${TARGET}.tar.gz"
-  tar -C "$STAGE" -czf "$OUT_DIR/$ARCHIVE" .
-else
-  echo "error: easy-ssh binary not found in $BINARY_DIR" >&2
-  ls -la "$BINARY_DIR" >&2 || true
-  exit 1
-fi
+  rm -rf "$wrap"
+  log "Created $OUT_DIR/$archive"
+  ls -lh "$OUT_DIR/$archive"
+}
 
-echo "Created $OUT_DIR/$ARCHIVE"
-ls -lh "$OUT_DIR/$ARCHIVE"
+case "$(uname -s)" in
+  Linux)
+    bundle_linux_deps
+    archive_linux
+    ;;
+  Darwin)
+    bundle_macos_deps
+    archive_macos
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    bundle_windows_deps
+    archive_windows
+    ;;
+  *)
+    if find_binary 2>/dev/null | grep -q '\.exe$'; then
+      bundle_windows_deps
+      archive_windows
+    elif compgen -G "$STAGE/*.app" >/dev/null; then
+      bundle_macos_deps
+      archive_macos
+    else
+      bundle_linux_deps
+      archive_linux
+    fi
+    ;;
+esac

@@ -1,7 +1,9 @@
 # Build
 /build/
+/build-release/
 /cmake-build-*/
 /out/
+/dist/
 compile_commands.json
 
 # Local dependency cache (downloaded RPMs / extracted prefix)

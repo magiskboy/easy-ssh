@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Easy SSH
+GenericName=SSH Client
+Comment=Lightweight SSH / SFTP client
+Exec=easy-ssh
+Icon=io.github.magiskboy.easy-ssh
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=SSH;SFTP;terminal;remote;
+StartupWMClass=easy-ssh
+StartupNotify=true

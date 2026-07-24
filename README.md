@@ -99,6 +99,46 @@ cmake --build --preset release
 ./build-release/easy-ssh
 ```
 
+### Icons
+
+Application icons are generated from [`icon.png`](icon.png):
+
+```bash
+./scripts/generate-icons.sh
+```
+
+Requires ImageMagick. macOS `.icns` needs `iconutil` (macOS) or the Python package `icnsutil`. Re-run the script after changing `icon.png` and commit the updated files under `resources/`.
+
+### Packaging / install
+
+Install desktop metadata, icons, and the binary into a prefix:
+
+```bash
+cmake --install build-release --prefix /usr/local
+```
+
+On Linux this installs:
+
+- `bin/easy-ssh`
+- `share/applications/io.github.magiskboy.easy-ssh.desktop`
+- `share/metainfo/io.github.magiskboy.easy-ssh.metainfo.xml`
+- hicolor icons under `share/icons/hicolor/...`
+
+CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scripts/package.sh) (Linux `.tar.gz`, macOS `.dmg`), bundling Qt and third-party libraries.
+
+#### Windows (local only)
+
+Windows CI is skipped until a ConPTY-backed terminal replaces QTermWidget. To prepare an installer locally on Windows:
+
+```bash
+cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+cmake --install build-release --prefix install
+cpack -G NSIS --config build-release/CPackConfig.cmake
+```
+
+The CMake project embeds `resources/windows/easy-ssh.ico` / `.rc` and configures CPack NSIS (Start Menu shortcut, uninstall).
+
 ## Contributing
 
 Issues and pull requests are welcome at
