@@ -1,8 +1,9 @@
 name: Build
 
 on:
-  push:
+  pull_request:
     branches: [main]
+  push:
     tags: ["v*"]
   workflow_dispatch:
 
@@ -15,13 +16,13 @@ permissions:
 
 env:
   BUILD_TYPE: Release
+  # Ubuntu 24.04 system Qt is 6.4.x; app + QTermWidget need >= 6.6.
+  QT_VERSION: "6.8.3"
 
 jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    # QTermWidget relies on Unix PTY — native Windows is not buildable yet.
-    continue-on-error: ${{ matrix.experimental }}
     defaults:
       run:
         shell: bash
@@ -33,44 +34,30 @@ jobs:
           - runner: ubuntu-24.04
             target: linux-amd64
             os_family: linux
-            experimental: false
+            qt_host: linux
+            qt_arch: linux_gcc_64
 
           - runner: ubuntu-24.04-arm
             target: linux-arm64
             os_family: linux
-            experimental: false
+            qt_host: linux_arm64
+            qt_arch: linux_gcc_arm64
 
           - runner: macos-15
             target: macos-arm64
             os_family: macos
-            experimental: false
 
           - runner: macos-15-intel
             target: macos-amd64
             os_family: macos
-            experimental: false
 
-          - runner: windows-2025
-            target: windows-amd64
-            os_family: windows
-            experimental: true
-
-          - runner: windows-11-arm
-            target: windows-arm64
-            os_family: windows
-            experimental: true
+          # Windows skipped until a ConPTY-backed terminal replaces QTermWidget.
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Skip unsupported Windows build
-        if: matrix.os_family == 'windows'
-        run: |
-          echo "::warning title=Windows not supported yet::QTermWidget uses Unix PTY APIs (termios/unistd) and does not build on native Windows. Add a ConPTY-backed terminal before enabling Windows CI artifacts."
-          exit 1
-
-      - name: Install Linux packages
+      - name: Install Linux build tools
         if: matrix.os_family == 'linux'
         run: |
           sudo apt-get update
@@ -80,13 +67,23 @@ jobs:
             ninja-build \
             pkg-config \
             git \
-            qt6-base-dev \
-            qt6-tools-dev \
-            qt6-tools-dev-tools \
-            qt6-l10n-tools \
-            libgl1-mesa-dev \
             libssh-dev \
-            qtkeychain-qt6-dev
+            libsecret-1-dev \
+            libglib2.0-dev
+
+      - name: Install Qt (Linux via aqt)
+        if: matrix.os_family == 'linux'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: ${{ matrix.qt_host }}
+          target: desktop
+          arch: ${{ matrix.qt_arch }}
+          install-deps: "true"
+          cache: true
+          cache-key-prefix: install-qt-${{ matrix.target }}
+          setup-python: true
+          set-env: true
 
       - name: Install macOS packages
         if: matrix.os_family == 'macos'
@@ -98,10 +95,10 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "$(brew --prefix qt)/bin" >> "$GITHUB_PATH"
 
-      - name: Build QTermWidget
-        if: matrix.os_family != 'windows'
+      - name: Build QTermWidget (and QtKeychain on Linux)
         env:
           PREFIX: ${{ github.workspace }}/.deps/prefix
+          BUILD_QTKEYCHAIN: ${{ matrix.os_family == 'linux' && '1' || '0' }}
         run: |
           chmod +x .github/scripts/build-qtermwidget.sh
           .github/scripts/build-qtermwidget.sh
@@ -113,7 +110,6 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Configure
-        if: matrix.os_family != 'windows'
         run: |
           cmake -S . -B build-release \
             -G Ninja \
@@ -121,17 +117,14 @@ jobs:
             -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"
 
       - name: Build
-        if: matrix.os_family != 'windows'
         run: cmake --build build-release --parallel
 
       - name: Package
-        if: matrix.os_family != 'windows'
         run: |
           chmod +x .github/scripts/package.sh
           .github/scripts/package.sh "${{ matrix.target }}" build-release dist
 
       - name: Upload artifact
-        if: matrix.os_family != 'windows' && success()
         uses: actions/upload-artifact@v4
         with:
           name: easy-ssh-${{ matrix.target }}
