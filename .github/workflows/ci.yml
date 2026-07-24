@@ -111,6 +111,7 @@ jobs:
 
   build:
     name: ${{ matrix.target }}
+    needs: [format, lint]
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
