@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.magiskboy.easy-ssh</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Easy SSH</name>
+  <summary>Lightweight SSH / SFTP client</summary>
+  <description>
+    <p>
+      Easy SSH is a lightweight, native SSH client for everyday remote work.
+      It provides an interactive terminal, remote file management over SFTP,
+      and simple SSH tunnels without the weight of a full remote-desktop suite.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.magiskboy.easy-ssh.desktop</launchable>
+  <url type="homepage">https://github.com/magiskboy/easy-ssh</url>
+  <url type="bugtracker">https://github.com/magiskboy/easy-ssh/issues</url>
+  <developer id="io.github.magiskboy">
+    <name>magiskboy</name>
+  </developer>
+  <provides>
+    <binary>easy-ssh</binary>
+  </provides>
+  <categories>
+    <category>Network</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>
