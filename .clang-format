@@ -40,5 +40,6 @@ SpaceBeforeAssignmentOperators: true
 SpaceBeforeParens: ControlStatements
 SpacesInAngles: Never
 SpacesInParentheses: false
+SpaceBeforeCpp11BracedList: false
 SortIncludes: CaseSensitive
 IncludeBlocks: Preserve
