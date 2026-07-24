@@ -2,6 +2,8 @@
 
 #include "ConnectionModel.h"
 
+#include <QtGlobal>
+
 ConnectionFilterProxy::ConnectionFilterProxy(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
@@ -12,9 +14,15 @@ void ConnectionFilterProxy::setFilterText(const QString &text)
     if (m_filterText == text) {
         return;
     }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
     beginFilterChange();
     m_filterText = text;
-    endFilterChange();
+    endFilterChange(Direction::Rows);
+#else
+    // begin/endFilterChange require Qt 6.9 / 6.10; CI and many distros are still on 6.6–6.8.
+    m_filterText = text;
+    invalidateFilter();
+#endif
 }
 
 bool ConnectionFilterProxy::filterAcceptsRow(int sourceRow,
