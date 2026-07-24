@@ -1,5 +1,5 @@
-#include "MainWindow.h"
 #include "Logging.h"
+#include "MainWindow.h"
 #include "SftpTypes.h"
 #include "SshWorker.h"
 #include "Tunnel.h"

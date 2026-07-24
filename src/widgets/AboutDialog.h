@@ -2,7 +2,8 @@
 
 #include <QDialog>
 
-class AboutDialog final : public QDialog {
+class AboutDialog final : public QDialog
+{
     Q_OBJECT
 
 public:

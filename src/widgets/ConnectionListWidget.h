@@ -13,7 +13,8 @@ class QLineEdit;
 class QListView;
 class SecretStore;
 
-class ConnectionListWidget final : public QWidget {
+class ConnectionListWidget final : public QWidget
+{
     Q_OBJECT
 
 public:

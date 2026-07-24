@@ -2,8 +2,8 @@
 
 #include "SftpTypes.h"
 
-#include <QModelIndex>
 #include <QList>
+#include <QModelIndex>
 #include <QStringList>
 #include <QWidget>
 
@@ -17,7 +17,8 @@ class OpenFileTracker;
 class RemoteFileModel;
 class TerminalSessionWidget;
 
-class FileExplorerWidget final : public QWidget {
+class FileExplorerWidget final : public QWidget
+{
     Q_OBJECT
 
 public:
@@ -57,7 +58,8 @@ private slots:
     void cancelActiveTransfer();
 
 private:
-    struct OpenWithItem {
+    struct OpenWithItem
+    {
         QString remotePath;
         QString localDir;
         QString localPath;
@@ -68,7 +70,8 @@ private:
     QStringList selectedRemotePaths() const;
     QStringList selectedRemoteFiles() const;
     void startUpload(const QStringList &localPaths);
-    void confirmConflictsAndUpload(const QStringList &localPaths, const QString &remoteDir,
+    void confirmConflictsAndUpload(const QStringList &localPaths,
+                                   const QString &remoteDir,
                                    const QStringList &conflicts);
     void beginUpload(const QStringList &localPaths, const QString &remoteDir);
     QStringList conflictNamesInEntries(const QStringList &localPaths,

@@ -7,7 +7,8 @@
 class QKeySequenceEdit;
 class QTreeWidget;
 
-class ShortcutsDialog final : public QDialog {
+class ShortcutsDialog final : public QDialog
+{
     Q_OBJECT
 
 public:

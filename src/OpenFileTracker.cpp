@@ -9,21 +9,21 @@
 #include <QTimer>
 
 OpenFileTracker::OpenFileTracker(QObject *parent)
-    : QObject(parent)
-    , m_watcher(new QFileSystemWatcher(this))
-    , m_debounce(new QTimer(this))
+    : QObject(parent), m_watcher(new QFileSystemWatcher(this)), m_debounce(new QTimer(this))
 {
     m_debounce->setSingleShot(true);
     m_debounce->setInterval(400);
 
-    connect(m_watcher, &QFileSystemWatcher::fileChanged,
-            this, &OpenFileTracker::onFileChanged);
-    connect(m_watcher, &QFileSystemWatcher::directoryChanged,
-            this, &OpenFileTracker::onDirectoryChanged);
+    connect(m_watcher, &QFileSystemWatcher::fileChanged, this, &OpenFileTracker::onFileChanged);
+    connect(m_watcher,
+            &QFileSystemWatcher::directoryChanged,
+            this,
+            &OpenFileTracker::onDirectoryChanged);
     connect(m_debounce, &QTimer::timeout, this, &OpenFileTracker::flushPendingUploads);
 }
 
-void OpenFileTracker::track(const QString &localPath, const QString &remotePath,
+void OpenFileTracker::track(const QString &localPath,
+                            const QString &remotePath,
                             TerminalSessionWidget *session)
 {
     if (localPath.isEmpty() || remotePath.isEmpty() || session == nullptr) {

@@ -6,11 +6,13 @@
 #include <QList>
 #include <optional>
 
-class ConnectionModel final : public QAbstractListModel {
+class ConnectionModel final : public QAbstractListModel
+{
     Q_OBJECT
 
 public:
-    enum Roles {
+    enum Roles
+    {
         IdRole = Qt::UserRole + 1,
         NameRole,
         HostRole,

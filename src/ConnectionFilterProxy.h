@@ -2,7 +2,8 @@
 
 #include <QSortFilterProxyModel>
 
-class ConnectionFilterProxy final : public QSortFilterProxyModel {
+class ConnectionFilterProxy final : public QSortFilterProxyModel
+{
     Q_OBJECT
 
 public:

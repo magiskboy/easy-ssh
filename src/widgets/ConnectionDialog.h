@@ -10,11 +10,13 @@ class QLineEdit;
 class QSpinBox;
 class QWidget;
 
-class ConnectionDialog final : public QDialog {
+class ConnectionDialog final : public QDialog
+{
     Q_OBJECT
 
 public:
-    enum class Mode {
+    enum class Mode
+    {
         Create,
         Edit,
     };

@@ -11,10 +11,7 @@
 #include <QVBoxLayout>
 
 TunnelDialog::TunnelDialog(Mode mode, const QUuid &connectionId, QWidget *parent)
-    : QDialog(parent)
-    , m_mode(mode)
-    , m_id(QUuid::createUuid())
-    , m_connectionId(connectionId)
+    : QDialog(parent), m_mode(mode), m_id(QUuid::createUuid()), m_connectionId(connectionId)
 {
     setupUi();
     setWindowTitle(mode == Mode::Create ? tr("New Tunnel") : tr("Edit Tunnel"));

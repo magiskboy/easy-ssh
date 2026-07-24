@@ -5,7 +5,8 @@
 #include <QVector>
 #include <QtGlobal>
 
-struct RemoteEntry {
+struct RemoteEntry
+{
     QString name;
     QString path;
     bool isDir = false;

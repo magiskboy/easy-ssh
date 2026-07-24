@@ -4,7 +4,8 @@
 
 #include <QList>
 
-class ConnectionStore {
+class ConnectionStore
+{
 public:
     static QList<Connection> load();
     static void save(const QList<Connection> &connections);

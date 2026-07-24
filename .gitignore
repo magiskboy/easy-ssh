@@ -6,6 +6,7 @@ compile_commands.json
 
 # Local dependency cache (downloaded RPMs / extracted prefix)
 /.deps/
+aqtinstall.log
 
 # Editor / IDE
 /.idea/

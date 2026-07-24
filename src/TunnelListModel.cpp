@@ -1,9 +1,6 @@
 #include "TunnelListModel.h"
 
-TunnelListModel::TunnelListModel(QObject *parent)
-    : QAbstractTableModel(parent)
-{
-}
+TunnelListModel::TunnelListModel(QObject *parent) : QAbstractTableModel(parent) {}
 
 int TunnelListModel::rowCount(const QModelIndex &parent) const
 {
@@ -36,7 +33,7 @@ QVariant TunnelListModel::data(const QModelIndex &index, int role) const
             return tunnel.name;
         case TypeColumn:
             return tunnel.type == TunnelType::Remote ? QStringLiteral("Remote")
-                                                    : QStringLiteral("Local");
+                                                     : QStringLiteral("Local");
         case LocalColumn:
             return tunnel.localAddress();
         case RemoteColumn:
@@ -149,7 +146,9 @@ void TunnelListModel::clear()
     endResetModel();
 }
 
-void TunnelListModel::setRuntimeStatus(const QUuid &id, const QString &status, const QString &detail)
+void TunnelListModel::setRuntimeStatus(const QUuid &id,
+                                       const QString &status,
+                                       const QString &detail)
 {
     const int row = rowOf(id);
     if (row < 0) {

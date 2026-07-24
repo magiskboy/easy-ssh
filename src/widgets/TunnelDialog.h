@@ -12,11 +12,13 @@ class QLabel;
 class QLineEdit;
 class QSpinBox;
 
-class TunnelDialog final : public QDialog {
+class TunnelDialog final : public QDialog
+{
     Q_OBJECT
 
 public:
-    enum class Mode {
+    enum class Mode
+    {
         Create,
         Edit,
     };

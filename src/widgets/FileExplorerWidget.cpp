@@ -7,8 +7,8 @@
 #include "SftpTypes.h"
 #include "widgets/TerminalSessionWidget.h"
 
-#include <QAction>
 #include <QAbstractItemView>
+#include <QAction>
 #include <QClipboard>
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -40,21 +40,18 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-FileExplorerWidget::FileExplorerWidget(QWidget *parent)
-    : QWidget(parent)
+FileExplorerWidget::FileExplorerWidget(QWidget *parent) : QWidget(parent)
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
     m_openTracker = new OpenFileTracker(this);
-    connect(m_openTracker, &OpenFileTracker::statusMessage,
-            this, &FileExplorerWidget::statusMessage);
-    connect(m_openTracker, &OpenFileTracker::syncFailed,
-            this, [this](const QString &message) {
-                ErrorNotifier::notify(this, tr("Auto Sync"), message,
-                                      ErrorNotifier::Level::Warning);
-            });
+    connect(
+        m_openTracker, &OpenFileTracker::statusMessage, this, &FileExplorerWidget::statusMessage);
+    connect(m_openTracker, &OpenFileTracker::syncFailed, this, [this](const QString &message) {
+        ErrorNotifier::notify(this, tr("Auto Sync"), message, ErrorNotifier::Level::Warning);
+    });
 
     m_refreshAction = new QAction(tr("Refresh"), this);
     m_refreshAction->setShortcut(QKeySequence(Qt::Key_F5));
@@ -160,8 +157,10 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     m_transferCancelButton = new QPushButton(tr("Cancel"), m_transferBar);
     m_transferCancelButton->setFlat(true);
-    connect(m_transferCancelButton, &QPushButton::clicked,
-            this, &FileExplorerWidget::cancelActiveTransfer);
+    connect(m_transferCancelButton,
+            &QPushButton::clicked,
+            this,
+            &FileExplorerWidget::cancelActiveTransfer);
 
     transferLayout->addWidget(m_transferProgress, 1);
     transferLayout->addWidget(m_transferCancelButton);
@@ -179,14 +178,15 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     connect(m_mkdirAction, &QAction::triggered, this, &FileExplorerWidget::createFolder);
     connect(m_renameAction, &QAction::triggered, this, &FileExplorerWidget::renameSelected);
     connect(m_deleteAction, &QAction::triggered, this, &FileExplorerWidget::deleteSelected);
-    connect(m_tree, &QTreeView::customContextMenuRequested,
-            this, &FileExplorerWidget::onCustomContextMenu);
-    connect(m_tree, &QTreeView::activated,
-            this, &FileExplorerWidget::onItemActivated);
-    connect(m_tree->selectionModel(), &QItemSelectionModel::selectionChanged,
-            this, [this](const QItemSelection &, const QItemSelection &) {
-                updateActionsEnabled();
-            });
+    connect(m_tree,
+            &QTreeView::customContextMenuRequested,
+            this,
+            &FileExplorerWidget::onCustomContextMenu);
+    connect(m_tree, &QTreeView::activated, this, &FileExplorerWidget::onItemActivated);
+    connect(m_tree->selectionModel(),
+            &QItemSelectionModel::selectionChanged,
+            this,
+            [this](const QItemSelection &, const QItemSelection &) { updateActionsEnabled(); });
 
     auto *clearShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     clearShortcut->setContext(Qt::WidgetWithChildrenShortcut);
@@ -202,12 +202,12 @@ bool FileExplorerWidget::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == m_tree->viewport() && event->type() == QEvent::MouseButtonPress) {
         const auto *mouse = static_cast<QMouseEvent *>(event);
-        if (mouse->button() == Qt::LeftButton
-            && !m_tree->indexAt(mouse->position().toPoint()).isValid()) {
+        if (mouse->button() == Qt::LeftButton &&
+            !m_tree->indexAt(mouse->position().toPoint()).isValid()) {
             clearSelection();
         }
-    } else if (watched == m_transferProgress && event->type() == QEvent::Resize
-               && m_transferActive) {
+    } else if (watched == m_transferProgress && event->type() == QEvent::Resize &&
+               m_transferActive) {
         updateTransferProgressText();
     }
     return QWidget::eventFilter(watched, event);
@@ -243,24 +243,29 @@ void FileExplorerWidget::bindSession(TerminalSessionWidget *session)
         return;
     }
 
-    connect(m_session, &TerminalSessionWidget::pathCanonicalized,
-            this, &FileExplorerWidget::onPathCanonicalized);
-    connect(m_session, &TerminalSessionWidget::sftpFinished,
-            this, &FileExplorerWidget::onSftpFinished);
-    connect(m_session, &TerminalSessionWidget::sftpError,
-            this, &FileExplorerWidget::onSftpError);
-    connect(m_session, &TerminalSessionWidget::sftpCanceled,
-            this, &FileExplorerWidget::onSftpCanceled);
-    connect(m_session, &TerminalSessionWidget::sftpProgress,
-            this, &FileExplorerWidget::onSftpProgress);
-    connect(m_session, &TerminalSessionWidget::directoryListed,
-            this, &FileExplorerWidget::onDirectoryListed);
-    connect(m_session, &TerminalSessionWidget::sftpUnavailable,
-            this, [this](const QString &message) {
-                showSftpUnavailable(message);
-            });
-    connect(m_session, &TerminalSessionWidget::sessionStateChanged,
-            this, [this](TerminalSessionWidget::State state) {
+    connect(m_session,
+            &TerminalSessionWidget::pathCanonicalized,
+            this,
+            &FileExplorerWidget::onPathCanonicalized);
+    connect(
+        m_session, &TerminalSessionWidget::sftpFinished, this, &FileExplorerWidget::onSftpFinished);
+    connect(m_session, &TerminalSessionWidget::sftpError, this, &FileExplorerWidget::onSftpError);
+    connect(
+        m_session, &TerminalSessionWidget::sftpCanceled, this, &FileExplorerWidget::onSftpCanceled);
+    connect(
+        m_session, &TerminalSessionWidget::sftpProgress, this, &FileExplorerWidget::onSftpProgress);
+    connect(m_session,
+            &TerminalSessionWidget::directoryListed,
+            this,
+            &FileExplorerWidget::onDirectoryListed);
+    connect(m_session,
+            &TerminalSessionWidget::sftpUnavailable,
+            this,
+            [this](const QString &message) { showSftpUnavailable(message); });
+    connect(m_session,
+            &TerminalSessionWidget::sessionStateChanged,
+            this,
+            [this](TerminalSessionWidget::State state) {
                 if (state != TerminalSessionWidget::State::Connected) {
                     unbindSession();
                 }
@@ -421,9 +426,9 @@ void FileExplorerWidget::confirmConflictsAndUpload(const QStringList &localPaths
 {
     if (!conflicts.isEmpty()) {
         const QString detail = conflicts.size() <= 8
-            ? conflicts.join(QLatin1Char('\n'))
-            : conflicts.mid(0, 8).join(QLatin1Char('\n'))
-                  + tr("\n…and %1 more").arg(conflicts.size() - 8);
+                                   ? conflicts.join(QLatin1Char('\n'))
+                                   : conflicts.mid(0, 8).join(QLatin1Char('\n')) +
+                                         tr("\n…and %1 more").arg(conflicts.size() - 8);
 
         const auto answer = QMessageBox::warning(
             this,
@@ -461,7 +466,7 @@ void FileExplorerWidget::beginUpload(const QStringList &localPaths, const QStrin
 }
 
 QStringList FileExplorerWidget::conflictNamesInEntries(const QStringList &localPaths,
-                                                      const QVector<RemoteEntry> &entries) const
+                                                       const QVector<RemoteEntry> &entries) const
 {
     QSet<QString> existing;
     existing.reserve(entries.size());
@@ -491,8 +496,7 @@ void FileExplorerWidget::onDirectoryListed(const QString &path, const QVector<Re
     const QStringList localPaths = m_pendingUploadLocal;
     const QString remoteDir = m_pendingUploadRemoteDir;
     // Keep opInFlight true through the confirmation dialog.
-    confirmConflictsAndUpload(localPaths, remoteDir,
-                              conflictNamesInEntries(localPaths, entries));
+    confirmConflictsAndUpload(localPaths, remoteDir, conflictNamesInEntries(localPaths, entries));
 }
 
 void FileExplorerWidget::download()
@@ -531,20 +535,21 @@ void FileExplorerWidget::openWith()
 
     const QStringList remoteFiles = selectedRemoteFiles();
     if (remoteFiles.isEmpty()) {
-        QMessageBox::information(this, tr("Open With"),
-                                 tr("Select one or more files to open locally."));
+        QMessageBox::information(
+            this, tr("Open With"), tr("Select one or more files to open locally."));
         return;
     }
 
     m_openWithQueue.clear();
     for (const QString &remotePath : remoteFiles) {
-        const QByteArray hash = QCryptographicHash::hash(remotePath.toUtf8(),
-                                                         QCryptographicHash::Sha1)
-                                    .toHex()
-                                    .left(12);
+        const QByteArray hash =
+            QCryptographicHash::hash(remotePath.toUtf8(), QCryptographicHash::Sha1)
+                .toHex()
+                .left(12);
         const QString localDir = QDir(openWithTempRoot()).filePath(QString::fromLatin1(hash));
         if (!QDir().mkpath(localDir)) {
-            ErrorNotifier::notify(this, tr("Open With"),
+            ErrorNotifier::notify(this,
+                                  tr("Open With"),
                                   tr("Cannot create temporary directory."),
                                   ErrorNotifier::Level::Warning);
             m_openWithQueue.clear();
@@ -576,7 +581,8 @@ void FileExplorerWidget::startNextOpenWithDownload()
     }
 
     const OpenWithItem &item = m_openWithQueue.first();
-    emit statusMessage(tr("Downloading %1 for editing…").arg(QFileInfo(item.remotePath).fileName()));
+    emit statusMessage(
+        tr("Downloading %1 for editing…").arg(QFileInfo(item.remotePath).fileName()));
     m_refreshAfterOp.clear();
     m_session->downloadPaths({item.remotePath}, item.localDir);
 }
@@ -589,14 +595,16 @@ void FileExplorerWidget::completeOpenWithItem()
 
     const OpenWithItem item = m_openWithQueue.takeFirst();
     if (!QFileInfo::exists(item.localPath)) {
-        ErrorNotifier::notify(this, tr("Open With"),
+        ErrorNotifier::notify(this,
+                              tr("Open With"),
                               tr("Downloaded file is missing: %1").arg(item.localPath),
                               ErrorNotifier::Level::Warning);
     } else {
         m_openTracker->track(item.localPath, item.remotePath, m_session);
         if (!QDesktopServices::openUrl(QUrl::fromLocalFile(item.localPath))) {
             ErrorNotifier::notify(
-                this, tr("Open With"),
+                this,
+                tr("Open With"),
                 tr("Could not open %1 with the default application.").arg(item.localPath),
                 ErrorNotifier::Level::Warning);
         } else {
@@ -620,8 +628,8 @@ void FileExplorerWidget::completeOpenWithItem()
 QString FileExplorerWidget::openWithTempRoot() const
 {
     const QString sessionKey = m_session
-        ? QString::number(reinterpret_cast<quintptr>(m_session), 16)
-        : QStringLiteral("none");
+                                   ? QString::number(reinterpret_cast<quintptr>(m_session), 16)
+                                   : QStringLiteral("none");
     return QDir::temp().filePath(QStringLiteral("easy-ssh/%1").arg(sessionKey));
 }
 
@@ -637,26 +645,21 @@ void FileExplorerWidget::createFolder()
     }
 
     bool ok = false;
-    const QString name = QInputDialog::getText(
-                             this,
-                             tr("New Folder"),
-                             tr("Folder name:"),
-                             QLineEdit::Normal,
-                             QString(),
-                             &ok)
-                             .trimmed();
+    const QString name =
+        QInputDialog::getText(
+            this, tr("New Folder"), tr("Folder name:"), QLineEdit::Normal, QString(), &ok)
+            .trimmed();
     if (!ok || name.isEmpty()) {
         return;
     }
     if (name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\'))) {
-        QMessageBox::warning(this, tr("New Folder"),
-                             tr("Folder name cannot contain path separators."));
+        QMessageBox::warning(
+            this, tr("New Folder"), tr("Folder name cannot contain path separators."));
         return;
     }
 
-    const QString path = remoteDir.endsWith(QLatin1Char('/'))
-        ? remoteDir + name
-        : remoteDir + QLatin1Char('/') + name;
+    const QString path = remoteDir.endsWith(QLatin1Char('/')) ? remoteDir + name
+                                                              : remoteDir + QLatin1Char('/') + name;
 
     setOpInFlight(true);
     m_awaitingSftpResult = true;
@@ -678,27 +681,22 @@ void FileExplorerWidget::renameSelected()
     const QString from = m_model->pathForIndex(index);
     const QString oldName = index.siblingAtColumn(0).data().toString();
     bool ok = false;
-    const QString newName = QInputDialog::getText(
-                                this,
-                                tr("Rename"),
-                                tr("New name:"),
-                                QLineEdit::Normal,
-                                oldName,
-                                &ok)
-                                .trimmed();
+    const QString newName =
+        QInputDialog::getText(this, tr("Rename"), tr("New name:"), QLineEdit::Normal, oldName, &ok)
+            .trimmed();
     if (!ok || newName.isEmpty() || newName == oldName) {
         return;
     }
-    if (newName.contains(QLatin1Char('/')) || newName.contains(QLatin1Char('\\'))
-        || newName == QLatin1String("..") || newName == QLatin1String(".")) {
+    if (newName.contains(QLatin1Char('/')) || newName.contains(QLatin1Char('\\')) ||
+        newName == QLatin1String("..") || newName == QLatin1String(".")) {
         QMessageBox::warning(this, tr("Rename"), tr("Name cannot contain path separators."));
         return;
     }
 
     const QString parentDir = m_model->parentDirectory(index);
     const QString to = parentDir.endsWith(QLatin1Char('/'))
-        ? parentDir + newName
-        : parentDir + QLatin1Char('/') + newName;
+                           ? parentDir + newName
+                           : parentDir + QLatin1Char('/') + newName;
 
     setOpInFlight(true);
     m_awaitingSftpResult = true;
@@ -837,8 +835,9 @@ void FileExplorerWidget::onSftpError(const QString &message)
 {
     // Prefer the Files idle warning over a modal when SFTP was never brought up.
     if (m_session && !m_session->isSftpAvailable()) {
-        showSftpUnavailable(m_session->sftpUnavailableReason().isEmpty() ? message
-                                                                         : m_session->sftpUnavailableReason());
+        showSftpUnavailable(m_session->sftpUnavailableReason().isEmpty()
+                                ? message
+                                : m_session->sftpUnavailableReason());
         return;
     }
 
@@ -847,7 +846,8 @@ void FileExplorerWidget::onSftpError(const QString &message)
         m_pendingUploadLocal.clear();
         m_pendingUploadRemoteDir.clear();
         setOpInFlight(false);
-        ErrorNotifier::notify(this, tr("Upload"),
+        ErrorNotifier::notify(this,
+                              tr("Upload"),
                               tr("Cannot check destination folder:\n%1").arg(message),
                               ErrorNotifier::Level::Warning);
         updateActionsEnabled();
@@ -855,8 +855,7 @@ void FileExplorerWidget::onSftpError(const QString &message)
     }
 
     if (!m_awaitingSftpResult && !m_openWithActive) {
-        ErrorNotifier::notify(this, tr("Auto Sync"), message,
-                              ErrorNotifier::Level::Warning);
+        ErrorNotifier::notify(this, tr("Auto Sync"), message, ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -884,7 +883,8 @@ void FileExplorerWidget::onSftpCanceled(const QString &message)
     updateActionsEnabled();
 }
 
-void FileExplorerWidget::onSftpProgress(qint64 bytesDone, qint64 bytesTotal,
+void FileExplorerWidget::onSftpProgress(qint64 bytesDone,
+                                        qint64 bytesTotal,
                                         const QString &currentName)
 {
     if (!m_transferActive || !m_transferProgress) {
@@ -916,14 +916,12 @@ void FileExplorerWidget::updateTransferProgressText()
     const int available = qMax(40, m_transferProgress->width() - 24);
 
     if (m_transferBytesTotal > 0) {
-        const int percent = qBound(
-            0,
-            static_cast<int>((m_transferBytesDone * 100) / m_transferBytesTotal),
-            100);
-        const QString suffix = tr(" — %1% (%2 / %3)")
-                                   .arg(percent)
-                                   .arg(formatByteSize(m_transferBytesDone),
-                                        formatByteSize(m_transferBytesTotal));
+        const int percent =
+            qBound(0, static_cast<int>((m_transferBytesDone * 100) / m_transferBytesTotal), 100);
+        const QString suffix =
+            tr(" — %1% (%2 / %3)")
+                .arg(percent)
+                .arg(formatByteSize(m_transferBytesDone), formatByteSize(m_transferBytesTotal));
         const int nameWidth = qMax(24, available - metrics.horizontalAdvance(suffix));
         const QString name = elideMiddle(m_transferName, metrics, nameWidth);
         m_transferProgress->setFormat(name + suffix);
@@ -984,9 +982,8 @@ void FileExplorerWidget::onCustomContextMenu(const QPoint &pos)
 {
     const QModelIndex index = m_tree->indexAt(pos);
     if (index.isValid() && !m_tree->selectionModel()->isSelected(index)) {
-        m_tree->selectionModel()->select(index,
-                                         QItemSelectionModel::ClearAndSelect
-                                             | QItemSelectionModel::Rows);
+        m_tree->selectionModel()->select(
+            index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         m_tree->setCurrentIndex(index);
     }
 
@@ -1023,9 +1020,9 @@ void FileExplorerWidget::copySelectedPath()
 
 void FileExplorerWidget::updateActionsEnabled()
 {
-    const bool connected = m_session
-        && m_session->sessionState() == TerminalSessionWidget::State::Connected
-        && !m_model->rootPath().isEmpty();
+    const bool connected = m_session &&
+                           m_session->sessionState() == TerminalSessionWidget::State::Connected &&
+                           !m_model->rootPath().isEmpty();
     const QModelIndex index = currentIndex();
     const bool hasSelection = index.isValid() && !m_model->isParentNavEntry(index);
     const bool hasFileSelection = !selectedRemoteFiles().isEmpty();
@@ -1140,12 +1137,9 @@ void FileExplorerWidget::showSftpUnavailable(const QString &message)
     setOpInFlight(false);
     m_model->unbindSession();
     // Keep m_session so tab switches / disconnect still work via sessionStateChanged.
-    const QString detail = message.isEmpty()
-        ? tr("This server does not support SFTP.")
-        : message;
+    const QString detail = message.isEmpty() ? tr("This server does not support SFTP.") : message;
     m_pathLabel->setText(tr("SFTP unavailable"));
-    m_emptyLabel->setText(
-        tr("%1\n\nTerminal session is still active.").arg(detail));
+    m_emptyLabel->setText(tr("%1\n\nTerminal session is still active.").arg(detail));
     showTree(false);
     emit statusMessage(detail);
     updateActionsEnabled();
@@ -1168,8 +1162,8 @@ QString FileExplorerWidget::formatByteSize(qint64 bytes)
     return QStringLiteral("%1 B").arg(bytes);
 }
 
-QString FileExplorerWidget::elideMiddle(const QString &text, const QFontMetrics &metrics,
-                                        int maxWidth)
+QString
+FileExplorerWidget::elideMiddle(const QString &text, const QFontMetrics &metrics, int maxWidth)
 {
     if (maxWidth <= 0 || text.isEmpty()) {
         return text;

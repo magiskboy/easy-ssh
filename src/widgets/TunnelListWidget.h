@@ -12,7 +12,8 @@ class QLabel;
 class QTableView;
 class TunnelListModel;
 
-class TunnelListWidget final : public QWidget {
+class TunnelListWidget final : public QWidget
+{
     Q_OBJECT
 
 public:
@@ -31,8 +32,7 @@ private slots:
     void toggleSelected();
     void onSelectionChanged();
     void onCustomContextMenu(const QPoint &pos);
-    void onTunnelStatusChanged(const QUuid &tunnelId, const QString &status,
-                               const QString &detail);
+    void onTunnelStatusChanged(const QUuid &tunnelId, const QString &status, const QString &detail);
     void onTunnelError(const QUuid &tunnelId, const QString &message);
     void onSessionStateChanged(TerminalSessionWidget::State state);
 

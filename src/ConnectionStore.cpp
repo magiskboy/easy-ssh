@@ -2,7 +2,8 @@
 
 #include <QSettings>
 
-namespace {
+namespace
+{
 
 QString authTypeToString(AuthType type)
 {
@@ -37,19 +38,15 @@ QList<Connection> ConnectionStore::load()
         settings.setArrayIndex(i);
 
         Connection connection;
-        connection.id = QUuid::fromString(
-            settings.value(QStringLiteral("id")).toString());
+        connection.id = QUuid::fromString(settings.value(QStringLiteral("id")).toString());
         connection.name = settings.value(QStringLiteral("name")).toString();
         connection.host = settings.value(QStringLiteral("host")).toString();
-        connection.port = static_cast<quint16>(
-            settings.value(QStringLiteral("port"), 22).toUInt());
+        connection.port = static_cast<quint16>(settings.value(QStringLiteral("port"), 22).toUInt());
         connection.username = settings.value(QStringLiteral("username")).toString();
-        connection.authType = authTypeFromString(
-            settings.value(QStringLiteral("authType")).toString());
-        connection.privateKeyPath =
-            settings.value(QStringLiteral("privateKeyPath")).toString();
-        connection.startupDirectory =
-            settings.value(QStringLiteral("startupDirectory")).toString();
+        connection.authType =
+            authTypeFromString(settings.value(QStringLiteral("authType")).toString());
+        connection.privateKeyPath = settings.value(QStringLiteral("privateKeyPath")).toString();
+        connection.startupDirectory = settings.value(QStringLiteral("startupDirectory")).toString();
 
         if (connection.id.isNull() || connection.name.isEmpty()) {
             continue;

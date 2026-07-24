@@ -20,8 +20,7 @@
 
 #include <qtermwidget.h>
 
-SettingsDialog::SettingsDialog(QWidget *parent)
-    : QDialog(parent)
+SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Settings"));
     resize(640, 420);
@@ -38,15 +37,17 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     m_pages->addWidget(createTerminalPage());
     m_pages->addWidget(createGeneralPage());
 
-    connect(m_categoryList, &QListWidget::currentRowChanged,
-            m_pages, &QStackedWidget::setCurrentIndex);
+    connect(
+        m_categoryList, &QListWidget::currentRowChanged, m_pages, &QStackedWidget::setCurrentIndex);
 
     auto *buttonBox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Apply, this);
     connect(buttonBox, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(buttonBox->button(QDialogButtonBox::Apply), &QPushButton::clicked,
-            this, &SettingsDialog::apply);
+    connect(buttonBox->button(QDialogButtonBox::Apply),
+            &QPushButton::clicked,
+            this,
+            &SettingsDialog::apply);
 
     auto *contentLayout = new QHBoxLayout;
     contentLayout->addWidget(m_categoryList);
@@ -143,8 +144,7 @@ QWidget *SettingsDialog::createGeneralPage()
     auto *sessionGroup = new QGroupBox(tr("Session"), page);
     auto *sessionLayout = new QVBoxLayout(sessionGroup);
     m_autoReconnect = new QCheckBox(tr("Auto reconnect when connection is lost"), sessionGroup);
-    auto *hint = new QLabel(
-        tr("Auto reconnect will be used in a future update."), sessionGroup);
+    auto *hint = new QLabel(tr("Auto reconnect will be used in a future update."), sessionGroup);
     hint->setWordWrap(true);
     hint->setEnabled(false);
     sessionLayout->addWidget(m_autoReconnect);

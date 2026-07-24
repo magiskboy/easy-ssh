@@ -2,7 +2,8 @@
 
 #include <QWidget>
 
-class WelcomeWidget final : public QWidget {
+class WelcomeWidget final : public QWidget
+{
     Q_OBJECT
 
 public:

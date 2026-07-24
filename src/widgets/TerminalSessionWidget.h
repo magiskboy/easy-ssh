@@ -18,11 +18,13 @@ class QTermWidget;
 class QThread;
 class QTimer;
 
-class TerminalSessionWidget final : public QWidget {
+class TerminalSessionWidget final : public QWidget
+{
     Q_OBJECT
 
 public:
-    enum class State {
+    enum class State
+    {
         Connecting,
         Connected,
         Disconnected,
