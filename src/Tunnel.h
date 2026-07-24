@@ -4,12 +4,14 @@
 #include <QString>
 #include <QUuid>
 
-enum class TunnelType {
+enum class TunnelType
+{
     Local = 0,
     Remote = 1,
 };
 
-struct TunnelDefinition {
+struct TunnelDefinition
+{
     QUuid id;
     QUuid connectionId;
     QString name;
@@ -20,10 +22,7 @@ struct TunnelDefinition {
     quint16 remotePort = 0;
     bool enabled = true;
 
-    QString localAddress() const
-    {
-        return QStringLiteral("%1:%2").arg(localHost).arg(localPort);
-    }
+    QString localAddress() const { return QStringLiteral("%1:%2").arg(localHost).arg(localPort); }
 
     QString remoteAddress() const
     {

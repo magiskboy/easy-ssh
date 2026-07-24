@@ -3,10 +3,7 @@
 #include "ConnectionStore.h"
 #include "TunnelStore.h"
 
-ConnectionModel::ConnectionModel(QObject *parent)
-    : QAbstractListModel(parent)
-{
-}
+ConnectionModel::ConnectionModel(QObject *parent) : QAbstractListModel(parent) {}
 
 int ConnectionModel::rowCount(const QModelIndex &parent) const
 {

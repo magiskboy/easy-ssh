@@ -10,11 +10,13 @@
 
 class TerminalSessionWidget;
 
-class RemoteFileModel final : public QAbstractItemModel {
+class RemoteFileModel final : public QAbstractItemModel
+{
     Q_OBJECT
 
 public:
-    enum Roles {
+    enum Roles
+    {
         PathRole = Qt::UserRole + 1,
         IsDirRole,
     };
@@ -38,8 +40,8 @@ public:
     int rowCount(const QModelIndex &parent = {}) const override;
     int columnCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QVariant headerData(int section, Qt::Orientation orientation,
-                        int role = Qt::DisplayRole) const override;
+    QVariant
+    headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
     Qt::ItemFlags flags(const QModelIndex &index) const override;
     bool hasChildren(const QModelIndex &parent = {}) const override;
     bool canFetchMore(const QModelIndex &parent) const override;
@@ -55,7 +57,8 @@ public:
     static QString parentPathOf(const QString &path);
 
 private:
-    struct Node {
+    struct Node
+    {
         RemoteEntry entry;
         Node *parent = nullptr;
         std::vector<std::unique_ptr<Node>> children;

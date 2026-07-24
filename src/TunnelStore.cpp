@@ -2,7 +2,8 @@
 
 #include <QSettings>
 
-namespace {
+namespace
+{
 
 QString tunnelTypeToString(TunnelType type)
 {

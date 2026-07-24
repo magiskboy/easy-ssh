@@ -29,7 +29,8 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-namespace {
+namespace
+{
 constexpr int kMinTerminalCols = 2;
 constexpr int kMinTerminalRows = 2;
 constexpr int kMaxPendingDisplayBytes = 1024 * 1024;
@@ -48,10 +49,9 @@ QString sanitizeFileBaseName(const QString &name)
     base.replace(QLatin1Char('\\'), QLatin1Char('-'));
     return base;
 }
-}
+} // namespace
 
-TerminalSessionWidget::TerminalSessionWidget(QWidget *parent)
-    : QWidget(parent)
+TerminalSessionWidget::TerminalSessionWidget(QWidget *parent) : QWidget(parent)
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -81,8 +81,7 @@ TerminalSessionWidget::TerminalSessionWidget(QWidget *parent)
     showDisconnectedState();
 
     // PMF connect fails for sendData(const char*,int) on QTermWidget ("signal not found").
-    connect(m_term, SIGNAL(sendData(const char*,int)),
-            this, SLOT(onSendData(const char*,int)));
+    connect(m_term, SIGNAL(sendData(const char *, int)), this, SLOT(onSendData(const char *, int)));
 }
 
 TerminalSessionWidget::~TerminalSessionWidget()
@@ -142,27 +141,22 @@ void TerminalSessionWidget::saveLog()
         return;
     }
 
-    const QString documents =
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    const QString suggested = QDir(documents).filePath(
-        sanitizeFileBaseName(m_displayName) + QStringLiteral(".log"));
+    const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QString suggested =
+        QDir(documents).filePath(sanitizeFileBaseName(m_displayName) + QStringLiteral(".log"));
 
     const QString path = QFileDialog::getSaveFileName(
-        this,
-        tr("Save Log"),
-        suggested,
-        tr("Log files (*.log *.txt);;All files (*)"));
+        this, tr("Save Log"), suggested, tr("Log files (*.log *.txt);;All files (*)"));
     if (path.isEmpty()) {
         return;
     }
 
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        ErrorNotifier::notify(
-            this,
-            tr("Save Log"),
-            tr("Could not write log file:\n%1").arg(file.errorString()),
-            ErrorNotifier::Level::Warning);
+        ErrorNotifier::notify(this,
+                              tr("Save Log"),
+                              tr("Could not write log file:\n%1").arg(file.errorString()),
+                              ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -177,27 +171,22 @@ void TerminalSessionWidget::saveScreenshot()
         return;
     }
 
-    const QString documents =
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    const QString suggested = QDir(documents).filePath(
-        sanitizeFileBaseName(m_displayName) + QStringLiteral(".png"));
+    const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QString suggested =
+        QDir(documents).filePath(sanitizeFileBaseName(m_displayName) + QStringLiteral(".png"));
 
     const QString path = QFileDialog::getSaveFileName(
-        this,
-        tr("Save Screenshot"),
-        suggested,
-        tr("PNG images (*.png);;All files (*)"));
+        this, tr("Save Screenshot"), suggested, tr("PNG images (*.png);;All files (*)"));
     if (path.isEmpty()) {
         return;
     }
 
     const QPixmap pixmap = m_term->grab();
     if (pixmap.isNull() || !pixmap.save(path, "PNG")) {
-        ErrorNotifier::notify(
-            this,
-            tr("Save Screenshot"),
-            tr("Could not save screenshot to:\n%1").arg(path),
-            ErrorNotifier::Level::Warning);
+        ErrorNotifier::notify(this,
+                              tr("Save Screenshot"),
+                              tr("Could not save screenshot to:\n%1").arg(path),
+                              ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -301,9 +290,7 @@ void TerminalSessionWidget::listDirectory(const QString &path)
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, path]() {
-            worker->listDirectory(path);
-        },
+        [worker = m_worker, path]() { worker->listDirectory(path); },
         Qt::QueuedConnection);
 }
 
@@ -314,9 +301,7 @@ void TerminalSessionWidget::createDirectory(const QString &path)
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, path]() {
-            worker->createDirectory(path);
-        },
+        [worker = m_worker, path]() { worker->createDirectory(path); },
         Qt::QueuedConnection);
 }
 
@@ -327,9 +312,7 @@ void TerminalSessionWidget::renamePath(const QString &from, const QString &to)
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, from, to]() {
-            worker->renamePath(from, to);
-        },
+        [worker = m_worker, from, to]() { worker->renamePath(from, to); },
         Qt::QueuedConnection);
 }
 
@@ -340,9 +323,7 @@ void TerminalSessionWidget::removePath(const QString &path, bool recursive)
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, path, recursive]() {
-            worker->removePath(path, recursive);
-        },
+        [worker = m_worker, path, recursive]() { worker->removePath(path, recursive); },
         Qt::QueuedConnection);
 }
 
@@ -392,9 +373,7 @@ void TerminalSessionWidget::canonicalizePath(const QString &path)
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, path]() {
-            worker->canonicalizePath(path);
-        },
+        [worker = m_worker, path]() { worker->canonicalizePath(path); },
         Qt::QueuedConnection);
 }
 
@@ -413,11 +392,7 @@ void TerminalSessionWidget::startTunnel(const TunnelDefinition &def)
         return;
     }
     QMetaObject::invokeMethod(
-        m_worker,
-        [worker = m_worker, def]() {
-            worker->startTunnel(def);
-        },
-        Qt::QueuedConnection);
+        m_worker, [worker = m_worker, def]() { worker->startTunnel(def); }, Qt::QueuedConnection);
 }
 
 void TerminalSessionWidget::stopTunnel(const QUuid &tunnelId)
@@ -427,9 +402,7 @@ void TerminalSessionWidget::stopTunnel(const QUuid &tunnelId)
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, tunnelId]() {
-            worker->stopTunnel(tunnelId);
-        },
+        [worker = m_worker, tunnelId]() { worker->stopTunnel(tunnelId); },
         Qt::QueuedConnection);
 }
 
@@ -439,11 +412,7 @@ void TerminalSessionWidget::stopAllTunnels()
         return;
     }
     QMetaObject::invokeMethod(
-        m_worker,
-        [worker = m_worker]() {
-            worker->stopAllTunnels();
-        },
-        Qt::QueuedConnection);
+        m_worker, [worker = m_worker]() { worker->stopAllTunnels(); }, Qt::QueuedConnection);
 }
 
 void TerminalSessionWidget::startEnabledTunnels()
@@ -495,38 +464,28 @@ void TerminalSessionWidget::beginConnect()
 
     connect(m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
 
-    connect(m_worker, &SshWorker::connected,
-            this, &TerminalSessionWidget::onConnected);
-    connect(m_worker, &SshWorker::dataReceived,
-            this, &TerminalSessionWidget::onDataReceived);
-    connect(m_worker, &SshWorker::hostKeyPrompt,
-            this, &TerminalSessionWidget::onHostKeyPrompt);
-    connect(m_worker, &SshWorker::errorOccurred,
-            this, &TerminalSessionWidget::onErrorOccurred);
-    connect(m_worker, &SshWorker::disconnected,
-            this, &TerminalSessionWidget::onDisconnected);
-    connect(m_worker, &SshWorker::directoryListed,
-            this, &TerminalSessionWidget::directoryListed);
-    connect(m_worker, &SshWorker::pathCanonicalized,
-            this, &TerminalSessionWidget::pathCanonicalized);
-    connect(m_worker, &SshWorker::sftpFinished,
-            this, &TerminalSessionWidget::sftpFinished);
-    connect(m_worker, &SshWorker::sftpError,
-            this, &TerminalSessionWidget::sftpError);
-    connect(m_worker, &SshWorker::sftpCanceled,
-            this, &TerminalSessionWidget::sftpCanceled);
-    connect(m_worker, &SshWorker::sftpProgress,
-            this, &TerminalSessionWidget::sftpProgress);
-    connect(m_worker, &SshWorker::sftpUnavailable,
-            this, [this](const QString &message) {
-                m_sftpAvailable = false;
-                m_sftpUnavailableReason = message;
-                emit sftpUnavailable(message);
-            });
-    connect(m_worker, &SshWorker::tunnelStatusChanged,
-            this, &TerminalSessionWidget::tunnelStatusChanged);
-    connect(m_worker, &SshWorker::tunnelError,
-            this, &TerminalSessionWidget::tunnelError);
+    connect(m_worker, &SshWorker::connected, this, &TerminalSessionWidget::onConnected);
+    connect(m_worker, &SshWorker::dataReceived, this, &TerminalSessionWidget::onDataReceived);
+    connect(m_worker, &SshWorker::hostKeyPrompt, this, &TerminalSessionWidget::onHostKeyPrompt);
+    connect(m_worker, &SshWorker::errorOccurred, this, &TerminalSessionWidget::onErrorOccurred);
+    connect(m_worker, &SshWorker::disconnected, this, &TerminalSessionWidget::onDisconnected);
+    connect(m_worker, &SshWorker::directoryListed, this, &TerminalSessionWidget::directoryListed);
+    connect(
+        m_worker, &SshWorker::pathCanonicalized, this, &TerminalSessionWidget::pathCanonicalized);
+    connect(m_worker, &SshWorker::sftpFinished, this, &TerminalSessionWidget::sftpFinished);
+    connect(m_worker, &SshWorker::sftpError, this, &TerminalSessionWidget::sftpError);
+    connect(m_worker, &SshWorker::sftpCanceled, this, &TerminalSessionWidget::sftpCanceled);
+    connect(m_worker, &SshWorker::sftpProgress, this, &TerminalSessionWidget::sftpProgress);
+    connect(m_worker, &SshWorker::sftpUnavailable, this, [this](const QString &message) {
+        m_sftpAvailable = false;
+        m_sftpUnavailableReason = message;
+        emit sftpUnavailable(message);
+    });
+    connect(m_worker,
+            &SshWorker::tunnelStatusChanged,
+            this,
+            &TerminalSessionWidget::tunnelStatusChanged);
+    connect(m_worker, &SshWorker::tunnelError, this, &TerminalSessionWidget::tunnelError);
 
     m_thread->start();
 
@@ -595,15 +554,15 @@ void TerminalSessionWidget::onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
     bool accept = false;
 
     if (reason == SshWorker::HostKeyPrompt::Unknown) {
-        const auto result = QMessageBox::question(
-            this,
-            tr("Unknown Host Key"),
-            tr("The server host key is not in known_hosts.\n\n"
-               "SHA256 fingerprint:\n%1\n\n"
-               "Do you trust this host and want to continue?")
-                .arg(fingerprint),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::No);
+        const auto result =
+            QMessageBox::question(this,
+                                  tr("Unknown Host Key"),
+                                  tr("The server host key is not in known_hosts.\n\n"
+                                     "SHA256 fingerprint:\n%1\n\n"
+                                     "Do you trust this host and want to continue?")
+                                      .arg(fingerprint),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No);
         accept = (result == QMessageBox::Yes);
     } else {
         QMessageBox box(this);
@@ -611,21 +570,19 @@ void TerminalSessionWidget::onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
         if (reason == SshWorker::HostKeyPrompt::Changed) {
             box.setWindowTitle(tr("Host Key Changed"));
             box.setText(tr("WARNING: The host key for this server has changed."));
-            box.setInformativeText(
-                tr("This may indicate a man-in-the-middle attack, or that the "
-                   "server administrator replaced the key.\n\n"
-                   "SHA256 fingerprint:\n%1\n\n"
-                   "Only continue if you trust the new key.")
-                    .arg(fingerprint));
+            box.setInformativeText(tr("This may indicate a man-in-the-middle attack, or that the "
+                                      "server administrator replaced the key.\n\n"
+                                      "SHA256 fingerprint:\n%1\n\n"
+                                      "Only continue if you trust the new key.")
+                                       .arg(fingerprint));
         } else {
             box.setWindowTitle(tr("Host Key Type Mismatch"));
             box.setText(tr("WARNING: The host key type differs from known_hosts."));
-            box.setInformativeText(
-                tr("An attacker might present a different key type to bypass "
-                   "verification.\n\n"
-                   "SHA256 fingerprint:\n%1\n\n"
-                   "Only continue if you trust this key.")
-                    .arg(fingerprint));
+            box.setInformativeText(tr("An attacker might present a different key type to bypass "
+                                      "verification.\n\n"
+                                      "SHA256 fingerprint:\n%1\n\n"
+                                      "Only continue if you trust this key.")
+                                       .arg(fingerprint));
         }
 
         QAbstractButton *abortBtn = box.addButton(tr("Abort"), QMessageBox::RejectRole);
@@ -656,11 +613,7 @@ void TerminalSessionWidget::onErrorOccurred(const QString &message)
     if (m_worker) {
         disconnect(m_worker, nullptr, this, nullptr);
         QMetaObject::invokeMethod(
-            m_worker,
-            [worker = m_worker]() {
-                worker->disconnectSession();
-            },
-            Qt::QueuedConnection);
+            m_worker, [worker = m_worker]() { worker->disconnectSession(); }, Qt::QueuedConnection);
         m_worker = nullptr;
     }
     if (m_thread) {
@@ -714,15 +667,14 @@ void TerminalSessionWidget::onSendData(const char *data, int length)
     const QByteArray bytes(data, length);
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, bytes]() {
-            worker->writeToChannel(bytes);
-        },
+        [worker = m_worker, bytes]() { worker->writeToChannel(bytes); },
         Qt::QueuedConnection);
 }
 
 void TerminalSessionWidget::syncPtySize()
 {
-    if (!m_teletypeStarted || m_state != State::Connected || m_worker == nullptr || m_term == nullptr) {
+    if (!m_teletypeStarted || m_state != State::Connected || m_worker == nullptr ||
+        m_term == nullptr) {
         return;
     }
 
@@ -749,9 +701,7 @@ void TerminalSessionWidget::syncPtySize()
 
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, cols, rows]() {
-            worker->changePtySize(cols, rows);
-        },
+        [worker = m_worker, cols, rows]() { worker->changePtySize(cols, rows); },
         Qt::QueuedConnection);
 }
 
@@ -769,8 +719,8 @@ void TerminalSessionWidget::readTerminalSize(int *cols, int *rows) const
 
     if ((c < kMinTerminalCols || r < kMinTerminalRows) && m_term) {
         const QWidget *box = (m_term->width() >= 20 && m_term->height() >= 20)
-            ? static_cast<const QWidget *>(m_term)
-            : static_cast<const QWidget *>(this);
+                                 ? static_cast<const QWidget *>(m_term)
+                                 : static_cast<const QWidget *>(this);
         const QFontMetrics fm(m_term->getTerminalFont());
         const int cw = qMax(1, fm.horizontalAdvance(QLatin1Char('M')));
         const int ch = qMax(1, fm.height());
@@ -799,7 +749,7 @@ void TerminalSessionWidget::syncLocalPtyWinsize(int cols, int rows)
         return;
     }
 
-    struct winsize ws {};
+    struct winsize ws{};
     ws.ws_col = static_cast<unsigned short>(cols);
     ws.ws_row = static_cast<unsigned short>(rows);
     ws.ws_xpixel = 0;
@@ -823,10 +773,8 @@ void TerminalSessionWidget::flushPendingDisplay()
     }
 
     while (!m_pendingDisplay.isEmpty()) {
-        const ssize_t written = ::write(
-            fd,
-            m_pendingDisplay.constData(),
-            static_cast<size_t>(m_pendingDisplay.size()));
+        const ssize_t written =
+            ::write(fd, m_pendingDisplay.constData(), static_cast<size_t>(m_pendingDisplay.size()));
 
         if (written > 0) {
             m_pendingDisplay.remove(0, static_cast<int>(written));
@@ -871,8 +819,10 @@ void TerminalSessionWidget::setupPtyBridge()
 
     m_ptyWriteNotifier = new QSocketNotifier(fd, QSocketNotifier::Write, this);
     m_ptyWriteNotifier->setEnabled(false);
-    connect(m_ptyWriteNotifier, &QSocketNotifier::activated,
-            this, &TerminalSessionWidget::flushPendingDisplay);
+    connect(m_ptyWriteNotifier,
+            &QSocketNotifier::activated,
+            this,
+            &TerminalSessionWidget::flushPendingDisplay);
 }
 
 void TerminalSessionWidget::teardownPtyBridge()
@@ -898,11 +848,7 @@ void TerminalSessionWidget::shutdownWorker()
         disconnect(m_worker, nullptr, this, nullptr);
         m_worker->respondHostKeyTrust(false);
         QMetaObject::invokeMethod(
-            m_worker,
-            [worker = m_worker]() {
-                worker->disconnectSession();
-            },
-            Qt::QueuedConnection);
+            m_worker, [worker = m_worker]() { worker->disconnectSession(); }, Qt::QueuedConnection);
     }
 
     if (m_thread) {

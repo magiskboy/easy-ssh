@@ -20,7 +20,8 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-namespace {
+namespace
+{
 constexpr size_t kXferBufSize = 16384;
 constexpr qint64 kProgressEmitBytes = 64 * 1024;
 constexpr qint64 kProgressEmitMs = 100;
@@ -35,20 +36,19 @@ QString joinRemotePath(const QString &dir, const QString &name)
     }
     return dir + QLatin1Char('/') + name;
 }
-}
+} // namespace
 
-SshWorker::SshWorker(QObject *parent)
-    : QObject(parent)
-{
-}
+SshWorker::SshWorker(QObject *parent) : QObject(parent) {}
 
 SshWorker::~SshWorker()
 {
     cleanup();
 }
 
-void SshWorker::connectToHost(const Connection &connection, const QString &secret,
-                              int cols, int rows)
+void SshWorker::connectToHost(const Connection &connection,
+                              const QString &secret,
+                              int cols,
+                              int rows)
 {
     if (m_running) {
         emit errorOccurred(tr("Session already connected"));
@@ -109,8 +109,7 @@ void SshWorker::connectToHost(const Connection &connection, const QString &secre
     const bool sftpReady = openSftp(&sftpFailure);
 
     m_running = true;
-    qCWarning(lcSsh) << "Connected to" << connection.host
-                     << "sftp:" << (sftpReady ? "yes" : "no");
+    qCWarning(lcSsh) << "Connected to" << connection.host << "sftp:" << (sftpReady ? "yes" : "no");
     emit connected();
 
     if (!sftpReady) {
@@ -136,8 +135,8 @@ void SshWorker::writeToChannel(const QByteArray &data)
     while (remaining > 0) {
         const int written = ssh_channel_write(m_channel, ptr, static_cast<uint32_t>(remaining));
         if (written == SSH_ERROR || written < 0) {
-            if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel)
-                || (m_session && !ssh_is_connected(m_session))) {
+            if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
+                (m_session && !ssh_is_connected(m_session))) {
                 disconnectSession();
                 return;
             }
@@ -464,8 +463,8 @@ void SshWorker::pollChannel()
             return;
         }
         if (nbytes < 0) {
-            if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel)
-                || (m_session && !ssh_is_connected(m_session))) {
+            if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
+                (m_session && !ssh_is_connected(m_session))) {
                 disconnectSession();
                 return;
             }
@@ -573,7 +572,8 @@ QString SshWorker::knownHostsFilePath() const
 {
     if (m_session != nullptr) {
         char *path = nullptr;
-        if (ssh_options_get(m_session, SSH_OPTIONS_KNOWNHOSTS, &path) == SSH_OK && path != nullptr) {
+        if (ssh_options_get(m_session, SSH_OPTIONS_KNOWNHOSTS, &path) == SSH_OK &&
+            path != nullptr) {
             const QString result = QString::fromUtf8(path);
             ssh_string_free_char(path);
             if (!result.isEmpty()) {
@@ -598,8 +598,8 @@ bool SshWorker::knownHostsLineMatchesHost(const QString &hostField, const QStrin
     const QStringList names = hostField.split(QLatin1Char(','), Qt::SkipEmptyParts);
     for (QString name : names) {
         name = name.trimmed();
-        if (name.compare(host, Qt::CaseInsensitive) == 0
-            || name.compare(bracketed, Qt::CaseInsensitive) == 0) {
+        if (name.compare(host, Qt::CaseInsensitive) == 0 ||
+            name.compare(bracketed, Qt::CaseInsensitive) == 0) {
             return true;
         }
     }
@@ -777,8 +777,7 @@ bool SshWorker::openShell()
 
     // Request PTY with real size + TERM that full-screen apps (vim) understand.
     // ssh_channel_request_pty() alone defaults to 80x24 and a generic term type.
-    if (ssh_channel_request_pty_size(m_channel, "xterm-256color", m_ptyCols, m_ptyRows)
-        != SSH_OK) {
+    if (ssh_channel_request_pty_size(m_channel, "xterm-256color", m_ptyCols, m_ptyRows) != SSH_OK) {
         emit errorOccurred(tr("Failed to request PTY: %1").arg(sessionError()));
         return false;
     }
@@ -803,9 +802,10 @@ bool SshWorker::openSftp(QString *failureMessage)
 
     if (sftp_init(m_sftp) != SSH_OK) {
         if (failureMessage) {
-            const QString detail = sftpErrorMessage().isEmpty() ? sessionError() : sftpErrorMessage();
-            if (detail.contains(QStringLiteral("subsystem"), Qt::CaseInsensitive)
-                || sessionError().contains(QStringLiteral("subsystem"), Qt::CaseInsensitive)) {
+            const QString detail =
+                sftpErrorMessage().isEmpty() ? sessionError() : sftpErrorMessage();
+            if (detail.contains(QStringLiteral("subsystem"), Qt::CaseInsensitive) ||
+                sessionError().contains(QStringLiteral("subsystem"), Qt::CaseInsensitive)) {
                 *failureMessage =
                     tr("This server does not support SFTP (subsystem request failed).");
             } else {
@@ -899,17 +899,15 @@ QString SshWorker::sftpErrorMessage() const
         return tr("Disk full");
 #endif
     default:
-        return sessionError().isEmpty()
-            ? tr("SFTP error %1").arg(code)
-            : sessionError();
+        return sessionError().isEmpty() ? tr("SFTP error %1").arg(code) : sessionError();
     }
 }
 
 QString SshWorker::localIoErrorMessage(const QString &qtErrorString)
 {
-    if (errno == ENOSPC
-        || qtErrorString.contains(QStringLiteral("No space"), Qt::CaseInsensitive)
-        || qtErrorString.contains(QStringLiteral("disk full"), Qt::CaseInsensitive)) {
+    if (errno == ENOSPC ||
+        qtErrorString.contains(QStringLiteral("No space"), Qt::CaseInsensitive) ||
+        qtErrorString.contains(QStringLiteral("disk full"), Qt::CaseInsensitive)) {
         return tr("Disk full");
     }
     return qtErrorString;
@@ -1113,7 +1111,8 @@ QString SshWorker::formatPermissions(uint32_t permissions, uint8_t type)
     return result;
 }
 
-bool SshWorker::listDirectoryEntries(const QString &path, QVector<RemoteEntry> *outEntries,
+bool SshWorker::listDirectoryEntries(const QString &path,
+                                     QVector<RemoteEntry> *outEntries,
                                      QString *error)
 {
     const QByteArray remote = path.toUtf8();
@@ -1214,7 +1213,8 @@ bool SshWorker::removePathRecursive(const QString &path, QString *error)
     return true;
 }
 
-bool SshWorker::uploadPathRecursive(const QString &localPath, const QString &remotePath,
+bool SshWorker::uploadPathRecursive(const QString &localPath,
+                                    const QString &remotePath,
                                     QString *error)
 {
     if (transferCanceled(error)) {
@@ -1248,8 +1248,10 @@ bool SshWorker::uploadPathRecursive(const QString &localPath, const QString &rem
     return uploadFile(localPath, remotePath, error);
 }
 
-bool SshWorker::downloadPathRecursive(const QString &remotePath, const QString &localPath,
-                                      bool isDir, QString *error)
+bool SshWorker::downloadPathRecursive(const QString &remotePath,
+                                      const QString &localPath,
+                                      bool isDir,
+                                      QString *error)
 {
     if (transferCanceled(error)) {
         return false;
@@ -1259,9 +1261,8 @@ bool SshWorker::downloadPathRecursive(const QString &remotePath, const QString &
         QDir local(localPath);
         if (!local.exists() && !QDir().mkpath(localPath)) {
             if (error) {
-                *error = (errno == ENOSPC)
-                    ? tr("Disk full")
-                    : tr("Cannot create local folder: %1").arg(localPath);
+                *error = (errno == ENOSPC) ? tr("Disk full")
+                                           : tr("Cannot create local folder: %1").arg(localPath);
             }
             return false;
         }
@@ -1299,7 +1300,8 @@ bool SshWorker::uploadFile(const QString &localPath, const QString &remotePath, 
 
     const QByteArray remote = remotePath.toUtf8();
     const int access = O_WRONLY | O_CREAT | O_TRUNC;
-    sftp_file file = sftp_open(m_sftp, remote.constData(), access, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    sftp_file file =
+        sftp_open(m_sftp, remote.constData(), access, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (file == nullptr) {
         if (error) {
             *error = tr("Cannot open remote file for writing: %1").arg(sftpErrorMessage());
@@ -1320,7 +1322,8 @@ bool SshWorker::uploadFile(const QString &localPath, const QString &remotePath, 
         const qint64 nread = local.read(buffer, static_cast<qint64>(sizeof(buffer)));
         if (nread < 0) {
             if (error) {
-                *error = tr("Cannot read local file: %1").arg(localIoErrorMessage(local.errorString()));
+                *error =
+                    tr("Cannot read local file: %1").arg(localIoErrorMessage(local.errorString()));
             }
             sftp_close(file);
             return false;
@@ -1409,8 +1412,8 @@ bool SshWorker::downloadFile(const QString &remotePath, const QString &localPath
 
         if (local.write(buffer, nbytes) != nbytes) {
             if (error) {
-                *error = tr("Cannot write local file: %1")
-                             .arg(localIoErrorMessage(local.errorString()));
+                *error =
+                    tr("Cannot write local file: %1").arg(localIoErrorMessage(local.errorString()));
             }
             sftp_close(file);
             return false;
@@ -1449,7 +1452,8 @@ void SshWorker::startTunnel(const TunnelDefinition &def)
 {
     if (!m_running || m_session == nullptr) {
         emit tunnelError(def.id, tr("SSH session is not connected"));
-        emit tunnelStatusChanged(def.id, QStringLiteral("Error"), tr("SSH session is not connected"));
+        emit tunnelStatusChanged(
+            def.id, QStringLiteral("Error"), tr("SSH session is not connected"));
         return;
     }
 
@@ -1511,8 +1515,8 @@ bool SshWorker::startLocalTunnel(ActiveTunnel *tunnel)
 {
     auto *server = new QTcpServer(this);
     QHostAddress address;
-    if (tunnel->def.localHost.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0
-        || tunnel->def.localHost == QLatin1String("127.0.0.1")) {
+    if (tunnel->def.localHost.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0 ||
+        tunnel->def.localHost == QLatin1String("127.0.0.1")) {
         address = QHostAddress::LocalHost;
     } else if (tunnel->def.localHost.compare(QLatin1String("::1"), Qt::CaseInsensitive) == 0) {
         address = QHostAddress::LocalHostIPv6;
@@ -1528,8 +1532,8 @@ bool SshWorker::startLocalTunnel(ActiveTunnel *tunnel)
     }
 
     if (!server->listen(address, tunnel->def.localPort)) {
-        const QString message = tr("Cannot listen on %1: %2")
-                                    .arg(tunnel->def.localAddress(), server->errorString());
+        const QString message =
+            tr("Cannot listen on %1: %2").arg(tunnel->def.localAddress(), server->errorString());
         emit tunnelError(tunnel->def.id, message);
         emit tunnelStatusChanged(tunnel->def.id, QStringLiteral("Error"), message);
         server->deleteLater();
@@ -1545,11 +1549,10 @@ bool SshWorker::startRemoteTunnel(ActiveTunnel *tunnel)
 {
     const QByteArray address = tunnel->def.remoteHost.toUtf8();
     int boundPort = 0;
-    const int rc = ssh_channel_listen_forward(
-        m_session,
-        address.isEmpty() ? nullptr : address.constData(),
-        tunnel->def.remotePort,
-        &boundPort);
+    const int rc = ssh_channel_listen_forward(m_session,
+                                              address.isEmpty() ? nullptr : address.constData(),
+                                              tunnel->def.remotePort,
+                                              &boundPort);
 
     if (rc != SSH_OK) {
         const QString message = tr("Remote listen failed: %1").arg(sessionError());
@@ -1613,12 +1616,12 @@ bool SshWorker::openLocalForwardBridge(ActiveTunnel *tunnel, QTcpSocket *socket)
     // which broke Disable → Enable and multi-connection use.
     ssh_set_blocking(m_session, 1);
 
-    const int rc = ssh_channel_open_forward(
-        channel,
-        remoteHost.constData(),
-        tunnel->def.remotePort,
-        sourceHost.isEmpty() ? "127.0.0.1" : sourceHost.constData(),
-        sourcePort > 0 ? sourcePort : 0);
+    const int rc =
+        ssh_channel_open_forward(channel,
+                                 remoteHost.constData(),
+                                 tunnel->def.remotePort,
+                                 sourceHost.isEmpty() ? "127.0.0.1" : sourceHost.constData(),
+                                 sourcePort > 0 ? sourcePort : 0);
 
     if (rc != SSH_OK) {
         ssh_channel_free(channel);
@@ -1673,8 +1676,8 @@ void SshWorker::acceptRemoteForwards()
 
         ActiveTunnel *match = nullptr;
         for (ActiveTunnel *tunnel : m_tunnels) {
-            if (tunnel && tunnel->remoteListening
-                && tunnel->def.remotePort == static_cast<quint16>(destinationPort)) {
+            if (tunnel && tunnel->remoteListening &&
+                tunnel->def.remotePort == static_cast<quint16>(destinationPort)) {
                 match = tunnel;
                 break;
             }
@@ -1787,8 +1790,8 @@ void SshWorker::pollTunnelBridges()
             continue;
         }
         for (TunnelBridge *bridge : tunnel->bridges) {
-            if (bridge == nullptr || bridge->closing || bridge->channel == nullptr
-                || bridge->socket == nullptr) {
+            if (bridge == nullptr || bridge->closing || bridge->channel == nullptr ||
+                bridge->socket == nullptr) {
                 continue;
             }
 
@@ -1877,9 +1880,7 @@ void SshWorker::destroyTunnel(ActiveTunnel *tunnel, bool emitOff)
     if (tunnel->remoteListening && m_session) {
         const QByteArray address = tunnel->def.remoteHost.toUtf8();
         ssh_channel_cancel_forward(
-            m_session,
-            address.isEmpty() ? nullptr : address.constData(),
-            tunnel->def.remotePort);
+            m_session, address.isEmpty() ? nullptr : address.constData(), tunnel->def.remotePort);
         tunnel->remoteListening = false;
     }
 

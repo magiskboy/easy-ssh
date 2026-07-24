@@ -16,8 +16,7 @@
 #include <QTableView>
 #include <QVBoxLayout>
 
-TunnelListWidget::TunnelListWidget(QWidget *parent)
-    : QWidget(parent)
+TunnelListWidget::TunnelListWidget(QWidget *parent) : QWidget(parent)
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -65,13 +64,16 @@ TunnelListWidget::TunnelListWidget(QWidget *parent)
     connect(m_editAction, &QAction::triggered, this, &TunnelListWidget::editSelected);
     connect(m_deleteAction, &QAction::triggered, this, &TunnelListWidget::deleteSelected);
     connect(m_toggleAction, &QAction::triggered, this, &TunnelListWidget::toggleSelected);
-    connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged,
-            this, &TunnelListWidget::onSelectionChanged);
-    connect(m_table, &QTableView::customContextMenuRequested,
-            this, &TunnelListWidget::onCustomContextMenu);
-    connect(m_table, &QTableView::doubleClicked, this, [this](const QModelIndex &) {
-        editSelected();
-    });
+    connect(m_table->selectionModel(),
+            &QItemSelectionModel::selectionChanged,
+            this,
+            &TunnelListWidget::onSelectionChanged);
+    connect(m_table,
+            &QTableView::customContextMenuRequested,
+            this,
+            &TunnelListWidget::onCustomContextMenu);
+    connect(
+        m_table, &QTableView::doubleClicked, this, [this](const QModelIndex &) { editSelected(); });
 
     showEmptyState(tr("Open an SSH session to manage tunnels."));
     updateActionsEnabled();
@@ -90,12 +92,15 @@ void TunnelListWidget::bindSession(TerminalSessionWidget *session)
         return;
     }
 
-    connect(m_session, &TerminalSessionWidget::sessionStateChanged,
-            this, &TunnelListWidget::onSessionStateChanged);
-    connect(m_session, &TerminalSessionWidget::tunnelStatusChanged,
-            this, &TunnelListWidget::onTunnelStatusChanged);
-    connect(m_session, &TerminalSessionWidget::tunnelError,
-            this, &TunnelListWidget::onTunnelError);
+    connect(m_session,
+            &TerminalSessionWidget::sessionStateChanged,
+            this,
+            &TunnelListWidget::onSessionStateChanged);
+    connect(m_session,
+            &TerminalSessionWidget::tunnelStatusChanged,
+            this,
+            &TunnelListWidget::onTunnelStatusChanged);
+    connect(m_session, &TerminalSessionWidget::tunnelError, this, &TunnelListWidget::onTunnelError);
     connect(m_session, &QObject::destroyed, this, [this]() {
         m_session = nullptr;
         m_model->clear();
@@ -158,10 +163,7 @@ void TunnelListWidget::editSelected()
         m_model->index(m_model->rowOf(current->id), TunnelListModel::StatusColumn);
     const QString status = statusIndex.data(Qt::DisplayRole).toString();
     if (status == QLatin1String("Listening") || status == QLatin1String("Starting")) {
-        QMessageBox::information(
-            this,
-            tr("Edit Tunnel"),
-            tr("Disable the tunnel before editing."));
+        QMessageBox::information(this, tr("Edit Tunnel"), tr("Disable the tunnel before editing."));
         return;
     }
 
@@ -189,12 +191,11 @@ void TunnelListWidget::deleteSelected()
         return;
     }
 
-    const auto answer = QMessageBox::question(
-        this,
-        tr("Delete Tunnel"),
-        tr("Delete tunnel \"%1\"?").arg(current->name),
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);
+    const auto answer = QMessageBox::question(this,
+                                              tr("Delete Tunnel"),
+                                              tr("Delete tunnel \"%1\"?").arg(current->name),
+                                              QMessageBox::Yes | QMessageBox::No,
+                                              QMessageBox::No);
     if (answer != QMessageBox::Yes) {
         return;
     }
@@ -276,7 +277,8 @@ void TunnelListWidget::onCustomContextMenu(const QPoint &pos)
     menu.exec(m_table->viewport()->mapToGlobal(pos));
 }
 
-void TunnelListWidget::onTunnelStatusChanged(const QUuid &tunnelId, const QString &status,
+void TunnelListWidget::onTunnelStatusChanged(const QUuid &tunnelId,
+                                             const QString &status,
                                              const QString &detail)
 {
     m_model->setRuntimeStatus(tunnelId, status, detail);
@@ -394,6 +396,5 @@ std::optional<TunnelDefinition> TunnelListWidget::selectedTunnel() const
 
 bool TunnelListWidget::isSessionConnected() const
 {
-    return m_session
-        && m_session->sessionState() == TerminalSessionWidget::State::Connected;
+    return m_session && m_session->sessionState() == TerminalSessionWidget::State::Connected;
 }

@@ -13,9 +13,7 @@
 #include <QVBoxLayout>
 
 ConnectionDialog::ConnectionDialog(Mode mode, QWidget *parent)
-    : QDialog(parent)
-    , m_mode(mode)
-    , m_id(QUuid::createUuid())
+    : QDialog(parent), m_mode(mode), m_id(QUuid::createUuid())
 {
     setupUi();
     setWindowTitle(mode == Mode::Create ? tr("New Connection") : tr("Edit Connection"));
@@ -77,10 +75,11 @@ void ConnectionDialog::setupUi()
     layout->addLayout(m_form);
     layout->addWidget(buttons);
 
-    connect(m_authTypeCombo, &QComboBox::currentIndexChanged,
-            this, &ConnectionDialog::onAuthTypeChanged);
-    connect(browseButton, &QPushButton::clicked,
-            this, &ConnectionDialog::browsePrivateKey);
+    connect(m_authTypeCombo,
+            &QComboBox::currentIndexChanged,
+            this,
+            &ConnectionDialog::onAuthTypeChanged);
+    connect(browseButton, &QPushButton::clicked, this, &ConnectionDialog::browsePrivateKey);
     connect(buttons, &QDialogButtonBox::accepted, this, &ConnectionDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
@@ -149,11 +148,11 @@ void ConnectionDialog::onAuthTypeChanged(int index)
 
 void ConnectionDialog::browsePrivateKey()
 {
-    const QString path = QFileDialog::getOpenFileName(
-        this,
-        tr("Select Private Key"),
-        QStringLiteral("%1/.ssh").arg(QDir::homePath()),
-        tr("All Files (*)"));
+    const QString path =
+        QFileDialog::getOpenFileName(this,
+                                     tr("Select Private Key"),
+                                     QStringLiteral("%1/.ssh").arg(QDir::homePath()),
+                                     tr("All Files (*)"));
     if (!path.isEmpty()) {
         m_privateKeyEdit->setText(path);
     }

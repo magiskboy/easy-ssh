@@ -6,7 +6,8 @@
 
 #include <iterator>
 
-namespace {
+namespace
+{
 
 constexpr auto kShowSize = "fileExplorer/showSize";
 constexpr auto kShowPermissions = "fileExplorer/showPermissions";
@@ -23,7 +24,8 @@ constexpr auto kConfirmMultilinePaste = "terminal/confirmMultilinePaste";
 
 constexpr auto kAutoReconnect = "session/autoReconnect";
 
-struct ShortcutDef {
+struct ShortcutDef
+{
     const char *id;
     const char *group;
     const char *label;
@@ -76,10 +78,7 @@ AppSettings &AppSettings::instance()
     return settings;
 }
 
-AppSettings::AppSettings(QObject *parent)
-    : QObject(parent)
-{
-}
+AppSettings::AppSettings(QObject *parent) : QObject(parent) {}
 
 bool AppSettings::boolValue(const QString &key, bool defaultValue) const
 {

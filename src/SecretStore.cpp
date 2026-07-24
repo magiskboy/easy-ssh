@@ -2,10 +2,7 @@
 
 #include <qt6keychain/keychain.h>
 
-SecretStore::SecretStore(QObject *parent)
-    : QObject(parent)
-{
-}
+SecretStore::SecretStore(QObject *parent) : QObject(parent) {}
 
 QString SecretStore::serviceName()
 {
@@ -30,7 +27,9 @@ void SecretStore::storeSecret(const QUuid &connectionId, Kind kind, const QStrin
     job->setKey(keyFor(connectionId, kind));
     job->setTextData(value);
 
-    connect(job, &QKeychain::WritePasswordJob::finished, this,
+    connect(job,
+            &QKeychain::WritePasswordJob::finished,
+            this,
             [this, connectionId, kind](QKeychain::Job *j) {
                 if (j->error() == QKeychain::NoError) {
                     emit storeFinished(connectionId, kind, true, {});
@@ -47,7 +46,9 @@ void SecretStore::readSecret(const QUuid &connectionId, Kind kind)
     auto *job = new QKeychain::ReadPasswordJob(serviceName());
     job->setKey(keyFor(connectionId, kind));
 
-    connect(job, &QKeychain::ReadPasswordJob::finished, this,
+    connect(job,
+            &QKeychain::ReadPasswordJob::finished,
+            this,
             [this, connectionId, kind](QKeychain::Job *j) {
                 auto *readJob = static_cast<QKeychain::ReadPasswordJob *>(j);
                 if (j->error() == QKeychain::NoError) {
@@ -69,10 +70,11 @@ void SecretStore::deleteSecret(const QUuid &connectionId, Kind kind)
     auto *job = new QKeychain::DeletePasswordJob(serviceName());
     job->setKey(keyFor(connectionId, kind));
 
-    connect(job, &QKeychain::DeletePasswordJob::finished, this,
+    connect(job,
+            &QKeychain::DeletePasswordJob::finished,
+            this,
             [this, connectionId, kind](QKeychain::Job *j) {
-                if (j->error() == QKeychain::NoError
-                    || j->error() == QKeychain::EntryNotFound) {
+                if (j->error() == QKeychain::NoError || j->error() == QKeychain::EntryNotFound) {
                     emit deleteFinished(connectionId, kind, true, {});
                     return;
                 }
@@ -93,7 +95,9 @@ void SecretStore::copySecret(const QUuid &fromId, const QUuid &toId, Kind kind)
     auto *job = new QKeychain::ReadPasswordJob(serviceName());
     job->setKey(keyFor(fromId, kind));
 
-    connect(job, &QKeychain::ReadPasswordJob::finished, this,
+    connect(job,
+            &QKeychain::ReadPasswordJob::finished,
+            this,
             [this, fromId, toId, kind](QKeychain::Job *j) {
                 auto *readJob = static_cast<QKeychain::ReadPasswordJob *>(j);
                 if (j->error() == QKeychain::EntryNotFound) {

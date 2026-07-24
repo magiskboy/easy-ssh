@@ -6,7 +6,8 @@
 #include <QString>
 #include <QStringList>
 
-class AppSettings final : public QObject {
+class AppSettings final : public QObject
+{
     Q_OBJECT
 
 public:

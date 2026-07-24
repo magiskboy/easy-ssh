@@ -3,12 +3,14 @@
 #include <QString>
 #include <QUuid>
 
-enum class AuthType {
+enum class AuthType
+{
     Password = 0,
     PrivateKey = 1,
 };
 
-struct Connection {
+struct Connection
+{
     QUuid id;
     QString name;
     QString host;
@@ -20,8 +22,6 @@ struct Connection {
 
     QString displayText() const
     {
-        return QStringLiteral("%1 — %2@%3:%4")
-            .arg(name, username, host)
-            .arg(port);
+        return QStringLiteral("%1 — %2@%3:%4").arg(name, username, host).arg(port);
     }
 };

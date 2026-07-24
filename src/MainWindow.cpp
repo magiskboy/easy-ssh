@@ -24,8 +24,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
     m_connectionModel = new ConnectionModel(this);
     m_secretStore = new SecretStore(this);
@@ -34,12 +33,12 @@ MainWindow::MainWindow(QWidget *parent)
     setupUi();
     setupMenus();
 
-    ErrorNotifier::setStatusSink([this](const QString &text) {
-        setStatusText(text);
-    });
+    ErrorNotifier::setStatusSink([this](const QString &text) { setStatusText(text); });
 
-    connect(&AppSettings::instance(), &AppSettings::settingsChanged,
-            this, &MainWindow::applyAppSettings);
+    connect(&AppSettings::instance(),
+            &AppSettings::settingsChanged,
+            this,
+            &MainWindow::applyAppSettings);
 }
 
 void MainWindow::setupUi()
@@ -79,24 +78,31 @@ void MainWindow::setupUi()
     m_statusLabel = new QLabel(tr("Ready"), this);
     statusBar()->addWidget(m_statusLabel, 1);
 
-    connect(m_connectionList, &ConnectionListWidget::connectionActivated,
-            this, [this](const QUuid &id) {
+    connect(m_connectionList,
+            &ConnectionListWidget::connectionActivated,
+            this,
+            [this](const QUuid &id) {
                 const auto connection = m_connectionModel->connectionById(id);
                 if (!connection) {
                     return;
                 }
 
                 const auto kind = connection->authType == AuthType::PrivateKey
-                    ? SecretStore::Kind::Passphrase
-                    : SecretStore::Kind::Password;
+                                      ? SecretStore::Kind::Passphrase
+                                      : SecretStore::Kind::Password;
 
                 setStatusText(tr("Reading credentials for %1…").arg(connection->name));
                 m_secretStore->readSecret(id, kind);
             });
 
-    connect(m_secretStore, &SecretStore::readFinished,
-            this, [this](const QUuid &connectionId, SecretStore::Kind kind, bool ok,
-                         const QString &value, const QString &error) {
+    connect(m_secretStore,
+            &SecretStore::readFinished,
+            this,
+            [this](const QUuid &connectionId,
+                   SecretStore::Kind kind,
+                   bool ok,
+                   const QString &value,
+                   const QString &error) {
                 Q_UNUSED(kind);
 
                 const auto connection = m_connectionModel->connectionById(connectionId);
@@ -105,92 +111,85 @@ void MainWindow::setupUi()
                 }
 
                 if (!ok) {
-                    ErrorNotifier::notify(
-                        this,
-                        tr("Credentials"),
-                        tr("Failed to read credentials: %1").arg(error),
-                        ErrorNotifier::Level::Warning);
+                    ErrorNotifier::notify(this,
+                                          tr("Credentials"),
+                                          tr("Failed to read credentials: %1").arg(error),
+                                          ErrorNotifier::Level::Warning);
                     return;
                 }
 
                 if (connection->authType == AuthType::Password && value.isEmpty()) {
-                    ErrorNotifier::notify(
-                        this,
-                        tr("Credentials"),
-                        tr("No password stored for connection \"%1\". "
-                           "Edit the connection and set a password.")
-                            .arg(connection->name),
-                        ErrorNotifier::Level::Warning);
+                    ErrorNotifier::notify(this,
+                                          tr("Credentials"),
+                                          tr("No password stored for connection \"%1\". "
+                                             "Edit the connection and set a password.")
+                                              .arg(connection->name),
+                                          ErrorNotifier::Level::Warning);
                     return;
                 }
 
                 m_sessionTabs->openSshSession(*connection, value);
             });
 
-    connect(m_connectionList, &ConnectionListWidget::connectionSelected,
-            this, [this](const QUuid &id) {
-                const auto connection = m_connectionModel->connectionById(id);
-                if (!connection) {
+    connect(
+        m_connectionList, &ConnectionListWidget::connectionSelected, this, [this](const QUuid &id) {
+            const auto connection = m_connectionModel->connectionById(id);
+            if (!connection) {
+                return;
+            }
+            setStatusText(tr("Selected: %1").arg(connection->name));
+        });
+
+    connect(
+        m_connectionList, &ConnectionListWidget::statusMessage, this, &MainWindow::setStatusText);
+
+    connect(m_sessionTabs, &SessionTabWidget::statusMessage, this, &MainWindow::setStatusText);
+
+    connect(m_fileExplorer, &FileExplorerWidget::statusMessage, this, &MainWindow::setStatusText);
+
+    connect(m_tunnelList, &TunnelListWidget::statusMessage, this, &MainWindow::setStatusText);
+
+    connect(m_sessionTabs, &SessionTabWidget::sessionClosed, this, [this](const QString &name) {
+        setStatusText(tr("Closed session: %1").arg(name));
+        updateTerminalActionsEnabled();
+        syncFileExplorerToActiveSession();
+        syncTunnelsToActiveSession();
+    });
+
+    connect(m_sessionTabs, &SessionTabWidget::sessionOpened, this, [this](const QString &) {
+        updateTerminalActionsEnabled();
+    });
+
+    connect(
+        m_sessionTabs, &SessionTabWidget::activeSessionChanged, this, [this](const QString &name) {
+            updateTerminalActionsEnabled();
+            syncFileExplorerToActiveSession();
+            syncTunnelsToActiveSession();
+
+            if (name.isEmpty() || name == tr("Welcome")) {
+                setStatusText(tr("Ready"));
+                return;
+            }
+
+            if (auto *session = m_sessionTabs->activeTerminal()) {
+                switch (session->sessionState()) {
+                case TerminalSessionWidget::State::Connecting:
+                    setStatusText(tr("Connecting: %1").arg(name));
+                    return;
+                case TerminalSessionWidget::State::Connected:
+                    setStatusText(tr("Connected: %1").arg(name));
+                    return;
+                case TerminalSessionWidget::State::Disconnected:
+                    setStatusText(tr("Disconnected: %1").arg(name));
+                    return;
+                case TerminalSessionWidget::State::Failed:
+                    setStatusText(tr("Failed: %1").arg(name));
                     return;
                 }
-                setStatusText(tr("Selected: %1").arg(connection->name));
-            });
+            }
 
-    connect(m_connectionList, &ConnectionListWidget::statusMessage,
-            this, &MainWindow::setStatusText);
-
-    connect(m_sessionTabs, &SessionTabWidget::statusMessage,
-            this, &MainWindow::setStatusText);
-
-    connect(m_fileExplorer, &FileExplorerWidget::statusMessage,
-            this, &MainWindow::setStatusText);
-
-    connect(m_tunnelList, &TunnelListWidget::statusMessage,
-            this, &MainWindow::setStatusText);
-
-    connect(m_sessionTabs, &SessionTabWidget::sessionClosed,
-            this, [this](const QString &name) {
-                setStatusText(tr("Closed session: %1").arg(name));
-                updateTerminalActionsEnabled();
-                syncFileExplorerToActiveSession();
-                syncTunnelsToActiveSession();
-            });
-
-    connect(m_sessionTabs, &SessionTabWidget::sessionOpened,
-            this, [this](const QString &) {
-                updateTerminalActionsEnabled();
-            });
-
-    connect(m_sessionTabs, &SessionTabWidget::activeSessionChanged,
-            this, [this](const QString &name) {
-                updateTerminalActionsEnabled();
-                syncFileExplorerToActiveSession();
-                syncTunnelsToActiveSession();
-
-                if (name.isEmpty() || name == tr("Welcome")) {
-                    setStatusText(tr("Ready"));
-                    return;
-                }
-
-                if (auto *session = m_sessionTabs->activeTerminal()) {
-                    switch (session->sessionState()) {
-                    case TerminalSessionWidget::State::Connecting:
-                        setStatusText(tr("Connecting: %1").arg(name));
-                        return;
-                    case TerminalSessionWidget::State::Connected:
-                        setStatusText(tr("Connected: %1").arg(name));
-                        return;
-                    case TerminalSessionWidget::State::Disconnected:
-                        setStatusText(tr("Disconnected: %1").arg(name));
-                        return;
-                    case TerminalSessionWidget::State::Failed:
-                        setStatusText(tr("Failed: %1").arg(name));
-                        return;
-                    }
-                }
-
-                setStatusText(tr("Active session: %1").arg(name));
-            });
+            setStatusText(tr("Active session: %1").arg(name));
+        });
 }
 
 QAction *MainWindow::registerAction(const QString &actionId, QAction *action)
@@ -207,22 +206,28 @@ void MainWindow::setupMenus()
 
     auto *newAction = connectionMenu->addAction(tr("&New Connection…"));
     registerAction(QStringLiteral("general.newConnection"), newAction);
-    connect(newAction, &QAction::triggered,
-            m_connectionList, &ConnectionListWidget::createConnection);
+    connect(
+        newAction, &QAction::triggered, m_connectionList, &ConnectionListWidget::createConnection);
 
     auto *editAction = connectionMenu->addAction(tr("&Edit…"));
-    connect(editAction, &QAction::triggered,
-            m_connectionList, &ConnectionListWidget::editSelectedConnection);
+    connect(editAction,
+            &QAction::triggered,
+            m_connectionList,
+            &ConnectionListWidget::editSelectedConnection);
 
     auto *duplicateAction = connectionMenu->addAction(tr("&Duplicate"));
-    connect(duplicateAction, &QAction::triggered,
-            m_connectionList, &ConnectionListWidget::duplicateSelectedConnection);
+    connect(duplicateAction,
+            &QAction::triggered,
+            m_connectionList,
+            &ConnectionListWidget::duplicateSelectedConnection);
 
     connectionMenu->addSeparator();
 
     auto *deleteAction = connectionMenu->addAction(tr("&Delete"));
-    connect(deleteAction, &QAction::triggered,
-            m_connectionList, &ConnectionListWidget::deleteSelectedConnection);
+    connect(deleteAction,
+            &QAction::triggered,
+            m_connectionList,
+            &ConnectionListWidget::deleteSelectedConnection);
 
     auto *searchAction = connectionMenu->addAction(tr("&Search"));
     registerAction(QStringLiteral("general.searchConnection"), searchAction);
@@ -247,34 +252,40 @@ void MainWindow::setupMenus()
 
     auto *newSessionAction = sessionMenu->addAction(tr("&New Session"));
     registerAction(QStringLiteral("session.newSession"), newSessionAction);
-    connect(newSessionAction, &QAction::triggered,
-            m_connectionList, &ConnectionListWidget::openSelectedConnection);
+    connect(newSessionAction,
+            &QAction::triggered,
+            m_connectionList,
+            &ConnectionListWidget::openSelectedConnection);
 
     auto *disconnectAction = sessionMenu->addAction(tr("&Disconnect"));
-    connect(disconnectAction, &QAction::triggered,
-            m_sessionTabs, &SessionTabWidget::disconnectCurrentSession);
+    connect(disconnectAction,
+            &QAction::triggered,
+            m_sessionTabs,
+            &SessionTabWidget::disconnectCurrentSession);
 
     auto *reconnectAction = sessionMenu->addAction(tr("&Reconnect"));
     registerAction(QStringLiteral("session.reconnect"), reconnectAction);
-    connect(reconnectAction, &QAction::triggered,
-            m_sessionTabs, &SessionTabWidget::reconnectCurrentSession);
+    connect(reconnectAction,
+            &QAction::triggered,
+            m_sessionTabs,
+            &SessionTabWidget::reconnectCurrentSession);
 
     sessionMenu->addSeparator();
 
     auto *closeSessionAction = sessionMenu->addAction(tr("&Close"));
     registerAction(QStringLiteral("session.closeSession"), closeSessionAction);
-    connect(closeSessionAction, &QAction::triggered,
-            m_sessionTabs, &SessionTabWidget::closeCurrentSession);
+    connect(closeSessionAction,
+            &QAction::triggered,
+            m_sessionTabs,
+            &SessionTabWidget::closeCurrentSession);
 
     auto *nextTabAction = sessionMenu->addAction(tr("&Next Tab"));
     registerAction(QStringLiteral("session.nextTab"), nextTabAction);
-    connect(nextTabAction, &QAction::triggered,
-            m_sessionTabs, &SessionTabWidget::nextSession);
+    connect(nextTabAction, &QAction::triggered, m_sessionTabs, &SessionTabWidget::nextSession);
 
     auto *prevTabAction = sessionMenu->addAction(tr("&Previous Tab"));
     registerAction(QStringLiteral("session.previousTab"), prevTabAction);
-    connect(prevTabAction, &QAction::triggered,
-            m_sessionTabs, &SessionTabWidget::previousSession);
+    connect(prevTabAction, &QAction::triggered, m_sessionTabs, &SessionTabWidget::previousSession);
 
     sessionMenu->addSeparator();
 
@@ -287,33 +298,34 @@ void MainWindow::setupMenus()
 
     auto *terminalMenu = menuBar()->addMenu(tr("&Terminal"));
 
-    auto addTerminalAction = [this, terminalMenu](const QString &text,
-                                                  const QString &actionId,
-                                                  auto method) {
-        auto *action = terminalMenu->addAction(text);
-        registerAction(actionId, action);
-        connect(action, &QAction::triggered, this, [this, method]() {
-            if (auto *session = m_sessionTabs->activeTerminal()) {
-                (session->*method)();
-            }
-        });
-        m_terminalActions.append(action);
-        return action;
-    };
+    auto addTerminalAction =
+        [this, terminalMenu](const QString &text, const QString &actionId, auto method) {
+            auto *action = terminalMenu->addAction(text);
+            registerAction(actionId, action);
+            connect(action, &QAction::triggered, this, [this, method]() {
+                if (auto *session = m_sessionTabs->activeTerminal()) {
+                    (session->*method)();
+                }
+            });
+            m_terminalActions.append(action);
+            return action;
+        };
 
-    addTerminalAction(tr("&Copy"), QStringLiteral("terminal.copy"),
-                      &TerminalSessionWidget::copySelection);
-    addTerminalAction(tr("&Paste"), QStringLiteral("terminal.paste"),
-                      &TerminalSessionWidget::pasteClipboard);
+    addTerminalAction(
+        tr("&Copy"), QStringLiteral("terminal.copy"), &TerminalSessionWidget::copySelection);
+    addTerminalAction(
+        tr("&Paste"), QStringLiteral("terminal.paste"), &TerminalSessionWidget::pasteClipboard);
     terminalMenu->addSeparator();
-    addTerminalAction(tr("&Clear Screen"), QStringLiteral("terminal.clearScreen"),
+    addTerminalAction(tr("&Clear Screen"),
+                      QStringLiteral("terminal.clearScreen"),
                       &TerminalSessionWidget::clearScreen);
-    addTerminalAction(tr("&Search…"), QStringLiteral("terminal.search"),
-                      &TerminalSessionWidget::toggleSearch);
+    addTerminalAction(
+        tr("&Search…"), QStringLiteral("terminal.search"), &TerminalSessionWidget::toggleSearch);
     terminalMenu->addSeparator();
-    addTerminalAction(tr("Save &Log…"), QStringLiteral("terminal.saveLog"),
-                      &TerminalSessionWidget::saveLog);
-    addTerminalAction(tr("Save Screensho&t…"), QStringLiteral("terminal.saveScreenshot"),
+    addTerminalAction(
+        tr("Save &Log…"), QStringLiteral("terminal.saveLog"), &TerminalSessionWidget::saveLog);
+    addTerminalAction(tr("Save Screensho&t…"),
+                      QStringLiteral("terminal.saveScreenshot"),
                       &TerminalSessionWidget::saveScreenshot);
 
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));
@@ -419,16 +431,17 @@ void MainWindow::wireActiveSessionStateSync(TerminalSessionWidget *session)
     }
 
     if (m_wiredSessionState) {
-        disconnect(m_wiredSessionState, &TerminalSessionWidget::sessionStateChanged,
-                   this, nullptr);
+        disconnect(m_wiredSessionState, &TerminalSessionWidget::sessionStateChanged, this, nullptr);
     }
     m_wiredSessionState = session;
     if (!m_wiredSessionState) {
         return;
     }
 
-    connect(m_wiredSessionState, &TerminalSessionWidget::sessionStateChanged,
-            this, [this](TerminalSessionWidget::State) {
+    connect(m_wiredSessionState,
+            &TerminalSessionWidget::sessionStateChanged,
+            this,
+            [this](TerminalSessionWidget::State) {
                 syncFileExplorerToActiveSession();
                 syncTunnelsToActiveSession();
             });

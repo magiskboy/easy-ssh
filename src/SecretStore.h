@@ -3,11 +3,13 @@
 #include <QObject>
 #include <QUuid>
 
-class SecretStore final : public QObject {
+class SecretStore final : public QObject
+{
     Q_OBJECT
 
 public:
-    enum class Kind {
+    enum class Kind
+    {
         Password,
         Passphrase,
     };
@@ -22,8 +24,8 @@ public:
 
 signals:
     void storeFinished(const QUuid &connectionId, Kind kind, bool ok, const QString &error);
-    void readFinished(const QUuid &connectionId, Kind kind, bool ok,
-                      const QString &value, const QString &error);
+    void readFinished(
+        const QUuid &connectionId, Kind kind, bool ok, const QString &value, const QString &error);
     void deleteFinished(const QUuid &connectionId, Kind kind, bool ok, const QString &error);
 
 private:

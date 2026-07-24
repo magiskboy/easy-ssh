@@ -10,7 +10,8 @@ class QListWidget;
 class QSpinBox;
 class QStackedWidget;
 
-class SettingsDialog final : public QDialog {
+class SettingsDialog final : public QDialog
+{
     Q_OBJECT
 
 public:

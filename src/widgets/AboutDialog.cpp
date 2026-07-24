@@ -8,8 +8,7 @@
 
 #include <libssh/libssh.h>
 
-AboutDialog::AboutDialog(QWidget *parent)
-    : QDialog(parent)
+AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("About Easy SSH"));
     setModal(true);
@@ -25,9 +24,7 @@ AboutDialog::AboutDialog(QWidget *parent)
            "libssh: %3<br><br>"
            "<a href=\"https://github.com/magiskboy/easy-ssh\">"
            "github.com/magiskboy/easy-ssh</a>")
-            .arg(QStringLiteral(APP_VERSION),
-                 QString::fromLatin1(qVersion()),
-                 libsshVersion),
+            .arg(QStringLiteral(APP_VERSION), QString::fromLatin1(qVersion()), libsshVersion),
         this);
     body->setTextFormat(Qt::RichText);
     body->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);

@@ -1,14 +1,13 @@
 #include "SessionTabWidget.h"
 
-#include "WelcomeWidget.h"
 #include "TerminalSessionWidget.h"
+#include "WelcomeWidget.h"
 
 #include <QAction>
 #include <QMenu>
 #include <QTabBar>
 
-SessionTabWidget::SessionTabWidget(QWidget *parent)
-    : QTabWidget(parent)
+SessionTabWidget::SessionTabWidget(QWidget *parent) : QTabWidget(parent)
 {
     setDocumentMode(true);
     setTabsClosable(true);
@@ -17,12 +16,10 @@ SessionTabWidget::SessionTabWidget(QWidget *parent)
 
     tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    connect(this, &QTabWidget::tabCloseRequested,
-            this, &SessionTabWidget::onTabCloseRequested);
-    connect(this, &QTabWidget::currentChanged,
-            this, &SessionTabWidget::onCurrentChanged);
-    connect(tabBar(), &QWidget::customContextMenuRequested,
-            this, &SessionTabWidget::onTabContextMenu);
+    connect(this, &QTabWidget::tabCloseRequested, this, &SessionTabWidget::onTabCloseRequested);
+    connect(this, &QTabWidget::currentChanged, this, &SessionTabWidget::onCurrentChanged);
+    connect(
+        tabBar(), &QWidget::customContextMenuRequested, this, &SessionTabWidget::onTabContextMenu);
 
     ensureWelcomeTab();
 }
@@ -32,20 +29,17 @@ void SessionTabWidget::openSshSession(const Connection &connection, const QStrin
     removeWelcomeTabIfPresent();
 
     auto *session = new TerminalSessionWidget(this);
-    connect(session, &TerminalSessionWidget::statusMessage,
-            this, &SessionTabWidget::statusMessage);
-    connect(session, &TerminalSessionWidget::sessionFailed,
-            this, [this, session](const QString &) {
-                updateTabPresentation(session);
-            });
-    connect(session, &TerminalSessionWidget::sessionDisconnected,
-            this, [this, session]() {
-                updateTabPresentation(session);
-            });
-    connect(session, &TerminalSessionWidget::sessionStateChanged,
-            this, [this, session](TerminalSessionWidget::State) {
-                updateTabPresentation(session);
-            });
+    connect(session, &TerminalSessionWidget::statusMessage, this, &SessionTabWidget::statusMessage);
+    connect(session, &TerminalSessionWidget::sessionFailed, this, [this, session](const QString &) {
+        updateTabPresentation(session);
+    });
+    connect(session, &TerminalSessionWidget::sessionDisconnected, this, [this, session]() {
+        updateTabPresentation(session);
+    });
+    connect(session,
+            &TerminalSessionWidget::sessionStateChanged,
+            this,
+            [this, session](TerminalSessionWidget::State) { updateTabPresentation(session); });
 
     const QString title = makeSessionTitle(connection);
     const int index = addTab(session, title);
@@ -169,8 +163,8 @@ void SessionTabWidget::onTabContextMenu(const QPoint &pos)
     QAction *closeAction = menu.addAction(tr("Close"));
 
     const auto state = session->sessionState();
-    disconnectAction->setEnabled(state == TerminalSessionWidget::State::Connected
-                                 || state == TerminalSessionWidget::State::Connecting);
+    disconnectAction->setEnabled(state == TerminalSessionWidget::State::Connected ||
+                                 state == TerminalSessionWidget::State::Connecting);
     reconnectAction->setEnabled(state != TerminalSessionWidget::State::Connecting);
 
     QAction *chosen = menu.exec(tabBar()->mapToGlobal(pos));

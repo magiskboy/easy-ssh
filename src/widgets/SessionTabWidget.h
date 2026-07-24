@@ -9,7 +9,8 @@
 
 class TerminalSessionWidget;
 
-class SessionTabWidget final : public QTabWidget {
+class SessionTabWidget final : public QTabWidget
+{
     Q_OBJECT
 
 public:

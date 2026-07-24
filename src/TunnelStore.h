@@ -5,7 +5,8 @@
 #include <QList>
 #include <QUuid>
 
-class TunnelStore {
+class TunnelStore
+{
 public:
     static QList<TunnelDefinition> load();
     static void save(const QList<TunnelDefinition> &tunnels);

@@ -6,18 +6,16 @@
 #include <QFileIconProvider>
 #include <QLocale>
 
-namespace {
+namespace
+{
 QFileIconProvider &iconProvider()
 {
     static QFileIconProvider provider;
     return provider;
 }
-}
+} // namespace
 
-RemoteFileModel::RemoteFileModel(QObject *parent)
-    : QAbstractItemModel(parent)
-{
-}
+RemoteFileModel::RemoteFileModel(QObject *parent) : QAbstractItemModel(parent) {}
 
 RemoteFileModel::~RemoteFileModel() = default;
 
@@ -41,8 +39,10 @@ void RemoteFileModel::bindSession(TerminalSessionWidget *session)
         return;
     }
 
-    connect(m_session, &TerminalSessionWidget::directoryListed,
-            this, [this](const QString &path, const QVector<RemoteEntry> &entries) {
+    connect(m_session,
+            &TerminalSessionWidget::directoryListed,
+            this,
+            [this](const QString &path, const QVector<RemoteEntry> &entries) {
                 applyListing(path, entries);
             });
 }
@@ -194,9 +194,8 @@ QVariant RemoteFileModel::data(const QModelIndex &index, int role) const
         }
     case Qt::DecorationRole:
         if (index.column() == 0) {
-            return node->entry.isDir
-                ? iconProvider().icon(QFileIconProvider::Folder)
-                : iconProvider().icon(QFileIconProvider::File);
+            return node->entry.isDir ? iconProvider().icon(QFileIconProvider::Folder)
+                                     : iconProvider().icon(QFileIconProvider::File);
         }
         return {};
     case Qt::ToolTipRole:

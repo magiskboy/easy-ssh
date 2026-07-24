@@ -10,8 +10,7 @@
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
 
-ShortcutsDialog::ShortcutsDialog(QWidget *parent)
-    : QDialog(parent)
+ShortcutsDialog::ShortcutsDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Keyboard Shortcuts"));
     resize(560, 480);
@@ -24,8 +23,7 @@ ShortcutsDialog::ShortcutsDialog(QWidget *parent)
     m_tree->setRootIsDecorated(true);
     m_tree->setUniformRowHeights(true);
 
-    auto *buttonBox = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     auto *resetButton = buttonBox->addButton(tr("Reset Defaults"), QDialogButtonBox::ResetRole);
     connect(buttonBox, &QDialogButtonBox::accepted, this, &ShortcutsDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);

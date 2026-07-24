@@ -14,8 +14,7 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 
-ConnectionListWidget::ConnectionListWidget(QWidget *parent)
-    : QWidget(parent)
+ConnectionListWidget::ConnectionListWidget(QWidget *parent) : QWidget(parent)
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
@@ -35,12 +34,13 @@ ConnectionListWidget::ConnectionListWidget(QWidget *parent)
     layout->addWidget(m_searchEdit);
     layout->addWidget(m_listView, 1);
 
-    connect(m_searchEdit, &QLineEdit::textChanged,
-            this, &ConnectionListWidget::onFilterTextChanged);
-    connect(m_listView, &QListView::activated,
-            this, &ConnectionListWidget::onActivated);
-    connect(m_listView, &QListView::customContextMenuRequested,
-            this, &ConnectionListWidget::onContextMenu);
+    connect(
+        m_searchEdit, &QLineEdit::textChanged, this, &ConnectionListWidget::onFilterTextChanged);
+    connect(m_listView, &QListView::activated, this, &ConnectionListWidget::onActivated);
+    connect(m_listView,
+            &QListView::customContextMenuRequested,
+            this,
+            &ConnectionListWidget::onContextMenu);
 }
 
 void ConnectionListWidget::setConnectionModel(ConnectionModel *model)
@@ -50,8 +50,10 @@ void ConnectionListWidget::setConnectionModel(ConnectionModel *model)
     m_listView->setModel(m_proxy);
 
     if (m_listView->selectionModel()) {
-        connect(m_listView->selectionModel(), &QItemSelectionModel::selectionChanged,
-                this, &ConnectionListWidget::onSelectionChanged);
+        connect(m_listView->selectionModel(),
+                &QItemSelectionModel::selectionChanged,
+                this,
+                &ConnectionListWidget::onSelectionChanged);
     }
 }
 
@@ -62,7 +64,9 @@ void ConnectionListWidget::setSecretStore(SecretStore *secretStore)
         return;
     }
 
-    connect(m_secretStore, &SecretStore::storeFinished, this,
+    connect(m_secretStore,
+            &SecretStore::storeFinished,
+            this,
             [this](const QUuid &, SecretStore::Kind, bool ok, const QString &error) {
                 if (!ok) {
                     warnSecretFailure(error);
@@ -83,14 +87,18 @@ void ConnectionListWidget::createConnection()
 
     const Connection connection = dialog.connection();
     if (!m_model->add(connection)) {
-        ErrorNotifier::notify(this, tr("Error"), tr("Failed to create connection."),
-                              ErrorNotifier::Level::Warning);
+        ErrorNotifier::notify(
+            this, tr("Error"), tr("Failed to create connection."), ErrorNotifier::Level::Warning);
         return;
     }
 
-    persistSecrets(connection, AuthType::Password, false,
-                   dialog.password(), dialog.passwordProvided(),
-                   dialog.passphrase(), dialog.passphraseProvided());
+    persistSecrets(connection,
+                   AuthType::Password,
+                   false,
+                   dialog.password(),
+                   dialog.passwordProvided(),
+                   dialog.passphrase(),
+                   dialog.passphraseProvided());
 
     emit statusMessage(tr("Created connection: %1").arg(connection.name));
 }
@@ -121,14 +129,18 @@ void ConnectionListWidget::editSelectedConnection()
 
     const Connection connection = dialog.connection();
     if (!m_model->update(connection)) {
-        ErrorNotifier::notify(this, tr("Error"), tr("Failed to update connection."),
-                              ErrorNotifier::Level::Warning);
+        ErrorNotifier::notify(
+            this, tr("Error"), tr("Failed to update connection."), ErrorNotifier::Level::Warning);
         return;
     }
 
-    persistSecrets(connection, previousAuthType, true,
-                   dialog.password(), dialog.passwordProvided(),
-                   dialog.passphrase(), dialog.passphraseProvided());
+    persistSecrets(connection,
+                   previousAuthType,
+                   true,
+                   dialog.password(),
+                   dialog.passwordProvided(),
+                   dialog.passphrase(),
+                   dialog.passphraseProvided());
 
     emit statusMessage(tr("Updated connection: %1").arg(connection.name));
 }
@@ -149,20 +161,19 @@ void ConnectionListWidget::deleteSelectedConnection()
         return;
     }
 
-    const auto answer = QMessageBox::question(
-        this,
-        tr("Delete Connection"),
-        tr("Delete connection \"%1\"?").arg(existing->name),
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);
+    const auto answer = QMessageBox::question(this,
+                                              tr("Delete Connection"),
+                                              tr("Delete connection \"%1\"?").arg(existing->name),
+                                              QMessageBox::Yes | QMessageBox::No,
+                                              QMessageBox::No);
     if (answer != QMessageBox::Yes) {
         return;
     }
 
     const QString name = existing->name;
     if (!m_model->removeById(*id)) {
-        ErrorNotifier::notify(this, tr("Error"), tr("Failed to delete connection."),
-                              ErrorNotifier::Level::Warning);
+        ErrorNotifier::notify(
+            this, tr("Error"), tr("Failed to delete connection."), ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -170,8 +181,7 @@ void ConnectionListWidget::deleteSelectedConnection()
         m_secretStore->deleteAllSecrets(*id);
     }
 
-    emit statusMessage(
-        tr("Deleted connection: %1 (open sessions kept)").arg(name));
+    emit statusMessage(tr("Deleted connection: %1 (open sessions kept)").arg(name));
 }
 
 void ConnectionListWidget::openSelectedConnection()
@@ -204,7 +214,9 @@ void ConnectionListWidget::duplicateSelectedConnection()
 
     const auto copy = m_model->duplicate(*id);
     if (!copy) {
-        ErrorNotifier::notify(this, tr("Error"), tr("Failed to duplicate connection."),
+        ErrorNotifier::notify(this,
+                              tr("Error"),
+                              tr("Failed to duplicate connection."),
                               ErrorNotifier::Level::Warning);
         return;
     }
@@ -251,12 +263,15 @@ void ConnectionListWidget::onContextMenu(const QPoint &pos)
     const bool hasSelection = selectedConnectionId().has_value();
 
     QMenu menu(this);
-    menu.addAction(tr("Open Session"), this, [this]() {
-        const auto id = selectedConnectionId();
-        if (id) {
-            emit connectionActivated(*id);
-        }
-    })->setEnabled(hasSelection);
+    menu.addAction(tr("Open Session"),
+                   this,
+                   [this]() {
+                       const auto id = selectedConnectionId();
+                       if (id) {
+                           emit connectionActivated(*id);
+                       }
+                   })
+        ->setEnabled(hasSelection);
     menu.addSeparator();
     menu.addAction(tr("New Connection…"), this, &ConnectionListWidget::createConnection);
     menu.addAction(tr("Edit…"), this, &ConnectionListWidget::editSelectedConnection)
@@ -322,9 +337,8 @@ void ConnectionListWidget::persistSecrets(const Connection &connection,
 
 void ConnectionListWidget::warnSecretFailure(const QString &error)
 {
-    ErrorNotifier::notify(
-        this,
-        tr("Keychain"),
-        tr("Could not store secret in the system keychain.\n%1").arg(error),
-        ErrorNotifier::Level::Warning);
+    ErrorNotifier::notify(this,
+                          tr("Keychain"),
+                          tr("Could not store secret in the system keychain.\n%1").arg(error),
+                          ErrorNotifier::Level::Warning);
 }

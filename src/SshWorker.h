@@ -21,11 +21,13 @@
 class QTcpServer;
 class QTcpSocket;
 
-class SshWorker final : public QObject {
+class SshWorker final : public QObject
+{
     Q_OBJECT
 
 public:
-    enum class HostKeyPrompt {
+    enum class HostKeyPrompt
+    {
         Unknown,
         Changed,
         Other,
@@ -36,8 +38,10 @@ public:
     ~SshWorker() override;
 
 public slots:
-    void connectToHost(const Connection &connection, const QString &secret,
-                       int cols = 80, int rows = 24);
+    void connectToHost(const Connection &connection,
+                       const QString &secret,
+                       int cols = 80,
+                       int rows = 24);
     void writeToChannel(const QByteArray &data);
     void changePtySize(int cols, int rows);
     void disconnectSession();
@@ -82,14 +86,16 @@ private slots:
     void onBridgeSocketDisconnected();
 
 private:
-    struct TunnelBridge {
+    struct TunnelBridge
+    {
         QUuid tunnelId;
         ssh_channel channel = nullptr;
         QTcpSocket *socket = nullptr;
         bool closing = false;
     };
 
-    struct ActiveTunnel {
+    struct ActiveTunnel
+    {
         TunnelDefinition def;
         QTcpServer *server = nullptr;
         bool remoteListening = false;
@@ -110,8 +116,7 @@ private:
     QString sessionError() const;
     QString sftpErrorMessage() const;
     static QString fingerprintOf(ssh_session session);
-    static bool knownHostsLineMatchesHost(const QString &hostField, const QString &host,
-                                          int port);
+    static bool knownHostsLineMatchesHost(const QString &hostField, const QString &host, int port);
     static QString formatPermissions(uint32_t permissions, uint8_t type);
     static QString localIoErrorMessage(const QString &qtErrorString);
 
@@ -124,10 +129,13 @@ private:
     qint64 computeRemoteBytes(const QStringList &remotePaths);
     qint64 computeRemotePathBytes(const QString &remotePath, bool isDir);
 
-    bool listDirectoryEntries(const QString &path, QVector<RemoteEntry> *outEntries, QString *error);
+    bool
+    listDirectoryEntries(const QString &path, QVector<RemoteEntry> *outEntries, QString *error);
     bool removePathRecursive(const QString &path, QString *error);
     bool uploadPathRecursive(const QString &localPath, const QString &remotePath, QString *error);
-    bool downloadPathRecursive(const QString &remotePath, const QString &localPath, bool isDir,
+    bool downloadPathRecursive(const QString &remotePath,
+                               const QString &localPath,
+                               bool isDir,
                                QString *error);
     bool uploadFile(const QString &localPath, const QString &remotePath, QString *error);
     bool downloadFile(const QString &remotePath, const QString &localPath, QString *error);

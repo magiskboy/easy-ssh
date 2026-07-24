@@ -9,7 +9,8 @@ class QFileSystemWatcher;
 class QTimer;
 class TerminalSessionWidget;
 
-class OpenFileTracker final : public QObject {
+class OpenFileTracker final : public QObject
+{
     Q_OBJECT
 
 public:
@@ -29,7 +30,8 @@ private slots:
     void flushPendingUploads();
 
 private:
-    struct Entry {
+    struct Entry
+    {
         QString remotePath;
         QPointer<TerminalSessionWidget> session;
         QString parentDir;

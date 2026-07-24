@@ -16,6 +16,16 @@ set(CMAKE_AUTOUIC ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(EASY_SSH_ENABLE_CLANG_TIDY "Run clang-tidy while compiling" OFF)
+if(EASY_SSH_ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy REQUIRED)
+    set(CMAKE_CXX_CLANG_TIDY
+        "${CLANG_TIDY_EXE}"
+        "--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy"
+    )
+    message(STATUS "clang-tidy enabled: ${CLANG_TIDY_EXE}")
+endif()
+
 find_package(Qt6 6.6 REQUIRED COMPONENTS
     Core
     Gui
