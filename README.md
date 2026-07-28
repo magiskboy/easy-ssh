@@ -124,7 +124,12 @@ On Linux this installs:
 - `share/metainfo/io.github.magiskboy.easy-ssh.metainfo.xml`
 - hicolor icons under `share/icons/hicolor/...`
 
-CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scripts/package.sh) (Linux `.tar.gz`, macOS `.dmg`), bundling Qt and third-party libraries.
+CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scripts/package.sh):
+
+- **Linux:** `.AppImage` (primary) and `.tar.gz` fallback tree
+- **macOS:** `.dmg`
+
+Both Linux formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
 
 #### Windows (local only)
 

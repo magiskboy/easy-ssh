@@ -15,7 +15,7 @@ STAGE="$OUT_DIR/stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 
-log() { printf 'package: %s\n' "$*"; }
+log() { printf 'package: %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
 # Install project into the stage prefix (runs Qt deploy install(SCRIPT)).
@@ -339,9 +339,152 @@ bundle_windows_deps() {
 }
 
 # ---------------------------------------------------------------------------
+# AppImage (Linux)
+# ---------------------------------------------------------------------------
+appimage_host_arch() {
+  case "${TARGET}" in
+    *arm64*|*aarch64*) echo aarch64 ;;
+    *amd64*|*x86_64*) echo x86_64 ;;
+    *)
+      case "$(uname -m)" in
+        aarch64|arm64) echo aarch64 ;;
+        x86_64|amd64) echo x86_64 ;;
+        *)
+          echo "error: unsupported arch for AppImage: $(uname -m) (target=$TARGET)" >&2
+          return 1
+          ;;
+      esac
+      ;;
+  esac
+}
+
+fetch_appimagetool() {
+  local arch="$1"
+  local tools_dir="${APPIMAGE_TOOLS_DIR:-$OUT_DIR/tools}"
+  mkdir -p "$tools_dir"
+  local tool="$tools_dir/appimagetool-${arch}.AppImage"
+  if [[ -x "$tool" ]]; then
+    echo "$tool"
+    return 0
+  fi
+
+  local url="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
+  log "Downloading appimagetool (${arch})…"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$tool" "$url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$tool" "$url"
+  else
+    echo "error: curl or wget required to download appimagetool" >&2
+    return 1
+  fi
+  chmod +x "$tool"
+  echo "$tool"
+}
+
+build_appimage() {
+  local arch
+  arch="$(appimage_host_arch)" || return 1
+
+  local appdir="$OUT_DIR/AppDir"
+  rm -rf "$appdir"
+  mkdir -p "$appdir/usr"
+
+  # Map our install prefix into the classic AppDir usr/ layout.
+  shopt -s dotglob
+  cp -a "$STAGE"/* "$appdir/usr/"
+  shopt -u dotglob
+
+  local desktop_src="$appdir/usr/share/applications/io.github.magiskboy.easy-ssh.desktop"
+  if [[ ! -f "$desktop_src" ]]; then
+    echo "error: missing desktop file in stage (needed for AppImage)" >&2
+    return 1
+  fi
+  cp -a "$desktop_src" "$appdir/io.github.magiskboy.easy-ssh.desktop"
+
+  local icon_src=""
+  for size in 256 128 512 64 48; do
+    local candidate="$appdir/usr/share/icons/hicolor/${size}x${size}/apps/io.github.magiskboy.easy-ssh.png"
+    if [[ -f "$candidate" ]]; then
+      icon_src="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$icon_src" ]]; then
+    echo "error: missing hicolor icon for AppImage root" >&2
+    return 1
+  fi
+  cp -a "$icon_src" "$appdir/io.github.magiskboy.easy-ssh.png"
+
+  if [[ ! -x "$appdir/usr/bin/easy-ssh" ]]; then
+    echo "error: AppDir missing usr/bin/easy-ssh" >&2
+    return 1
+  fi
+
+  # appimagetool still looks for the older *.appdata.xml name.
+  local metainfo="$appdir/usr/share/metainfo/io.github.magiskboy.easy-ssh.metainfo.xml"
+  if [[ -f "$metainfo" ]]; then
+    ln -sfn "io.github.magiskboy.easy-ssh.metainfo.xml" \
+      "$appdir/usr/share/metainfo/io.github.magiskboy.easy-ssh.appdata.xml"
+  fi
+
+  cat >"$appdir/AppRun" <<'EOF'
+#!/bin/sh
+# AppImage entrypoint — keep Qt/plugins relocatable next to the binary.
+SELF="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+HERE="${SELF%/*}"
+export PATH="${HERE}/usr/bin:${PATH}"
+# Prefer bundled libs over host Qt when both exist.
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ -d "${HERE}/usr/lib64/qt6/plugins" ]; then
+  export QT_PLUGIN_PATH="${HERE}/usr/lib64/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+elif [ -d "${HERE}/usr/lib/qt6/plugins" ]; then
+  export QT_PLUGIN_PATH="${HERE}/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+fi
+exec "${HERE}/usr/bin/easy-ssh" "$@"
+EOF
+  chmod +x "$appdir/AppRun"
+
+  local tool
+  tool="$(fetch_appimagetool "$arch")" || return 1
+
+  local out_image="$OUT_DIR/easy-ssh-${TARGET}.AppImage"
+  rm -f "$out_image"
+
+  local version="${VERSION:-}"
+  if [[ -z "$version" && -f "$BINARY_DIR/CMakeCache.txt" ]]; then
+    version="$(sed -n 's/^CMAKE_PROJECT_VERSION:STATIC=//p' "$BINARY_DIR/CMakeCache.txt" | head -1)"
+  fi
+
+  log "Building AppImage → $out_image"
+  # CI runners often lack FUSE; extract-and-run avoids mounting the tool AppImage.
+  export APPIMAGE_EXTRACT_AND_RUN=1
+  # appimagetool reads ARCH for the runtime; VERSION is optional metadata.
+  ARCH="$arch" VERSION="$version" \
+    "$tool" "$appdir" "$out_image"
+
+  if [[ ! -f "$out_image" ]]; then
+    echo "error: appimagetool did not produce $out_image" >&2
+    return 1
+  fi
+  chmod +x "$out_image"
+  log "Created $out_image"
+  ls -lh "$out_image"
+
+  # Drop intermediate AppDir to keep dist/ small; keep tools cached.
+  rm -rf "$appdir"
+}
+
+# ---------------------------------------------------------------------------
 # Archive
 # ---------------------------------------------------------------------------
 archive_linux() {
+  # AppImage first while $STAGE is still intact.
+  if ! build_appimage; then
+    echo "error: AppImage packaging failed" >&2
+    exit 1
+  fi
+
   local archive="easy-ssh-${TARGET}.tar.gz"
   local wrap="$OUT_DIR/wrap"
   rm -rf "$wrap"
