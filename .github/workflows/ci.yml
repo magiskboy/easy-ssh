@@ -137,7 +137,7 @@ jobs:
         if: matrix.os_family == 'windows'
         shell: pwsh
         run: |
-          choco install enigmavirtualbox --no-progress -y
+          choco install enigmavirtualbox --no-progress --ignore-checksums -y
 
           $evbConsole = Get-Command enigmavbconsole.exe -ErrorAction SilentlyContinue
           if (-not $evbConsole) {
