@@ -5,6 +5,39 @@ include(${CMAKE_CURRENT_LIST_DIR}/EasySshVersions.cmake)
 
 set(_easy_ssh_using_fetch FALSE)
 
+# libssh find_package(ZLIB) on Windows CI/dev when not using vcpkg/system zlib.
+function(_easy_ssh_ensure_zlib)
+    if(ZLIB_FOUND)
+        return()
+    endif()
+    find_package(ZLIB QUIET)
+    if(ZLIB_FOUND)
+        return()
+    endif()
+
+    FetchContent_Declare(
+        zlib
+        GIT_REPOSITORY https://github.com/madler/zlib.git
+        GIT_TAG        v1.3.1
+        GIT_SHALLOW    TRUE
+    )
+    set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(ZLIB_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(zlib)
+
+    if(TARGET ZLIB::ZLIB)
+        set(_zlib_lib ZLIB::ZLIB)
+    elseif(TARGET zlibstatic)
+        set(_zlib_lib zlibstatic)
+    else()
+        set(_zlib_lib zlib)
+    endif()
+
+    set(ZLIB_FOUND TRUE CACHE BOOL "" FORCE)
+    set(ZLIB_INCLUDE_DIR "${zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
+    set(ZLIB_LIBRARY "${_zlib_lib}" CACHE STRING "" FORCE)
+endfunction()
+
 # --- lxqt-build-tools (build-only; required when building qtermwidget from source) ---
 set(_easy_ssh_need_lxqt_bt FALSE)
 
@@ -19,6 +52,7 @@ endif()
 
 if(NOT _easy_ssh_have_libssh)
     set(_easy_ssh_using_fetch TRUE)
+    _easy_ssh_ensure_zlib()
     FetchContent_Declare(
         libssh
         GIT_REPOSITORY https://gitlab.com/libssh/libssh-mirror.git
@@ -61,6 +95,10 @@ if(NOT _easy_ssh_have_qtkeychain)
     set(BUILD_WITH_QT6 ON CACHE BOOL "" FORCE)
     set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(qtkeychain)
+    # FetchContent exposes qt6keychain; Qt6Keychain::Qt6Keychain exists only when installed.
+    if(TARGET qt6keychain AND NOT TARGET Qt6Keychain::Qt6Keychain)
+        add_library(Qt6Keychain::Qt6Keychain ALIAS qt6keychain)
+    endif()
     if(NOT TARGET Qt6Keychain::Qt6Keychain)
         message(FATAL_ERROR "FetchContent qtkeychain did not create Qt6Keychain::Qt6Keychain")
     endif()
