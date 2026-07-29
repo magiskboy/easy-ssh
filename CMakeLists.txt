@@ -73,6 +73,7 @@ set(EASY_SSH_SOURCES
     src/TunnelStore.h
     src/TunnelListModel.cpp
     src/TunnelListModel.h
+    src/terminal/TerminalIoBridge.h
     src/widgets/AboutDialog.cpp
     src/widgets/AboutDialog.h
     src/widgets/ConnectionDialog.cpp
@@ -96,6 +97,12 @@ set(EASY_SSH_SOURCES
     src/widgets/WelcomeWidget.cpp
     src/widgets/WelcomeWidget.h
 )
+
+if(WIN32)
+    list(APPEND EASY_SSH_SOURCES src/terminal/TerminalIoBridge_win.cpp)
+else()
+    list(APPEND EASY_SSH_SOURCES src/terminal/TerminalIoBridge_unix.cpp)
+endif()
 
 set(EASY_SSH_PLATFORM_SOURCES)
 if(WIN32)

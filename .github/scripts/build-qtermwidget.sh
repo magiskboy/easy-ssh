@@ -50,11 +50,31 @@ if [[ "$BUILD_QTKEYCHAIN" == "1" ]]; then
     -DBUILD_TRANSLATIONS=OFF
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+QTERMWIDGET_PATCH_DIR="${QTERMWIDGET_PATCH_DIR:-$REPO_ROOT/third_party/qtermwidget-patches}"
+
 if [[ ! -d "$BUILD_ROOT/qtermwidget" ]]; then
   git clone --depth 1 --branch "$QTERMWIDGET_REF" \
     https://github.com/lxqt/qtermwidget.git \
     "$BUILD_ROOT/qtermwidget"
 fi
+
+# Apply Easy SSH patches once (writeToEmulator API + Windows PTY stubs).
+if [[ -d "$QTERMWIDGET_PATCH_DIR" ]]; then
+  pushd "$BUILD_ROOT/qtermwidget" >/dev/null
+  if [[ ! -f .easy-ssh-patches-applied ]]; then
+    shopt -s nullglob
+    for patch in "$QTERMWIDGET_PATCH_DIR"/*.patch; do
+      echo "Applying $(basename "$patch")"
+      git apply --whitespace=nowarn "$patch"
+    done
+    shopt -u nullglob
+    touch .easy-ssh-patches-applied
+  fi
+  popd >/dev/null
+fi
+
 cmake_build_install "$BUILD_ROOT/qtermwidget" \
   -DBUILD_TRANSLATIONS=OFF \
   -DUSE_UTF8PROC=OFF
