@@ -16,8 +16,6 @@ permissions:
 
 env:
   BUILD_TYPE: Release
-  # Ubuntu 24.04 system Qt is 6.4.x; app + QTermWidget need >= 6.6.
-  QT_VERSION: "6.8.3"
 
 jobs:
   format:
@@ -52,14 +50,10 @@ jobs:
           - runner: ubuntu-24.04
             target: linux-amd64
             os_family: linux
-            qt_host: linux
-            qt_arch: linux_gcc_64
 
           - runner: ubuntu-24.04-arm
             target: linux-arm64
             os_family: linux
-            qt_host: linux_arm64
-            qt_arch: linux_gcc_arm64
 
           - runner: macos-15
             target: macos-arm64
@@ -72,8 +66,6 @@ jobs:
           - runner: windows-2022
             target: windows-amd64
             os_family: windows
-            qt_host: windows
-            qt_arch: win64_msvc2022_64
 
     steps:
       - name: Checkout
@@ -85,6 +77,12 @@ jobs:
         with:
           arch: x64
 
+      - name: Install Windows build tools
+        if: matrix.os_family == 'windows'
+        shell: bash
+        run: |
+          python -m pip install --user "aqtinstall>=3.1.0"
+
       - name: Install Linux build tools
         if: matrix.os_family == 'linux'
         run: |
@@ -95,167 +93,142 @@ jobs:
             ninja-build \
             pkg-config \
             git \
+            python3-pip \
+            patchelf \
+            rpm \
             libssl-dev \
             zlib1g-dev \
             libsecret-1-dev \
-            libglib2.0-dev
+            libglib2.0-dev \
+            libgl1-mesa-dev \
+            libgstreamer-gl1.0-0 \
+            libpulse-dev \
+            libxcb-glx0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-render0 \
+            libxcb-shape0 \
+            libxcb-shm0 \
+            libxcb-sync1 \
+            libxcb-util1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb1 \
+            libxkbcommon-dev \
+            libxkbcommon-x11-0 \
+            libxcb-xkb-dev \
+            libxcb-cursor0
+          python3 -m pip install --user "aqtinstall>=3.1.0"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Install Qt (Linux / Windows via aqt)
-        if: matrix.os_family == 'linux' || matrix.os_family == 'windows'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: ${{ matrix.qt_host }}
-          target: desktop
-          arch: ${{ matrix.qt_arch }}
-          install-deps: "true"
-          cache: true
-          cache-key-prefix: install-qt-${{ matrix.target }}
-          setup-python: true
-          set-env: true
+      - name: Install Linux AppImage tool
+        if: matrix.os_family == 'linux'
+        run: |
+          set -euo pipefail
+          tools_dir="${GITHUB_WORKSPACE}/.deps/tools"
+          mkdir -p "$tools_dir"
+          arch="$(uname -m)"
+          case "$arch" in
+            x86_64|amd64) aqt_arch="x86_64" ;;
+            aarch64|arm64) aqt_arch="aarch64" ;;
+            *) echo "unsupported arch: $arch" >&2; exit 1 ;;
+          esac
+          tool="$tools_dir/appimagetool-${aqt_arch}.AppImage"
+          if [[ ! -x "$tool" ]]; then
+            curl -fsSL \
+              "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${aqt_arch}.AppImage" \
+              -o "$tool"
+            chmod +x "$tool"
+          fi
+          echo "${tools_dir}" >> "$GITHUB_PATH"
 
-      - name: Install macOS packages
+      - name: Install macOS build tools
         if: matrix.os_family == 'macos'
         run: |
           brew update
-          brew install cmake ninja pkg-config qt libssh qtkeychain
-          {
-            echo "CMAKE_PREFIX_PATH=$(brew --prefix qt):$(brew --prefix qtkeychain):$(brew --prefix libssh)"
-          } >> "$GITHUB_ENV"
-          echo "$(brew --prefix qt)/bin" >> "$GITHUB_PATH"
+          brew install cmake ninja pkg-config pipx
+          pipx install aqtinstall
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Cache vcpkg libssh
-        if: matrix.os_family == 'windows'
+      - name: Cache dependencies
         uses: actions/cache@v4
         with:
           path: |
-            .deps/vcpkg/installed
-            .deps/vcpkg/packages
-            .deps/vcpkg/downloads
-            .deps/vcpkg/vcpkg.exe
-          key: vcpkg-libssh-x64-windows-${{ hashFiles('.github/workflows/ci.yml') }}
-
-      - name: Install libssh (vcpkg)
-        if: matrix.os_family == 'windows'
-        run: |
-          set -euo pipefail
-          VCPKG_ROOT="${GITHUB_WORKSPACE}/.deps/vcpkg"
-          if [[ ! -f "${VCPKG_ROOT}/vcpkg.exe" ]]; then
-            if [[ -d "${VCPKG_ROOT}" && ! -d "${VCPKG_ROOT}/.git" ]]; then
-              # Cache restored partial contents without the git repo; clone into a
-              # temp dir and move the .git tree in so cached installed/ is preserved.
-              tmp="$(mktemp -d)"
-              git clone --depth 1 https://github.com/microsoft/vcpkg.git "$tmp"
-              cp -r "$tmp/.git" "${VCPKG_ROOT}/.git"
-              cp -n "$tmp"/* "${VCPKG_ROOT}/" 2>/dev/null || true
-              cp -rn "$tmp"/scripts "${VCPKG_ROOT}/" 2>/dev/null || true
-              rm -rf "$tmp"
-            elif [[ ! -d "${VCPKG_ROOT}/.git" ]]; then
-              git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
-            fi
-            # bootstrap-vcpkg.sh can break under Git Bash when MSVC paths contain spaces.
-            (cd "${VCPKG_ROOT}" && cmd.exe //c "bootstrap-vcpkg.bat -disableMetrics")
-          fi
-          "${VCPKG_ROOT}/vcpkg.exe" install libssh:x64-windows --disable-metrics
-          {
-            echo "VCPKG_ROOT=${VCPKG_ROOT}"
-            echo "CMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-            echo "VCPKG_TARGET_TRIPLET=x64-windows"
-          } >> "$GITHUB_ENV"
-          echo "${VCPKG_ROOT}/installed/x64-windows/bin" >> "$GITHUB_PATH"
-          # Also expose for DLL bundling / find_package fallbacks.
-          echo "CMAKE_PREFIX_PATH=${VCPKG_ROOT}/installed/x64-windows${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}}" >> "$GITHUB_ENV"
-
-      - name: Build libssh (>= 0.11 for ProxyJump)
-        if: matrix.os_family == 'linux'
-        env:
-          PREFIX: ${{ github.workspace }}/.deps/prefix
-        run: |
-          set -euo pipefail
-          chmod +x .github/scripts/build-libssh.sh
-          .github/scripts/build-libssh.sh
-          {
-            echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
-            echo "LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-            echo "CMAKE_PREFIX_PATH=${PREFIX}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
-          } >> "$GITHUB_ENV"
-
-      - name: Build QTermWidget (and QtKeychain on Linux/Windows)
-        env:
-          PREFIX: ${{ github.workspace }}/.deps/prefix
-          BUILD_QTKEYCHAIN: ${{ (matrix.os_family == 'linux' || matrix.os_family == 'windows') && '1' || '0' }}
-        run: |
-          set -euo pipefail
-          chmod +x .github/scripts/build-qtermwidget.sh
-          .github/scripts/build-qtermwidget.sh
-
-          case "$(uname -s)" in
-            MINGW*|MSYS*|CYGWIN*) CMAKE_SEP=';' ;;
-            *) CMAKE_SEP=':' ;;
-          esac
-
-          # Preserve Qt from install-qt-action (QT_ROOT_DIR) — CMAKE_PREFIX_PATH alone
-          # is not always exported into subsequent steps on all runners.
-          PREFIX_PATH="${PREFIX}"
-          if [[ -n "${QT_ROOT_DIR:-}" ]]; then
-            PREFIX_PATH="${PREFIX_PATH}${CMAKE_SEP}${QT_ROOT_DIR}"
-          fi
-          if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
-            PREFIX_PATH="${PREFIX_PATH}${CMAKE_SEP}${CMAKE_PREFIX_PATH}"
-          fi
-
-          {
-            echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}"
-            echo "PREFIX=${PREFIX}"
-            echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
-            echo "LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-            echo "DYLD_FALLBACK_LIBRARY_PATH=${PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
-          } >> "$GITHUB_ENV"
-          echo "${PREFIX}/bin" >> "$GITHUB_PATH"
+            .deps/qt
+            build-release/_deps
+          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'third_party/qtermwidget-patches/**') }}
 
       - name: Configure
         run: |
           set -euo pipefail
-          EXTRA_ARGS=()
-          if [[ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]]; then
-            EXTRA_ARGS+=(
-              "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
-              "-DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET:-x64-windows}"
-            )
-          fi
           cmake -S . -B build-release \
             -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
-            -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
-            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" \
+            -DEASY_SSH_USE_SYSTEM_PACKAGES=OFF \
+            -DEASY_SSH_FETCH_QT=ON \
+            -DEASY_SSH_BUNDLE_RUNTIME=ON \
             -DEASY_SSH_INTEGRATION_TESTS=OFF \
-            ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+            -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/staging"
 
       - name: Build
         run: cmake --build build-release --parallel
 
-      - name: Package (Linux)
-        if: matrix.os_family == 'linux'
+      - name: Install and package
         run: |
-          chmod +x .github/scripts/package-linux.sh
-          .github/scripts/package-linux.sh "${{ matrix.target }}" build-release dist
+          set -euo pipefail
+          staging="${{ github.workspace }}/staging"
+          cmake --install build-release --prefix "$staging"
+          mkdir -p dist
+          cd build-release
+          case "${{ matrix.os_family }}" in
+            linux)
+              cpack -C Release -G "DEB;RPM;TGZ"
+              ;;
+            macos)
+              cpack -C Release -G DragNDrop
+              ;;
+            windows)
+              cpack -C Release -G NSIS
+              ;;
+          esac
+          shopt -s nullglob
+          mv easy-ssh-* ../dist/ 2>/dev/null || true
+          mv *.deb *.rpm *.tar.gz *.dmg *.exe ../dist/ 2>/dev/null || true
+          shopt -u nullglob
 
-      - name: Package (macOS)
-        if: matrix.os_family == 'macos'
-        run: |
-          chmod +x .github/scripts/package-macos.sh
-          .github/scripts/package-macos.sh "${{ matrix.target }}" build-release dist
+          if [[ "${{ matrix.os_family }}" == "linux" ]]; then
+            arch="$(uname -m)"
+            case "$arch" in
+              x86_64|amd64) aqt_arch="x86_64" ;;
+              aarch64|arm64) aqt_arch="aarch64" ;;
+              *) echo "unsupported arch: $arch" >&2; exit 1 ;;
+            esac
+            chmod +x "${{ github.workspace }}/.github/scripts/build-appimage.sh"
+            "${{ github.workspace }}/.github/scripts/build-appimage.sh" \
+              "$staging" \
+              "${{ github.workspace }}/dist/easy-ssh-${{ matrix.target }}.AppImage" \
+              "${{ github.workspace }}/.deps/tools/appimagetool-${aqt_arch}.AppImage" \
+              "${{ github.workspace }}/AppDirBuild"
+          fi
 
-      - name: Package (Windows)
-        if: matrix.os_family == 'windows'
-        shell: cmd
-        run: .github\scripts\package-windows.bat "${{ matrix.target }}" build-release dist
+          ls -lah "${{ github.workspace }}/dist"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: easy-ssh-${{ matrix.target }}
-          path: dist/easy-ssh-${{ matrix.target }}.*
+          path: |
+            dist/easy-ssh-${{ matrix.target }}.*
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
+            dist/*.tar.gz
+            dist/*.dmg
+            dist/*.exe
           if-no-files-found: error
           retention-days: 14
 
