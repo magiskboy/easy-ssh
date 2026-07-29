@@ -249,8 +249,7 @@ void ConnectionListWidget::importSelectedFromSshConfig()
         return;
     }
 
-    emit statusMessage(tr("Imported connection: %1").arg(imported->name),
-                       ErrorNotifier::Level::Success);
+    emit statusMessage(tr("Imported connection: %1").arg(imported->name));
 }
 
 void ConnectionListWidget::reloadSshConfig()
@@ -259,7 +258,7 @@ void ConnectionListWidget::reloadSshConfig()
         return;
     }
     m_model->reloadSshConfig();
-    emit statusMessage(tr("Reloaded ~/.ssh/config"), ErrorNotifier::Level::Success);
+    emit statusMessage(tr("Reloaded ~/.ssh/config"));
 }
 
 void ConnectionListWidget::onFilterTextChanged(const QString &text)
