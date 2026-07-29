@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: easy-ssh <dev@easy-ssh>
+Date: Wed, 29 Jul 2026 15:54:04 +0000
+Subject: [PATCH 6/6] Look up bundled kb-layouts/color-schemes/translations
+
+When CMAKE_INSTALL_PREFIX does not match the final install location
+(NSIS custom dir, AppImage, TGZ), fall back to paths relative to the
+application binary under ../share/qtermwidget6/.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+
+---
+ lib/qtermwidget.cpp |  5 +++++
+ lib/tools.cpp       | 49 +++++++++++++++++++++++++++------------------
+ 2 files changed, 34 insertions(+), 20 deletions(-)
+
+diff --git a/lib/qtermwidget.cpp b/lib/qtermwidget.cpp
+index 2f68b70..1ac8a95 100644
+--- a/lib/qtermwidget.cpp
++++ b/lib/qtermwidget.cpp
+@@ -307,6 +307,11 @@ void QTermWidget::init(int startnow)
+         dirs.append(QString::fromLatin1("/usr/local/share"));
+         dirs.append(QString::fromLatin1("/usr/share"));
+     }
++    // Bundled / portable installs: translations next to the binary.
++    dirs.append(qApp->applicationDirPath()
++                + QLatin1String("/../share/qtermwidget6/translations"));
++    dirs.append(qApp->applicationDirPath()
++                + QLatin1String("/translations"));
+     dirs.append(QFile::decodeName(TRANSLATIONS_DIR));
+ 
+     m_translator = new QTranslator(this);
+diff --git a/lib/tools.cpp b/lib/tools.cpp
+index 7ca9236..68278ee 100644
+--- a/lib/tools.cpp
++++ b/lib/tools.cpp
+@@ -27,16 +27,25 @@ QString get_kb_layout_dir()
+         return rval;
+     }
+ 
++    // Bundled / portable installs (AppImage, NSIS, TGZ): data next to the binary.
++    const QString appDir = QCoreApplication::applicationDirPath();
++    d.setPath(appDir + QLatin1String("/../share/qtermwidget6/kb-layouts/"));
++    if (d.exists())
++        return appDir + QLatin1String("/../share/qtermwidget6/kb-layouts/");
++    d.setPath(appDir + QLatin1String("/kb-layouts/"));
++    if (d.exists())
++        return appDir + QLatin1String("/kb-layouts/");
++
+ #ifdef Q_OS_MAC
+     // subdir in the app location
+-    d.setPath(QCoreApplication::applicationDirPath() + QLatin1String("/kb-layouts/"));
++    d.setPath(appDir + QLatin1String("/kb-layouts/"));
+     //qDebug() << d.path();
+     if (d.exists())
+-        return QCoreApplication::applicationDirPath() + QLatin1String("/kb-layouts/");
++        return appDir + QLatin1String("/kb-layouts/");
+ 
+-    d.setPath(QCoreApplication::applicationDirPath() + QLatin1String("/../Resources/kb-layouts/"));
++    d.setPath(appDir + QLatin1String("/../Resources/kb-layouts/"));
+     if (d.exists())
+-        return QCoreApplication::applicationDirPath() + QLatin1String("/../Resources/kb-layouts/");
++        return appDir + QLatin1String("/../Resources/kb-layouts/");
+ #endif
+     //qDebug() << "Cannot find KB_LAYOUT_DIR. Default:" << k;
+     return QString();
+@@ -70,24 +79,24 @@ const QStringList get_color_schemes_dirs()
+     if (d.exists())
+         rval << k.append(QLatin1Char('/'));
+ 
++    // Bundled / portable installs (AppImage, NSIS, TGZ): data next to the binary.
++    const QString appDir = QCoreApplication::applicationDirPath();
++    const QStringList bundled = {
++        appDir + QLatin1String("/../share/qtermwidget6/color-schemes/"),
++        appDir + QLatin1String("/color-schemes/"),
+ #ifdef Q_OS_MAC
+-    // subdir in the app location
+-    d.setPath(QCoreApplication::applicationDirPath() + QLatin1String("/color-schemes/"));
+-    //qDebug() << d.path();
+-    if (d.exists())
+-    {
+-        if (!rval.isEmpty())
+-            rval.clear();
+-        rval << (QCoreApplication::applicationDirPath() + QLatin1String("/color-schemes/"));
+-    }
+-    d.setPath(QCoreApplication::applicationDirPath() + QLatin1String("/../Resources/color-schemes/"));
+-    if (d.exists())
+-    {
+-        if (!rval.isEmpty())
+-            rval.clear();
+-        rval << (QCoreApplication::applicationDirPath() + QLatin1String("/../Resources/color-schemes/"));
+-    }
++        appDir + QLatin1String("/../Resources/color-schemes/"),
+ #endif
++    };
++    for (const QString& candidate : bundled) {
++        d.setPath(candidate);
++        if (d.exists()) {
++            if (!rval.isEmpty())
++                rval.clear();
++            rval << candidate;
++            break;
++        }
++    }
+ 
+     for (const QString& custom_dir : std::as_const(custom_color_schemes_dirs))
+     {
+-- 
+2.43.0
+
