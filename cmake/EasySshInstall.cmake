@@ -37,11 +37,20 @@ foreach(_icon_size IN ITEMS 16 22 24 32 48 64 128 256 512)
     )
 endforeach()
 
+# windeployqt treats qt6keychain.dll as a Qt module (name matches Qt6*) and
+# looks for it under QT_INSTALL_BINS — fail unless we ignore that miss.
+# Third-party DLLs are installed separately above / via EASY_SSH_BUNDLE_RUNTIME.
+set(_easy_ssh_deploy_tool_options "")
+if(WIN32)
+    set(_easy_ssh_deploy_tool_options --ignore-library-errors)
+endif()
+
 qt_generate_deploy_app_script(
     TARGET easy-ssh
     OUTPUT_SCRIPT easy_ssh_deploy_script
     NO_UNSUPPORTED_PLATFORM_ERROR
     NO_TRANSLATIONS
+    DEPLOY_TOOL_OPTIONS ${_easy_ssh_deploy_tool_options}
 )
 install(SCRIPT ${easy_ssh_deploy_script})
 
