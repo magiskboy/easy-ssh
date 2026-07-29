@@ -24,18 +24,33 @@ function(_easy_ssh_ensure_zlib)
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(ZLIB_INSTALL OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(zlib)
+    FetchContent_GetProperties(zlib SOURCE_DIR _zlib_src BINARY_DIR _zlib_bin)
+
+    # zlib renames src/zconf.h → zconf.h.included and writes build/zconf.h.
+    # Consumers that only pass ZLIB_INCLUDE_DIR (e.g. libssh) need zconf.h in source.
+    if(NOT EXISTS "${_zlib_src}/zconf.h")
+        configure_file("${_zlib_bin}/zconf.h" "${_zlib_src}/zconf.h" COPYONLY)
+    endif()
 
     if(TARGET ZLIB::ZLIB)
         set(_zlib_lib ZLIB::ZLIB)
     elseif(TARGET zlibstatic)
         set(_zlib_lib zlibstatic)
+        if(NOT TARGET ZLIB::ZLIB)
+            add_library(ZLIB::ZLIB ALIAS zlibstatic)
+        endif()
     else()
         set(_zlib_lib zlib)
+        if(NOT TARGET ZLIB::ZLIB)
+            add_library(ZLIB::ZLIB ALIAS zlib)
+        endif()
     endif()
 
     set(ZLIB_FOUND TRUE CACHE BOOL "" FORCE)
-    set(ZLIB_INCLUDE_DIR "${zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
+    set(ZLIB_INCLUDE_DIR "${_zlib_src}" CACHE PATH "" FORCE)
+    set(ZLIB_INCLUDE_DIRS "${_zlib_src};${_zlib_bin}" CACHE STRING "" FORCE)
     set(ZLIB_LIBRARY "${_zlib_lib}" CACHE STRING "" FORCE)
+    set(ZLIB_LIBRARIES "${_zlib_lib}" CACHE STRING "" FORCE)
 endfunction()
 
 # --- lxqt-build-tools (build-only; required when building qtermwidget from source) ---
@@ -95,8 +110,23 @@ if(NOT _easy_ssh_have_qtkeychain)
     set(BUILD_WITH_QT6 ON CACHE BOOL "" FORCE)
     set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(qtkeychain)
+    FetchContent_GetProperties(qtkeychain SOURCE_DIR _qkc_src BINARY_DIR _qkc_bin)
+    # Installed package uses include/qt6keychain/; build tree only exposes qtkeychain/.
+    set(_qkc_shim "${_qkc_bin}/include_shim")
+    file(MAKE_DIRECTORY "${_qkc_shim}/qt6keychain")
+    configure_file(
+        "${_qkc_src}/qtkeychain/keychain.h"
+        "${_qkc_shim}/qt6keychain/keychain.h"
+        COPYONLY
+    )
+    configure_file(
+        "${_qkc_bin}/qtkeychain/qkeychain_export.h"
+        "${_qkc_shim}/qt6keychain/qkeychain_export.h"
+        COPYONLY
+    )
     # FetchContent exposes qt6keychain; Qt6Keychain::Qt6Keychain exists only when installed.
     if(TARGET qt6keychain AND NOT TARGET Qt6Keychain::Qt6Keychain)
+        target_include_directories(qt6keychain INTERFACE "$<BUILD_INTERFACE:${_qkc_shim}>")
         add_library(Qt6Keychain::Qt6Keychain ALIAS qt6keychain)
     endif()
     if(NOT TARGET Qt6Keychain::Qt6Keychain)
