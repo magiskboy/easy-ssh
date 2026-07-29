@@ -153,23 +153,27 @@ CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scr
 
 - **Linux:** `.AppImage` (primary) and `.tar.gz` fallback tree
 - **macOS:** `.dmg`
+- **Windows:** `.zip` (Qt + libssh + QTermWidget + QtKeychain DLLs)
 
-Both Linux formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
+Linux and Windows formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
 
-#### Windows (local)
+#### Windows
 
-Windows CI is not enabled yet (libssh / Qt packaging). Locally, build a patched
-QTermWidget first (applies [`third_party/qtermwidget-patches/`](third_party/qtermwidget-patches/)):
+CI builds on `windows-2022` (MSVC + Qt 6.8 via aqt, libssh via vcpkg, patched QTermWidget).
+Locally:
 
 ```bash
 export PREFIX="$PWD/.deps/prefix"
 export BUILD_ROOT="$PWD/.deps/src"
 export GITHUB_WORKSPACE="$PWD"
+export BUILD_QTKEYCHAIN=1
+# After Qt + libssh are available on CMAKE_PREFIX_PATH / CMAKE_TOOLCHAIN_FILE:
 .github/scripts/build-qtermwidget.sh
 cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH="$PREFIX"
 cmake --build build-release
 cmake --install build-release --prefix install
+# Optional installer (requires NSIS):
 cpack -G NSIS --config build-release/CPackConfig.cmake
 ```
 

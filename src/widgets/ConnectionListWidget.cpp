@@ -105,7 +105,7 @@ void ConnectionListWidget::createConnection()
 
 void ConnectionListWidget::editSelectedConnection()
 {
-    if (!m_model) {
+    if (!m_model || !selectedIsAppConnection()) {
         return;
     }
 
@@ -147,7 +147,7 @@ void ConnectionListWidget::editSelectedConnection()
 
 void ConnectionListWidget::deleteSelectedConnection()
 {
-    if (!m_model) {
+    if (!m_model || !selectedIsAppConnection()) {
         return;
     }
 
@@ -203,7 +203,7 @@ void ConnectionListWidget::focusSearch()
 
 void ConnectionListWidget::duplicateSelectedConnection()
 {
-    if (!m_model) {
+    if (!m_model || !selectedIsAppConnection()) {
         return;
     }
 
@@ -227,6 +227,39 @@ void ConnectionListWidget::duplicateSelectedConnection()
     }
 
     emit statusMessage(tr("Duplicated connection: %1").arg(copy->name));
+}
+
+void ConnectionListWidget::importSelectedFromSshConfig()
+{
+    if (!m_model || !selectedIsSshConfigConnection()) {
+        return;
+    }
+
+    const auto id = selectedConnectionId();
+    if (!id) {
+        return;
+    }
+
+    const auto imported = m_model->importFromSshConfig(*id);
+    if (!imported) {
+        ErrorNotifier::notify(this,
+                              tr("Error"),
+                              tr("Failed to import SSH config host."),
+                              ErrorNotifier::Level::Warning);
+        return;
+    }
+
+    emit statusMessage(tr("Imported connection: %1").arg(imported->name),
+                       ErrorNotifier::Level::Success);
+}
+
+void ConnectionListWidget::reloadSshConfig()
+{
+    if (!m_model) {
+        return;
+    }
+    m_model->reloadSshConfig();
+    emit statusMessage(tr("Reloaded ~/.ssh/config"), ErrorNotifier::Level::Success);
 }
 
 void ConnectionListWidget::onFilterTextChanged(const QString &text)
@@ -261,6 +294,8 @@ void ConnectionListWidget::onContextMenu(const QPoint &pos)
     }
 
     const bool hasSelection = selectedConnectionId().has_value();
+    const bool isApp = selectedIsAppConnection();
+    const bool isConfig = selectedIsSshConfigConnection();
 
     QMenu menu(this);
     menu.addAction(tr("Open Session"),
@@ -275,12 +310,18 @@ void ConnectionListWidget::onContextMenu(const QPoint &pos)
     menu.addSeparator();
     menu.addAction(tr("New Connection…"), this, &ConnectionListWidget::createConnection);
     menu.addAction(tr("Edit…"), this, &ConnectionListWidget::editSelectedConnection)
-        ->setEnabled(hasSelection);
+        ->setEnabled(isApp);
     menu.addAction(tr("Duplicate"), this, &ConnectionListWidget::duplicateSelectedConnection)
-        ->setEnabled(hasSelection);
+        ->setEnabled(isApp);
+    menu.addAction(tr("Import to Easy SSH…"),
+                   this,
+                   &ConnectionListWidget::importSelectedFromSshConfig)
+        ->setEnabled(isConfig);
+    menu.addSeparator();
+    menu.addAction(tr("Reload SSH Config"), this, &ConnectionListWidget::reloadSshConfig);
     menu.addSeparator();
     menu.addAction(tr("Delete"), this, &ConnectionListWidget::deleteSelectedConnection)
-        ->setEnabled(hasSelection);
+        ->setEnabled(isApp);
 
     menu.exec(m_listView->viewport()->mapToGlobal(pos));
 }
@@ -296,6 +337,26 @@ std::optional<QUuid> ConnectionListWidget::selectedConnectionId() const
         return std::nullopt;
     }
     return id;
+}
+
+bool ConnectionListWidget::selectedIsAppConnection() const
+{
+    const auto id = selectedConnectionId();
+    if (!id || !m_model) {
+        return false;
+    }
+    const auto connection = m_model->connectionById(*id);
+    return connection && connection->source == ConnectionSource::App;
+}
+
+bool ConnectionListWidget::selectedIsSshConfigConnection() const
+{
+    const auto id = selectedConnectionId();
+    if (!id || !m_model) {
+        return false;
+    }
+    const auto connection = m_model->connectionById(*id);
+    return connection && connection->source == ConnectionSource::SshConfig;
 }
 
 void ConnectionListWidget::persistSecrets(const Connection &connection,

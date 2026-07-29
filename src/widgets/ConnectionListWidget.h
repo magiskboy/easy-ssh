@@ -27,6 +27,8 @@ public:
     void editSelectedConnection();
     void deleteSelectedConnection();
     void duplicateSelectedConnection();
+    void importSelectedFromSshConfig();
+    void reloadSshConfig();
     void openSelectedConnection();
     void focusSearch();
 
@@ -43,6 +45,8 @@ private slots:
 
 private:
     std::optional<QUuid> selectedConnectionId() const;
+    bool selectedIsAppConnection() const;
+    bool selectedIsSshConfigConnection() const;
     void persistSecrets(const Connection &connection,
                         AuthType previousAuthType,
                         bool isEdit,

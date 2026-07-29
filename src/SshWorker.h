@@ -109,7 +109,9 @@ private:
     bool authenticate(const Connection &connection, QString &secret);
     bool authenticatePassword(const QString &password);
     bool authenticateKeyboardInteractive(const QString &password);
+    bool authenticateWithAgent();
     bool authenticatePrivateKey(const QString &keyPath, const QString &passphrase);
+    bool authenticatePublicKeyAuto(const QString &passphrase);
     bool openShell();
     bool openSftp(QString *failureMessage = nullptr);
     void cleanup();

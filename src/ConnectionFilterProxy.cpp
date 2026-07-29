@@ -38,8 +38,10 @@ bool ConnectionFilterProxy::filterAcceptsRow(int sourceRow, const QModelIndex &s
     const QString name = model->data(index, ConnectionModel::NameRole).toString();
     const QString host = model->data(index, ConnectionModel::HostRole).toString();
     const QString username = model->data(index, ConnectionModel::UsernameRole).toString();
+    const QString alias = model->data(index, ConnectionModel::ConfigAliasRole).toString();
 
     return name.contains(needle, Qt::CaseInsensitive) ||
            host.contains(needle, Qt::CaseInsensitive) ||
-           username.contains(needle, Qt::CaseInsensitive);
+           username.contains(needle, Qt::CaseInsensitive) ||
+           alias.contains(needle, Qt::CaseInsensitive);
 }

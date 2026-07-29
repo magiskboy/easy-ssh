@@ -69,13 +69,28 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
-    const QByteArray host = connection.host.toUtf8();
-    const QByteArray user = connection.username.toUtf8();
-    int port = connection.port;
+    if (connection.source == ConnectionSource::SshConfig && !connection.configAlias.isEmpty()) {
+        // Match OpenSSH: set Host to the config alias, then let libssh apply ~/.ssh/config
+        // (including Include / HostName / User / Port / IdentityFile / ProxyJump).
+        const QByteArray alias = connection.configAlias.toUtf8();
+        ssh_options_set(m_session, SSH_OPTIONS_HOST, alias.constData());
+        if (ssh_options_parse_config(m_session, nullptr) != SSH_OK) {
+            qCWarning(lcSsh) << "ssh_options_parse_config failed for alias" << connection.configAlias
+                             << ":" << sessionError();
+        }
+    } else {
+        const QByteArray host = connection.host.toUtf8();
+        const QByteArray user = connection.username.toUtf8();
+        int port = connection.port;
 
-    ssh_options_set(m_session, SSH_OPTIONS_HOST, host.constData());
-    ssh_options_set(m_session, SSH_OPTIONS_USER, user.constData());
-    ssh_options_set(m_session, SSH_OPTIONS_PORT, &port);
+        ssh_options_set(m_session, SSH_OPTIONS_HOST, host.constData());
+        ssh_options_set(m_session, SSH_OPTIONS_USER, user.constData());
+        ssh_options_set(m_session, SSH_OPTIONS_PORT, &port);
+
+        // Keep app-defined host/user/port authoritative.
+        const int processConfig = 0;
+        ssh_options_set(m_session, SSH_OPTIONS_PROCESS_CONFIG, &processConfig);
+    }
 
     if (ssh_connect(m_session) != SSH_OK) {
         const QString err = sessionError();
@@ -680,8 +695,26 @@ bool SshWorker::authenticate(const Connection &connection, QString &secret)
     }
 
     switch (connection.authType) {
-    case AuthType::PrivateKey:
-        return authenticatePrivateKey(connection.privateKeyPath, secret);
+    case AuthType::PrivateKey: {
+        // Agent-first: try SSH agent before any key file / default identities.
+        if (authenticateWithAgent()) {
+            return true;
+        }
+
+        if (!connection.privateKeyPath.isEmpty()) {
+            if (authenticatePrivateKey(connection.privateKeyPath, secret)) {
+                return true;
+            }
+            return false;
+        }
+
+        if (authenticatePublicKeyAuto(secret)) {
+            return true;
+        }
+
+        emit errorOccurred(tr("Authentication failed: no usable agent identity or default key"));
+        return false;
+    }
     case AuthType::Password:
     default: {
         if (secret.isEmpty()) {
@@ -734,10 +767,20 @@ bool SshWorker::authenticateKeyboardInteractive(const QString &password)
     return rc == SSH_AUTH_SUCCESS;
 }
 
+bool SshWorker::authenticateWithAgent()
+{
+    const int methods = ssh_userauth_list(m_session, nullptr);
+    if (!(methods & SSH_AUTH_METHOD_PUBLICKEY)) {
+        return false;
+    }
+
+    const int rc = ssh_userauth_agent(m_session, nullptr);
+    return rc == SSH_AUTH_SUCCESS;
+}
+
 bool SshWorker::authenticatePrivateKey(const QString &keyPath, const QString &passphrase)
 {
     if (keyPath.isEmpty()) {
-        emit errorOccurred(tr("Private key path is empty"));
         return false;
     }
 
@@ -760,6 +803,14 @@ bool SshWorker::authenticatePrivateKey(const QString &keyPath, const QString &pa
         return false;
     }
     return true;
+}
+
+bool SshWorker::authenticatePublicKeyAuto(const QString &passphrase)
+{
+    const QByteArray phrase = passphrase.toUtf8();
+    const char *phrasePtr = passphrase.isEmpty() ? nullptr : phrase.constData();
+    const int rc = ssh_userauth_publickey_auto(m_session, nullptr, phrasePtr);
+    return rc == SSH_AUTH_SUCCESS;
 }
 
 bool SshWorker::openShell()

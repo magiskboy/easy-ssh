@@ -111,6 +111,14 @@ void MainWindow::setupUi()
                 }
 
                 if (!ok) {
+                    // Private-key auth can proceed without a stored passphrase (agent / unlocked key).
+                    if (connection->authType == AuthType::PrivateKey) {
+                        m_sessionTabs->openSshSession(*connection, QString());
+                        AppSettings::instance().recordRecentConnection(connectionId);
+                        m_sessionTabs->refreshWelcome();
+                        return;
+                    }
+
                     ErrorNotifier::notify(this,
                                           tr("Credentials"),
                                           tr("Failed to read credentials: %1").arg(error),
@@ -221,6 +229,12 @@ void MainWindow::setupMenus()
             m_connectionList,
             &ConnectionListWidget::duplicateSelectedConnection);
 
+    auto *importAction = connectionMenu->addAction(tr("&Import from SSH Config…"));
+    connect(importAction,
+            &QAction::triggered,
+            m_connectionList,
+            &ConnectionListWidget::importSelectedFromSshConfig);
+
     connectionMenu->addSeparator();
 
     auto *deleteAction = connectionMenu->addAction(tr("&Delete"));
@@ -228,6 +242,12 @@ void MainWindow::setupMenus()
             &QAction::triggered,
             m_connectionList,
             &ConnectionListWidget::deleteSelectedConnection);
+
+    auto *reloadConfigAction = connectionMenu->addAction(tr("&Reload SSH Config"));
+    connect(reloadConfigAction,
+            &QAction::triggered,
+            m_connectionList,
+            &ConnectionListWidget::reloadSshConfig);
 
     auto *searchAction = connectionMenu->addAction(tr("&Search"));
     registerAction(QStringLiteral("general.searchConnection"), searchAction);

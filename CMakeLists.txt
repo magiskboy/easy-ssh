@@ -55,6 +55,8 @@ set(EASY_SSH_SOURCES
     src/ConnectionModel.h
     src/ConnectionFilterProxy.cpp
     src/ConnectionFilterProxy.h
+    src/SshConfigParser.cpp
+    src/SshConfigParser.h
     src/ErrorNotifier.cpp
     src/ErrorNotifier.h
     src/Logging.cpp

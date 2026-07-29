@@ -321,20 +321,48 @@ bundle_windows_deps() {
     log "warning: windeployqt not found; relying on CMake deploy script only"
   fi
 
-  local -a names=(ssh.dll libssh.dll qtermwidget6.dll qt6keychain.dll qtkeychain.dll)
-  if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
-    local p name found dest
-    dest="$(dirname "$exe")"
-    for p in ${CMAKE_PREFIX_PATH//;/ }; do
-      [[ -d "$p" ]] || continue
-      for name in "${names[@]}"; do
-        found="$(find "$p" -name "$name" 2>/dev/null | head -1 || true)"
-        if [[ -n "$found" ]]; then
-          cp -a "$found" "$dest/"
-          log "  + $name"
-        fi
-      done
+  local -a names=(
+    ssh.dll libssh.dll
+    qtermwidget6.dll qt6keychain.dll qtkeychain.dll
+    # libssh transitive deps (vcpkg / MSVC naming)
+    libcrypto-3-x64.dll libssl-3-x64.dll
+    libcrypto-1_1-x64.dll libssl-1_1-x64.dll
+    zlib1.dll zlib.dll
+  )
+  local dest
+  dest="$(dirname "$exe")"
+
+  copy_named_dlls_from() {
+    local root="$1"
+    [[ -d "$root" ]] || return 0
+    local name found
+    for name in "${names[@]}"; do
+      [[ -f "$dest/$name" ]] && continue
+      found="$(find "$root" -name "$name" 2>/dev/null | head -1 || true)"
+      if [[ -n "$found" ]]; then
+        cp -a "$found" "$dest/"
+        log "  + $name"
+      fi
     done
+  }
+
+  if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+    local p
+    # Support both CMake (;) and Unix (:) separators.
+    local paths="${CMAKE_PREFIX_PATH//;/$'\n'}"
+    paths="${paths//:/$'\n'}"
+    while IFS= read -r p; do
+      [[ -n "$p" ]] || continue
+      copy_named_dlls_from "$p"
+    done <<<"$paths"
+  fi
+
+  if [[ -n "${VCPKG_ROOT:-}" ]]; then
+    copy_named_dlls_from "${VCPKG_ROOT}/installed/x64-windows"
+  fi
+
+  if [[ -n "${PREFIX:-}" ]]; then
+    copy_named_dlls_from "$PREFIX"
   fi
 }
 
