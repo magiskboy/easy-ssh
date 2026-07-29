@@ -133,33 +133,6 @@ jobs:
             .deps/vcpkg/downloads
           key: vcpkg-libssh-x64-windows-${{ hashFiles('.github/workflows/ci.yml') }}
 
-      - name: Install Enigma Virtual Box
-        if: matrix.os_family == 'windows'
-        shell: pwsh
-        run: |
-          choco install enigmavirtualbox --no-progress --ignore-checksums -y
-
-          $evbConsole = Get-Command enigmavbconsole.exe -ErrorAction SilentlyContinue
-          if (-not $evbConsole) {
-            $candidates = @(
-              'C:\Program Files\Enigma Virtual Box\enigmavbconsole.exe',
-              'C:\Program Files (x86)\Enigma Virtual Box\enigmavbconsole.exe'
-            )
-            foreach ($path in $candidates) {
-              if (Test-Path $path) {
-                $evbConsole = @{ Source = $path }
-                break
-              }
-            }
-          }
-
-          if (-not $evbConsole) {
-            throw 'enigmavbconsole.exe not found after Chocolatey install'
-          }
-
-          $evbDir = Split-Path -Parent $evbConsole.Source
-          "ENIGMA_VB_DIR=$evbDir" >> $env:GITHUB_ENV
-
       - name: Install libssh (vcpkg)
         if: matrix.os_family == 'windows'
         run: |

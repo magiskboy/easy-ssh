@@ -197,7 +197,7 @@ qt_generate_deploy_app_script(
 )
 install(SCRIPT ${easy_ssh_deploy_script})
 
-# --- CPack (Linux / macOS packaging) ---
+# --- CPack ---
 set(CPACK_PACKAGE_NAME "easy-ssh")
 set(CPACK_PACKAGE_VENDOR "Easy SSH")
 set(CPACK_PACKAGE_CONTACT "https://github.com/magiskboy/easy-ssh")
@@ -207,9 +207,23 @@ set(CPACK_PACKAGE_INSTALL_DIRECTORY "Easy SSH")
 set(CPACK_VERBATIM_VARIABLES ON)
 set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 
-if(NOT WIN32)
-    include(CPack)
+if(WIN32)
+    set(CPACK_GENERATOR "NSIS")
+    set(CPACK_NSIS_DISPLAY_NAME "Easy SSH")
+    set(CPACK_NSIS_PACKAGE_NAME "Easy SSH")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/easy-ssh.ico")
+    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/easy-ssh.ico")
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\easy-ssh.exe")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA
+        "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Easy SSH.lnk' '$INSTDIR\\\\bin\\\\easy-ssh.exe'"
+    )
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA
+        "Delete '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Easy SSH.lnk'"
+    )
+    set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
 endif()
+include(CPack)
 
 message(STATUS "Easy SSH ${PROJECT_VERSION} (easy-ssh)")
 message(STATUS "  Qt6:          ${Qt6_VERSION}")
