@@ -139,7 +139,18 @@ jobs:
           set -euo pipefail
           VCPKG_ROOT="${GITHUB_WORKSPACE}/.deps/vcpkg"
           if [[ ! -x "${VCPKG_ROOT}/vcpkg.exe" && ! -x "${VCPKG_ROOT}/vcpkg" ]]; then
-            git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
+            if [[ -d "${VCPKG_ROOT}" && ! -d "${VCPKG_ROOT}/.git" ]]; then
+              # Cache restored partial contents without the git repo; clone into a
+              # temp dir and move the .git tree in so cached installed/ is preserved.
+              tmp="$(mktemp -d)"
+              git clone --depth 1 https://github.com/microsoft/vcpkg.git "$tmp"
+              cp -r "$tmp/.git" "${VCPKG_ROOT}/.git"
+              cp -n "$tmp"/* "${VCPKG_ROOT}/" 2>/dev/null || true
+              cp -rn "$tmp"/scripts "${VCPKG_ROOT}/" 2>/dev/null || true
+              rm -rf "$tmp"
+            else
+              git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
+            fi
             "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
           fi
           "${VCPKG_ROOT}/vcpkg" install libssh:x64-windows --disable-metrics
