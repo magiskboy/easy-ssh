@@ -12,6 +12,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GNUInstallDirs)
 
+# Put shared runtime next to easy-ssh so windeployqt / dyld can resolve
+# FetchContent DLLs (qt6keychain, ssh, qtermwidget) from the build tree.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+if(WIN32)
+    # Windows shared libs are RUNTIME artifacts (.dll), not LIBRARY (.lib).
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
+
 # Portable install layout: look for bundled libs next to the binary.
 if(NOT APPLE AND NOT WIN32)
     set(CMAKE_INSTALL_RPATH

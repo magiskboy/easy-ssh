@@ -180,12 +180,13 @@ jobs:
       - name: Install and package
         run: |
           set -euo pipefail
-          cmake --install build-release --prefix "${{ github.workspace }}/staging"
+          staging="${{ github.workspace }}/staging"
+          cmake --install build-release --prefix "$staging"
           mkdir -p dist
           cd build-release
           case "${{ matrix.os_family }}" in
             linux)
-              cpack -C Release -G "DEB;RPM;AppImage;TGZ"
+              cpack -C Release -G "DEB;RPM;TGZ"
               ;;
             macos)
               cpack -C Release -G DragNDrop
@@ -196,9 +197,25 @@ jobs:
           esac
           shopt -s nullglob
           mv easy-ssh-* ../dist/ 2>/dev/null || true
-          mv *.deb *.rpm *.AppImage *.tar.gz *.dmg *.exe ../dist/ 2>/dev/null || true
+          mv *.deb *.rpm *.tar.gz *.dmg *.exe ../dist/ 2>/dev/null || true
           shopt -u nullglob
-          ls -lah ../dist
+
+          if [[ "${{ matrix.os_family }}" == "linux" ]]; then
+            arch="$(uname -m)"
+            case "$arch" in
+              x86_64|amd64) aqt_arch="x86_64" ;;
+              aarch64|arm64) aqt_arch="aarch64" ;;
+              *) echo "unsupported arch: $arch" >&2; exit 1 ;;
+            esac
+            chmod +x "${{ github.workspace }}/.github/scripts/build-appimage.sh"
+            "${{ github.workspace }}/.github/scripts/build-appimage.sh" \
+              "$staging" \
+              "${{ github.workspace }}/dist/easy-ssh-${{ matrix.target }}.AppImage" \
+              "${{ github.workspace }}/.deps/tools/appimagetool-${aqt_arch}.AppImage" \
+              "${{ github.workspace }}/AppDirBuild"
+          fi
+
+          ls -lah "${{ github.workspace }}/dist"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

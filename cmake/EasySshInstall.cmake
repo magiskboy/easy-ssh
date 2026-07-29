@@ -5,6 +5,21 @@ install(TARGETS easy-ssh
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Ship FetchContent shared libs with the app (before Qt deploy / windeployqt).
+set(_easy_ssh_dep_runtime_targets "")
+foreach(_easy_ssh_dep IN ITEMS ssh qt6keychain qtermwidget6)
+    if(TARGET ${_easy_ssh_dep})
+        list(APPEND _easy_ssh_dep_runtime_targets ${_easy_ssh_dep})
+    endif()
+endforeach()
+if(_easy_ssh_dep_runtime_targets)
+    install(TARGETS ${_easy_ssh_dep_runtime_targets}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
+
 install(FILES
     ${CMAKE_SOURCE_DIR}/resources/linux/io.github.magiskboy.easy-ssh.desktop
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
@@ -26,6 +41,7 @@ qt_generate_deploy_app_script(
     TARGET easy-ssh
     OUTPUT_SCRIPT easy_ssh_deploy_script
     NO_UNSUPPORTED_PLATFORM_ERROR
+    NO_TRANSLATIONS
 )
 install(SCRIPT ${easy_ssh_deploy_script})
 

@@ -185,7 +185,8 @@ cmake --preset ci-release
 cmake --build --preset ci-release
 cmake --install build-release --prefix staging
 cd build-release
-cpack -C Release -G "DEB;RPM;AppImage;TGZ"   # Linux
+cpack -C Release -G "DEB;RPM;TGZ"   # Linux
+# AppImage: use .github/scripts/build-appimage.sh with appimagetool (not CPack)
 # cpack -C Release -G DragNDrop              # macOS
 # cpack -C Release -G NSIS                   # Windows (requires NSIS)
 ```
