@@ -135,11 +135,10 @@ jobs:
 
       - name: Install Enigma Virtual Box
         if: matrix.os_family == 'windows'
+        shell: pwsh
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/enigmavb.exe" \
-            "https://enigmaprotector.com/assets/files/enigmavb.exe"
-          7z x -o"$RUNNER_TEMP/enigmavb" "$RUNNER_TEMP/enigmavb.exe" -y
-          echo "ENIGMA_VB_DIR=${RUNNER_TEMP}/enigmavb" >> "$GITHUB_ENV"
+          winget install --id Enigma.VirtualBox --accept-source-agreements --accept-package-agreements --silent
+          echo "ENIGMA_VB_DIR=C:\Program Files\Enigma Virtual Box" >> $env:GITHUB_ENV
 
       - name: Install libssh (vcpkg)
         if: matrix.os_family == 'windows'
