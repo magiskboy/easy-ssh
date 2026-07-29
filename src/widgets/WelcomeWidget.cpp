@@ -26,8 +26,7 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent)
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
 
-    auto *hint = new QLabel(
-        tr("Open a saved connection, or create one to get started."), this);
+    auto *hint = new QLabel(tr("Open a saved connection, or create one to get started."), this);
     hint->setAlignment(Qt::AlignCenter);
     hint->setWordWrap(true);
     hint->setEnabled(false);
@@ -102,7 +101,8 @@ void WelcomeWidget::onOpenRecentClicked()
 {
     QListWidgetItem *item = m_recentList ? m_recentList->currentItem() : nullptr;
     if (!item) {
-        emit statusMessage(tr("Select a recent connection to open."), ErrorNotifier::Level::Warning);
+        emit statusMessage(tr("Select a recent connection to open."),
+                           ErrorNotifier::Level::Warning);
         return;
     }
 

@@ -2,8 +2,8 @@
 
 #include <QCoreApplication>
 #include <QSettings>
-#include <QtGlobal>
 #include <QUuid>
+#include <QtGlobal>
 
 #include <iterator>
 

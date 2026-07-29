@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Run the same clang-format check as CI before each commit.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+exec "${ROOT}/.github/scripts/run-clang-format-check.sh"

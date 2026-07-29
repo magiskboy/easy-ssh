@@ -207,11 +207,14 @@ void MainWindow::setupUi()
 
     connect(
         m_connectionList, &ConnectionListWidget::statusMessage, this, &MainWindow::setStatusText);
-    connect(m_connectionList, &ConnectionListWidget::statusMessage, this, [this](const QString &, ErrorNotifier::Level) {
-        if (m_sessionTabs) {
-            m_sessionTabs->refreshWelcome();
-        }
-    });
+    connect(m_connectionList,
+            &ConnectionListWidget::statusMessage,
+            this,
+            [this](const QString &, ErrorNotifier::Level) {
+                if (m_sessionTabs) {
+                    m_sessionTabs->refreshWelcome();
+                }
+            });
 
     connect(m_sessionTabs, &SessionTabWidget::statusMessage, this, &MainWindow::setStatusText);
 

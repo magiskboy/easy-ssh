@@ -619,9 +619,8 @@ void FileExplorerWidget::startNextOpenWithDownload()
     }
 
     const OpenWithItem &item = m_openWithQueue.first();
-    emit statusMessage(
-        tr("Downloading %1 for editing…").arg(QFileInfo(item.remotePath).fileName()),
-        ErrorNotifier::Level::Status);
+    emit statusMessage(tr("Downloading %1 for editing…").arg(QFileInfo(item.remotePath).fileName()),
+                       ErrorNotifier::Level::Status);
     m_refreshAfterOp.clear();
     m_session->downloadPaths({item.remotePath}, item.localDir);
 }
@@ -836,9 +835,8 @@ void FileExplorerWidget::onItemActivated(const QModelIndex &index)
 
     // Ensure the activated file is selected so openWith() uses it.
     if (m_tree->selectionModel() && !m_tree->selectionModel()->isSelected(index)) {
-        m_tree->selectionModel()->select(index,
-                                         QItemSelectionModel::ClearAndSelect |
-                                             QItemSelectionModel::Rows);
+        m_tree->selectionModel()->select(
+            index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         m_tree->setCurrentIndex(index);
     }
 

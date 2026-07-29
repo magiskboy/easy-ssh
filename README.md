@@ -116,6 +116,19 @@ cmake --build --preset debug
 ./build/easy-ssh
 ```
 
+Enable local git hooks (clang-format pre-commit, same check as CI):
+
+```bash
+.github/scripts/install-git-hooks.sh
+```
+
+Format all C++ sources:
+
+```bash
+.github/scripts/run-clang-format.sh
+.github/scripts/run-clang-format-check.sh
+```
+
 Release builds:
 
 ```bash
