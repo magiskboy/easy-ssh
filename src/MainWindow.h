@@ -41,6 +41,7 @@ private:
     void openSettings();
     void openShortcuts();
     void openAbout();
+    void openLogFile();
     void applyAppSettings();
     void rebindShortcuts();
     QAction *registerAction(const QString &actionId, QAction *action);

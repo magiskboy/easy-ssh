@@ -166,7 +166,7 @@ CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scr
 
 - **Linux:** `.AppImage` (primary) and `.tar.gz` fallback tree
 - **macOS:** `.dmg`
-- **Windows:** `.zip` (Qt + libssh + QTermWidget + QtKeychain DLLs)
+- **Windows:** single-file portable `.exe` via 7-Zip SFX (fallback: `.zip` if SFX module is unavailable)
 
 Linux and Windows formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
 
@@ -191,6 +191,12 @@ cpack -G NSIS --config build-release/CPackConfig.cmake
 ```
 
 The CMake project embeds `resources/windows/easy-ssh.ico` / `.rc` and configures CPack NSIS (Start Menu shortcut, uninstall).
+
+Portable single-file builds:
+
+- Packaging script prefers a 7-Zip installer SFX module (`7zS.sfx` / `7zSD.sfx`) and emits `easy-ssh-<target>-portable.exe`.
+- The SFX executable extracts bundled runtime files to a temp directory and launches `easy-ssh.exe` automatically.
+- If your build machine keeps SFX modules in a non-standard path, set `SFX_MODULE_PATH` before running `.github/scripts/package.sh`.
 
 ## Contributing
 

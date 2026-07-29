@@ -4,6 +4,7 @@
 #include "Connection.h"
 #include "ConnectionModel.h"
 #include "ErrorNotifier.h"
+#include "Logging.h"
 #include "SecretStore.h"
 #include "widgets/AboutDialog.h"
 #include "widgets/ConnectionListWidget.h"
@@ -16,6 +17,7 @@
 
 #include <QAction>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QKeySequence>
@@ -28,6 +30,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
@@ -417,6 +420,9 @@ void MainWindow::setupMenus()
                       &TerminalSessionWidget::saveScreenshot);
 
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));
+    auto *openLogAction = helpMenu->addAction(tr("Open &Log"));
+    connect(openLogAction, &QAction::triggered, this, &MainWindow::openLogFile);
+    helpMenu->addSeparator();
     auto *aboutAction = helpMenu->addAction(tr("&About"));
     registerAction(QStringLiteral("general.about"), aboutAction);
     connect(aboutAction, &QAction::triggered, this, &MainWindow::openAbout);
@@ -440,6 +446,19 @@ void MainWindow::openAbout()
 {
     AboutDialog dialog(this);
     dialog.exec();
+}
+
+void MainWindow::openLogFile()
+{
+    const QString path = logFilePath();
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
+        ErrorNotifier::notify(this,
+                              tr("Open Log"),
+                              tr("Cannot open log file with the system application: %1").arg(path),
+                              ErrorNotifier::Level::Error);
+        return;
+    }
+    setStatusText(tr("Opened log file"), ErrorNotifier::Level::Status);
 }
 
 void MainWindow::applyAppSettings()

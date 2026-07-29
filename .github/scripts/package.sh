@@ -665,6 +665,12 @@ archive_macos() {
 }
 
 archive_windows() {
+  local exe
+  exe="$(find_binary)" || {
+    echo "error: easy-ssh.exe not found under $STAGE" >&2
+    exit 1
+  }
+
   local nsis
   nsis="$(find "$BINARY_DIR" -maxdepth 2 \( -name 'easy-ssh-*.exe' -o -name '*-win64.exe' \) 2>/dev/null | head -1 || true)"
   if [[ -n "$nsis" ]]; then
@@ -675,13 +681,66 @@ archive_windows() {
     return 0
   fi
 
-  local archive="easy-ssh-${TARGET}.zip"
   local wrap="$OUT_DIR/wrap"
   rm -rf "$wrap"
   mkdir -p "$wrap/easy-ssh"
   shopt -s dotglob
   mv "$STAGE"/* "$wrap/easy-ssh/"
   shopt -u dotglob
+
+  local exe_rel="${exe#"$STAGE"/}"
+  local run_rel
+  run_rel="$(printf '%s' "$exe_rel" | sed 's#/#\\\\#g')"
+
+  # Prefer installer SFX modules because they can auto-run the app after extract.
+  local sfx_module=""
+  local mod
+  for mod in \
+    "${SFX_MODULE_PATH:-}" \
+    "$(dirname "$(command -v 7z 2>/dev/null || echo /nonexistent)")/7zS.sfx" \
+    "$(dirname "$(command -v 7z 2>/dev/null || echo /nonexistent)")/7zSD.sfx" \
+    "/c/Program Files/7-Zip/7zS.sfx" \
+    "/c/Program Files/7-Zip/7zSD.sfx" \
+    "/mingw64/lib/p7zip/7zS.sfx" \
+    "/mingw64/lib/p7zip/7zSD.sfx"; do
+    [[ -n "$mod" && -f "$mod" ]] || continue
+    sfx_module="$mod"
+    break
+  done
+
+  if [[ -n "$sfx_module" ]] && command -v 7z >/dev/null 2>&1; then
+    local archive7z="$OUT_DIR/easy-ssh-${TARGET}.7z"
+    local cfg="$OUT_DIR/sfx-config.txt"
+    local portable="easy-ssh-${TARGET}-portable.exe"
+    local payload_root
+    payload_root="$(cd "$wrap" && pwd)"
+
+    (
+      cd "$payload_root"
+      7z a -t7z -mx=9 "$archive7z" easy-ssh >/dev/null
+    )
+
+    cat >"$cfg" <<EOF
+;!@Install@!UTF-8!
+Title="Easy SSH Portable"
+ExtractTitle="Easy SSH"
+ExtractDialogText="Extracting Easy SSH..."
+GUIMode="2"
+RunProgram="easy-ssh\\\\${run_rel}"
+;!@InstallEnd@!
+EOF
+
+    # Build a single self-extracting exe.
+    cat "$sfx_module" "$cfg" "$archive7z" >"$OUT_DIR/$portable"
+    rm -f "$archive7z" "$cfg"
+    rm -rf "$wrap"
+    log "Created $OUT_DIR/$portable"
+    ls -lh "$OUT_DIR/$portable"
+    return 0
+  fi
+
+  log "warning: installer SFX module not found; falling back to zip archive"
+  local archive="easy-ssh-${TARGET}.zip"
   (
     cd "$wrap"
     if command -v 7z >/dev/null 2>&1; then
