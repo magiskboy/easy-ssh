@@ -281,6 +281,15 @@ QStringList AppSettings::shortcutActionIds()
 
 QKeySequence AppSettings::defaultShortcut(const QString &actionId)
 {
+#ifdef Q_OS_MACOS
+    // Native macOS: ⌘C / ⌘V. Physical Control+C still reaches the terminal as interrupt.
+    if (actionId == QLatin1String("terminal.copy")) {
+        return QKeySequence(QKeySequence::Copy);
+    }
+    if (actionId == QLatin1String("terminal.paste")) {
+        return QKeySequence(QKeySequence::Paste);
+    }
+#endif
     if (const ShortcutDef *def = findShortcutDef(actionId)) {
         return QKeySequence(QLatin1String(def->sequence));
     }
