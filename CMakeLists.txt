@@ -38,7 +38,7 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS
 
 qt_standard_project_setup()
 
-find_package(libssh REQUIRED)
+find_package(libssh 0.11 REQUIRED)
 find_package(qtermwidget6 REQUIRED)
 find_package(Qt6Keychain REQUIRED)
 
@@ -280,6 +280,24 @@ if(WIN32)
     set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
 endif()
 include(CPack)
+
+# Default ON for Linux so compile_commands.json includes QtTest for the IDE/clangd.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_easy_ssh_it_default ON)
+else()
+    set(_easy_ssh_it_default OFF)
+endif()
+option(EASY_SSH_INTEGRATION_TESTS "Build local headless integration tests (Linux)"
+       ${_easy_ssh_it_default})
+unset(_easy_ssh_it_default)
+if(EASY_SSH_INTEGRATION_TESTS)
+    if(UNIX AND NOT APPLE)
+        enable_testing()
+        add_subdirectory(tests/integration)
+    else()
+        message(WARNING "Integration tests are only supported on Linux for now")
+    endif()
+endif()
 
 message(STATUS "Easy SSH ${PROJECT_VERSION} (easy-ssh)")
 message(STATUS "  Qt6:          ${Qt6_VERSION}")

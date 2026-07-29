@@ -95,7 +95,8 @@ jobs:
             ninja-build \
             pkg-config \
             git \
-            libssh-dev \
+            libssl-dev \
+            zlib1g-dev \
             libsecret-1-dev \
             libglib2.0-dev
 
@@ -165,6 +166,20 @@ jobs:
           # Also expose for DLL bundling / find_package fallbacks.
           echo "CMAKE_PREFIX_PATH=${VCPKG_ROOT}/installed/x64-windows${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}}" >> "$GITHUB_ENV"
 
+      - name: Build libssh (>= 0.11 for ProxyJump)
+        if: matrix.os_family == 'linux'
+        env:
+          PREFIX: ${{ github.workspace }}/.deps/prefix
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/build-libssh.sh
+          .github/scripts/build-libssh.sh
+          {
+            echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+            echo "LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+            echo "CMAKE_PREFIX_PATH=${PREFIX}${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
+          } >> "$GITHUB_ENV"
+
       - name: Build QTermWidget (and QtKeychain on Linux/Windows)
         env:
           PREFIX: ${{ github.workspace }}/.deps/prefix
@@ -213,6 +228,7 @@ jobs:
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
             -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" \
+            -DEASY_SSH_INTEGRATION_TESTS=OFF \
             ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 
       - name: Build

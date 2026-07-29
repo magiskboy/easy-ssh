@@ -54,7 +54,11 @@ private:
                         const QString &password,
                         bool passwordProvided,
                         const QString &passphrase,
-                        bool passphraseProvided);
+                        bool passphraseProvided,
+                        const QString &gatewayPassword,
+                        bool gatewayPasswordProvided,
+                        const QString &gatewayPassphrase,
+                        bool gatewayPassphraseProvided);
     void warnSecretFailure(const QString &error);
 
     ConnectionModel *m_model = nullptr;

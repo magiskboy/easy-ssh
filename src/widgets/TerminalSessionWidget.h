@@ -38,7 +38,7 @@ public:
     explicit TerminalSessionWidget(QWidget *parent = nullptr);
     ~TerminalSessionWidget() override;
 
-    void start(const Connection &connection, const QString &secret);
+    void start(const Connection &connection, const SessionCredentials &credentials);
     void disconnectSession();
     void reconnect();
     void applySettings();
@@ -96,7 +96,9 @@ protected:
 private slots:
     void onConnected();
     void onDataReceived(const QByteArray &data);
-    void onHostKeyPrompt(SshWorker::HostKeyPrompt reason, const QString &fingerprint);
+    void onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
+                         const QString &fingerprint,
+                         const QString &contextLabel);
     void onErrorOccurred(const QString &message);
     void onDisconnected();
     void onSendData(const char *data, int length);
@@ -115,7 +117,7 @@ private:
     void schedulePtySizeSync();
 
     Connection m_connection;
-    QString m_secret;
+    SessionCredentials m_credentials;
     QString m_displayName;
     State m_state = State::Disconnected;
     QDateTime m_connectedAt;

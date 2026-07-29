@@ -91,7 +91,7 @@ EASY_SSH_PREFIX=/usr/local curl -fsSL https://raw.githubusercontent.com/magiskbo
 - CMake 3.21+
 - A C++20 compiler
 - Qt 6.6+ (Widgets)
-- [libssh](https://www.libssh.org/)
+- [libssh](https://www.libssh.org/) (>= 0.11, required for ProxyJump)
 - [QTermWidget](https://github.com/lxqt/qtermwidget)
 - [QtKeychain](https://github.com/frankosterfeld/qtkeychain)
 

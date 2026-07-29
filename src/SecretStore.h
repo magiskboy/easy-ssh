@@ -12,6 +12,8 @@ public:
     {
         Password,
         Passphrase,
+        GatewayPassword,
+        GatewayPassphrase,
     };
 
     explicit SecretStore(QObject *parent = nullptr);

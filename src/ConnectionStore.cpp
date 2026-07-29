@@ -24,6 +24,44 @@ AuthType authTypeFromString(const QString &value)
     return AuthType::Password;
 }
 
+void loadJumpHops(QSettings &settings, Connection &connection)
+{
+    connection.jumpHops.clear();
+    const int hopCount = settings.beginReadArray(QStringLiteral("jumpHops"));
+    connection.jumpHops.reserve(hopCount);
+
+    for (int i = 0; i < hopCount; ++i) {
+        settings.setArrayIndex(i);
+        JumpHop hop;
+        hop.host = settings.value(QStringLiteral("host")).toString();
+        hop.port = static_cast<quint16>(settings.value(QStringLiteral("port"), 22).toUInt());
+        hop.username = settings.value(QStringLiteral("username")).toString();
+        hop.authType = authTypeFromString(settings.value(QStringLiteral("authType")).toString());
+        hop.privateKeyPath = settings.value(QStringLiteral("privateKeyPath")).toString();
+        hop.useTargetCredentials =
+            settings.value(QStringLiteral("useTargetCredentials"), true).toBool();
+        connection.jumpHops.append(hop);
+    }
+
+    settings.endArray();
+}
+
+void saveJumpHops(QSettings &settings, const Connection &connection)
+{
+    settings.beginWriteArray(QStringLiteral("jumpHops"), connection.jumpHops.size());
+    for (int i = 0; i < connection.jumpHops.size(); ++i) {
+        settings.setArrayIndex(i);
+        const JumpHop &hop = connection.jumpHops.at(i);
+        settings.setValue(QStringLiteral("host"), hop.host);
+        settings.setValue(QStringLiteral("port"), hop.port);
+        settings.setValue(QStringLiteral("username"), hop.username);
+        settings.setValue(QStringLiteral("authType"), authTypeToString(hop.authType));
+        settings.setValue(QStringLiteral("privateKeyPath"), hop.privateKeyPath);
+        settings.setValue(QStringLiteral("useTargetCredentials"), hop.useTargetCredentials);
+    }
+    settings.endArray();
+}
+
 } // namespace
 
 QList<Connection> ConnectionStore::load()
@@ -47,6 +85,14 @@ QList<Connection> ConnectionStore::load()
             authTypeFromString(settings.value(QStringLiteral("authType")).toString());
         connection.privateKeyPath = settings.value(QStringLiteral("privateKeyPath")).toString();
         connection.startupDirectory = settings.value(QStringLiteral("startupDirectory")).toString();
+        connection.keepAliveIntervalSec =
+            settings.value(QStringLiteral("keepAliveIntervalSec"), 0).toInt();
+        connection.keepAliveCountMax =
+            settings.value(QStringLiteral("keepAliveCountMax"), 3).toInt();
+        connection.compressionEnabled =
+            settings.value(QStringLiteral("compressionEnabled"), false).toBool();
+
+        loadJumpHops(settings, connection);
 
         if (connection.id.isNull() || connection.name.isEmpty()) {
             continue;
@@ -75,6 +121,10 @@ void ConnectionStore::save(const QList<Connection> &connections)
         settings.setValue(QStringLiteral("authType"), authTypeToString(connection.authType));
         settings.setValue(QStringLiteral("privateKeyPath"), connection.privateKeyPath);
         settings.setValue(QStringLiteral("startupDirectory"), connection.startupDirectory);
+        settings.setValue(QStringLiteral("keepAliveIntervalSec"), connection.keepAliveIntervalSec);
+        settings.setValue(QStringLiteral("keepAliveCountMax"), connection.keepAliveCountMax);
+        settings.setValue(QStringLiteral("compressionEnabled"), connection.compressionEnabled);
+        saveJumpHops(settings, connection);
     }
 
     settings.endArray();

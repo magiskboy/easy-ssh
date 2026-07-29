@@ -3,10 +3,15 @@
 #include "Connection.h"
 
 #include <QDialog>
+#include <QList>
 
+class QCheckBox;
 class QComboBox;
 class QFormLayout;
+class QGroupBox;
 class QLineEdit;
+class QListWidget;
+class QPushButton;
 class QSpinBox;
 class QWidget;
 
@@ -31,19 +36,40 @@ public:
     bool passwordProvided() const;
     bool passphraseProvided() const;
 
+    QString gatewayPassword() const;
+    QString gatewayPassphrase() const;
+    bool gatewayPasswordProvided() const;
+    bool gatewayPassphraseProvided() const;
+
 private slots:
     void onAuthTypeChanged(int index);
+    void onGatewayAuthTypeChanged(int index);
+    void onUseGatewayToggled(bool enabled);
+    void onHopSelectionChanged();
+    void onAddHop();
+    void onRemoveHop();
     void browsePrivateKey();
+    void browseGatewayPrivateKey();
     void accept() override;
 
 private:
     void setupUi();
     bool validate();
     void updateAuthFieldsVisibility();
+    void updateGatewayAuthFieldsVisibility();
+    void updateGatewayPanelVisibility();
+    void syncHopEditorFromCurrent();
+    void syncCurrentHopFromEditor();
+    void refreshHopList();
+    int currentHopIndex() const;
 
     Mode m_mode;
     QUuid m_id;
-    QFormLayout *m_form = nullptr;
+    QList<JumpHop> m_jumpHops;
+
+    QFormLayout *m_targetForm = nullptr;
+    QGroupBox *m_gatewayGroup = nullptr;
+    QGroupBox *m_advancedGroup = nullptr;
 
     QLineEdit *m_nameEdit = nullptr;
     QLineEdit *m_hostEdit = nullptr;
@@ -55,4 +81,23 @@ private:
     QWidget *m_privateKeyRow = nullptr;
     QLineEdit *m_passphraseEdit = nullptr;
     QLineEdit *m_startupDirEdit = nullptr;
+
+    QCheckBox *m_useGatewayCheck = nullptr;
+    QListWidget *m_hopList = nullptr;
+    QLineEdit *m_gatewayHostEdit = nullptr;
+    QSpinBox *m_gatewayPortSpin = nullptr;
+    QLineEdit *m_gatewayUsernameEdit = nullptr;
+    QCheckBox *m_useTargetCredentialsCheck = nullptr;
+    QComboBox *m_gatewayAuthTypeCombo = nullptr;
+    QLineEdit *m_gatewayPasswordEdit = nullptr;
+    QLineEdit *m_gatewayPrivateKeyEdit = nullptr;
+    QWidget *m_gatewayPrivateKeyRow = nullptr;
+    QLineEdit *m_gatewayPassphraseEdit = nullptr;
+    QFormLayout *m_gatewayForm = nullptr;
+    QPushButton *m_addHopButton = nullptr;
+    QPushButton *m_removeHopButton = nullptr;
+
+    QSpinBox *m_keepAliveIntervalSpin = nullptr;
+    QSpinBox *m_keepAliveCountSpin = nullptr;
+    QCheckBox *m_compressionCheck = nullptr;
 };

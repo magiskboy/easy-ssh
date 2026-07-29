@@ -95,6 +95,38 @@ QString normalizeConfigPath(const QString &path, const QString &relativeToDir)
                : QFileInfo(expanded).canonicalFilePath();
 }
 
+JumpHop parseProxyJumpEntry(const QString &entry, const QString &fallbackUser)
+{
+    JumpHop hop;
+    hop.useTargetCredentials = true;
+
+    QString trimmed = entry.trimmed();
+    if (trimmed.isEmpty()) {
+        return hop;
+    }
+
+    QString user;
+    const int at = trimmed.indexOf(QLatin1Char('@'));
+    if (at >= 0) {
+        user = trimmed.left(at);
+        trimmed = trimmed.mid(at + 1);
+    }
+
+    const int colon = trimmed.lastIndexOf(QLatin1Char(':'));
+    if (colon > 0) {
+        bool ok = false;
+        const uint port = trimmed.mid(colon + 1).toUInt(&ok);
+        if (ok && port > 0 && port <= 65535) {
+            hop.port = static_cast<quint16>(port);
+            trimmed = trimmed.left(colon);
+        }
+    }
+
+    hop.host = trimmed;
+    hop.username = user.isEmpty() ? fallbackUser : user;
+    return hop;
+}
+
 QStringList expandIncludePattern(const QString &pattern, const QString &relativeToDir)
 {
     const QString expanded = expandTilde(pattern);
@@ -120,6 +152,66 @@ QStringList expandIncludePattern(const QString &pattern, const QString &relative
         paths.append(dir.absoluteFilePath(name));
     }
     return paths;
+}
+
+QString readProxyJumpForAlias(const QString &configPath, const QString &alias)
+{
+    const QString normalized = normalizeConfigPath(configPath, QDir::homePath());
+    QFile file(normalized);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+
+    const QString baseDir = QFileInfo(normalized).absolutePath();
+    bool inMatchingBlock = false;
+    QString proxyJump;
+
+    QTextStream stream(&file);
+    while (!stream.atEnd()) {
+        QString line = stream.readLine().trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) {
+            continue;
+        }
+
+        const int hash = line.indexOf(QLatin1Char('#'));
+        if (hash > 0 && line.at(hash - 1).isSpace()) {
+            line = line.left(hash).trimmed();
+            if (line.isEmpty()) {
+                continue;
+            }
+        }
+
+        const QStringList tokens = splitConfigTokens(line);
+        if (tokens.isEmpty()) {
+            continue;
+        }
+
+        const QString key = tokens.first().toLower();
+        if (key == QLatin1String("host")) {
+            inMatchingBlock = tokens.size() == 2 && tokens.at(1) == alias;
+            continue;
+        }
+
+        if (!inMatchingBlock) {
+            continue;
+        }
+
+        if (key == QLatin1String("proxyjump") && tokens.size() >= 2) {
+            proxyJump = tokens.mid(1).join(QLatin1Char(' '));
+        } else if (key == QLatin1String("include")) {
+            for (int i = 1; i < tokens.size(); ++i) {
+                const QStringList included = expandIncludePattern(tokens.at(i), baseDir);
+                for (const QString &includedPath : included) {
+                    const QString nested = readProxyJumpForAlias(includedPath, alias);
+                    if (!nested.isEmpty()) {
+                        proxyJump = nested;
+                    }
+                }
+            }
+        }
+    }
+
+    return proxyJump;
 }
 
 void collectAliasesFromFile(const QString &path,
@@ -256,6 +348,9 @@ SshConfigHost resolveAliasWithLibssh(const QString &alias, const QString &config
         host.identityFiles.append(expandTilde(path));
     }
 
+    host.proxyJump = readProxyJumpForAlias(
+        configPath.isEmpty() ? SshConfigParser::defaultConfigPath() : configPath, alias);
+
     ssh_free(session);
     return host;
 }
@@ -305,6 +400,9 @@ QList<Connection> SshConfigParser::toConnections(const QList<SshConfigHost> &hos
             host.identityFiles.isEmpty() ? QString() : host.identityFiles.first();
         connection.source = ConnectionSource::SshConfig;
         connection.configAlias = host.alias;
+        if (!host.proxyJump.isEmpty()) {
+            connection.jumpHops = SshConfigParser::parseProxyJumpHops(host.proxyJump);
+        }
         connections.append(connection);
     }
 
@@ -314,4 +412,17 @@ QList<Connection> SshConfigParser::toConnections(const QList<SshConfigHost> &hos
 QUuid SshConfigParser::stableIdForAlias(const QString &alias)
 {
     return QUuid::createUuidV5(kSshConfigNamespace, QStringLiteral("ssh-config:") + alias);
+}
+
+QList<JumpHop> SshConfigParser::parseProxyJumpHops(const QString &proxyJump)
+{
+    QList<JumpHop> hops;
+    const QString fallbackUser = defaultUsername();
+    for (const QString &entry : proxyJump.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        const JumpHop hop = parseProxyJumpEntry(entry, fallbackUser);
+        if (!hop.host.isEmpty()) {
+            hops.append(hop);
+        }
+    }
+    return hops;
 }

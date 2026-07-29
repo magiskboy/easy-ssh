@@ -14,9 +14,15 @@
 #include <QWaitCondition>
 
 #include <atomic>
+#include <vector>
 
+#include <libssh/callbacks.h>
 #include <libssh/libssh.h>
 #include <libssh/sftp.h>
+
+#if defined(LIBSSH_VERSION_INT) && (LIBSSH_VERSION_INT < SSH_VERSION_INT(0, 11, 0))
+#error "easy-ssh requires libssh >= 0.11 for ProxyJump (SSH_OPTIONS_PROXYJUMP)"
+#endif
 
 class QTcpServer;
 class QTcpSocket;
@@ -39,7 +45,7 @@ public:
 
 public slots:
     void connectToHost(const Connection &connection,
-                       const QString &secret,
+                       const SessionCredentials &credentials,
                        int cols = 80,
                        int rows = 24);
     void writeToChannel(const QByteArray &data);
@@ -64,7 +70,9 @@ public slots:
 signals:
     void connected();
     void dataReceived(const QByteArray &data);
-    void hostKeyPrompt(SshWorker::HostKeyPrompt reason, const QString &fingerprintSha256);
+    void hostKeyPrompt(SshWorker::HostKeyPrompt reason,
+                       const QString &fingerprintSha256,
+                       const QString &contextLabel);
     void errorOccurred(const QString &message);
     void disconnected();
 
@@ -102,29 +110,53 @@ private:
         QList<TunnelBridge *> bridges;
     };
 
+    struct JumpHopContext
+    {
+        SshWorker *worker = nullptr;
+        int hopIndex = 0;
+    };
+
     bool verifyKnownHost();
+    bool verifyKnownHostForSession(ssh_session session, const QString &contextLabel);
     bool applyConnectionOptions(ssh_session session, const Connection &connection);
+    void applyAdvancedOptions(ssh_session session, const Connection &connection);
+    void registerJumpCallbacks(ssh_session session, const Connection &connection);
     bool connectSessionWithFallback(const Connection &connection, QString *errorOut);
     void applyWindowsAlgorithmFallback(ssh_session session);
     void logSessionOptions(ssh_session session, const char *stage) const;
     bool promptHostKeyAndUpdate(HostKeyPrompt reason, bool removeExistingEntries);
-    bool removeKnownHostsEntriesForSession();
-    QString knownHostsFilePath() const;
+    bool promptHostKeyAndUpdateForSession(ssh_session session,
+                                          HostKeyPrompt reason,
+                                          bool removeExistingEntries,
+                                          const QString &contextLabel);
+    bool removeKnownHostsEntriesForSession(ssh_session session);
+    bool authenticateSession(ssh_session session, const Connection &profile, QString secret);
     bool authenticate(const Connection &connection, QString &secret);
-    bool authenticatePassword(const QString &password);
-    bool authenticateKeyboardInteractive(const QString &password);
-    bool authenticateWithAgent();
-    bool authenticatePrivateKey(const QString &keyPath, const QString &passphrase);
-    bool authenticatePublicKeyAuto(const QString &passphrase);
+    bool authenticatePassword(ssh_session session, const QString &password);
+    bool authenticateKeyboardInteractive(ssh_session session, const QString &password);
+    bool authenticateWithAgent(ssh_session session);
+    bool
+    authenticatePrivateKey(ssh_session session, const QString &keyPath, const QString &passphrase);
+    bool authenticatePublicKeyAuto(ssh_session session, const QString &passphrase);
     bool openShell();
     bool openSftp(QString *failureMessage = nullptr);
     void cleanup();
+    void pollKeepAlive(bool hadChannelActivity);
     QString sessionError() const;
+    QString sessionErrorOf(ssh_session session) const;
     QString sftpErrorMessage() const;
     static QString fingerprintOf(ssh_session session);
     static bool knownHostsLineMatchesHost(const QString &hostField, const QString &host, int port);
     static QString formatPermissions(uint32_t permissions, uint8_t type);
     static QString localIoErrorMessage(const QString &qtErrorString);
+
+    int handleJumpBeforeConnection(ssh_session session, int hopIndex);
+    int handleJumpVerifyKnownHost(ssh_session session, int hopIndex);
+    int handleJumpAuthenticate(ssh_session session, int hopIndex);
+
+    static int jumpBeforeConnectionCb(ssh_session session, void *userdata);
+    static int jumpVerifyKnownHostCb(ssh_session session, void *userdata);
+    static int jumpAuthenticateCb(ssh_session session, void *userdata);
 
     void beginTransfer(qint64 bytesTotal);
     void endTransfer();
@@ -166,6 +198,16 @@ private:
     bool m_running = false;
     int m_ptyCols = 80;
     int m_ptyRows = 24;
+
+    Connection m_connectConnection;
+    SessionCredentials m_connectCredentials;
+    std::vector<JumpHopContext> m_jumpContexts;
+    std::vector<ssh_jump_callbacks_struct> m_jumpCallbacks;
+
+    int m_keepAliveIntervalSec = 0;
+    int m_keepAliveCountMax = 3;
+    qint64 m_lastKeepAliveMs = 0;
+    int m_keepAliveMissed = 0;
 
     std::atomic_bool m_transferCancel{false};
     qint64 m_progressBytesDone = 0;

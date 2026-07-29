@@ -102,14 +102,15 @@ TerminalSessionWidget::~TerminalSessionWidget()
     clearSecret();
 }
 
-void TerminalSessionWidget::start(const Connection &connection, const QString &secret)
+void TerminalSessionWidget::start(const Connection &connection,
+                                  const SessionCredentials &credentials)
 {
     if (m_state == State::Connecting) {
         return;
     }
 
     m_connection = connection;
-    m_secret = secret;
+    m_credentials = credentials;
     m_displayName = connection.displayText();
     beginConnect();
 }
@@ -517,11 +518,11 @@ void TerminalSessionWidget::beginConnect()
     readTerminalSize(&cols, &rows);
 
     const Connection connection = m_connection;
-    const QString secret = m_secret;
+    const SessionCredentials credentials = m_credentials;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, connection, secret, cols, rows]() {
-            worker->connectToHost(connection, secret, cols, rows);
+        [worker = m_worker, connection, credentials, cols, rows]() {
+            worker->connectToHost(connection, credentials, cols, rows);
         },
         Qt::QueuedConnection);
 }
@@ -564,36 +565,43 @@ void TerminalSessionWidget::onDataReceived(const QByteArray &data)
 }
 
 void TerminalSessionWidget::onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
-                                            const QString &fingerprint)
+                                            const QString &fingerprint,
+                                            const QString &contextLabel)
 {
     bool accept = false;
+    const QString hostContext =
+        contextLabel.isEmpty() ? QString() : contextLabel + QStringLiteral("\n\n");
 
     if (reason == SshWorker::HostKeyPrompt::Unknown) {
-        const auto result =
-            QMessageBox::question(this,
-                                  tr("Unknown Host Key"),
-                                  tr("The server host key is not in known_hosts.\n\n"
-                                     "SHA256 fingerprint:\n%1\n\n"
-                                     "Do you trust this host and want to continue?")
-                                      .arg(fingerprint),
-                                  QMessageBox::Yes | QMessageBox::No,
-                                  QMessageBox::No);
+        const auto result = QMessageBox::question(
+            this,
+            contextLabel.isEmpty() ? tr("Unknown Host Key") : tr("Unknown Gateway Host Key"),
+            hostContext + tr("The server host key is not in known_hosts.\n\n"
+                             "SHA256 fingerprint:\n%1\n\n"
+                             "Do you trust this host and want to continue?")
+                              .arg(fingerprint),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
         accept = (result == QMessageBox::Yes);
     } else {
         QMessageBox box(this);
         box.setIcon(QMessageBox::Critical);
         if (reason == SshWorker::HostKeyPrompt::Changed) {
-            box.setWindowTitle(tr("Host Key Changed"));
+            box.setWindowTitle(contextLabel.isEmpty() ? tr("Host Key Changed")
+                                                      : tr("Gateway Host Key Changed"));
             box.setText(tr("WARNING: The host key for this server has changed."));
-            box.setInformativeText(tr("This may indicate a man-in-the-middle attack, or that the "
+            box.setInformativeText(hostContext +
+                                   tr("This may indicate a man-in-the-middle attack, or that the "
                                       "server administrator replaced the key.\n\n"
                                       "SHA256 fingerprint:\n%1\n\n"
                                       "Only continue if you trust the new key.")
                                        .arg(fingerprint));
         } else {
-            box.setWindowTitle(tr("Host Key Type Mismatch"));
+            box.setWindowTitle(contextLabel.isEmpty() ? tr("Host Key Type Mismatch")
+                                                      : tr("Gateway Host Key Type Mismatch"));
             box.setText(tr("WARNING: The host key type differs from known_hosts."));
-            box.setInformativeText(tr("An attacker might present a different key type to bypass "
+            box.setInformativeText(hostContext +
+                                   tr("An attacker might present a different key type to bypass "
                                       "verification.\n\n"
                                       "SHA256 fingerprint:\n%1\n\n"
                                       "Only continue if you trust this key.")
@@ -788,8 +796,10 @@ void TerminalSessionWidget::shutdownWorker()
 
 void TerminalSessionWidget::clearSecret()
 {
-    m_secret.fill(QChar(u'\0'));
-    m_secret.clear();
+    m_credentials.targetSecret.fill(QChar(u'\0'));
+    m_credentials.targetSecret.clear();
+    m_credentials.gatewaySecret.fill(QChar(u'\0'));
+    m_credentials.gatewaySecret.clear();
 }
 
 void TerminalSessionWidget::showConnectingState()

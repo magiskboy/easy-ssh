@@ -26,6 +26,9 @@ public:
         StartupDirectoryRole,
         SourceRole,
         ConfigAliasRole,
+        UsesJumpHostRole,
+        KeepAliveIntervalRole,
+        CompressionEnabledRole,
     };
 
     explicit ConnectionModel(QObject *parent = nullptr);

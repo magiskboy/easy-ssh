@@ -13,6 +13,7 @@ struct SshConfigHost
     QString user;
     quint16 port = 22;
     QStringList identityFiles;
+    QString proxyJump;
 };
 
 /**
@@ -28,4 +29,5 @@ public:
     static QList<SshConfigHost> load(const QString &path = {});
     static QList<Connection> toConnections(const QList<SshConfigHost> &hosts);
     static QUuid stableIdForAlias(const QString &alias);
+    static QList<JumpHop> parseProxyJumpHops(const QString &proxyJump);
 };
