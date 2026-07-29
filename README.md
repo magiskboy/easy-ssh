@@ -59,6 +59,29 @@ Built with Qt 6 for a native look on **Linux**, **Windows**, and **macOS**.
 
 > **Note:** Linux is the primary development and test target today. Other platforms depend on available Qt, libssh, and QTermWidget packages.
 
+## Install (Linux / macOS)
+
+Download and install the latest GitHub release for your OS and CPU:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
+```
+
+The script detects Linux/macOS and amd64/arm64, then installs:
+
+- **Linux:** `easy-ssh-*-*.tar.gz` under `~/.local/opt/easy-ssh`, with a symlink at `~/.local/bin/easy-ssh`
+- **macOS:** `easy-ssh-*-*.dmg` into `/Applications`
+
+Optional:
+
+```bash
+# Pin a release tag
+EASY_SSH_VERSION=v1.0.0 curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
+
+# Custom Linux prefix (default: ~/.local)
+EASY_SSH_PREFIX=/usr/local curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
+```
+
 ## Development
 
 ### Prerequisites
