@@ -18,8 +18,95 @@ mkdir -p "$STAGE"
 log() { printf 'package: %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
+# Windows: windeployqt prep (must run before cmake --install deploy script)
+# ---------------------------------------------------------------------------
+split_cmake_prefix_path() {
+  local paths="${CMAKE_PREFIX_PATH:-}"
+  paths="${paths//;/$'\n'}"
+  paths="${paths//:/$'\n'}"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    printf '%s\n' "$path"
+  done <<<"$paths"
+}
+
+find_named_file_in_prefixes() {
+  local name="$1"
+  local root
+
+  if [[ -n "${PREFIX:-}" ]]; then
+    for root in "$PREFIX/bin" "$PREFIX"; do
+      if [[ -f "$root/$name" ]]; then
+        echo "$root/$name"
+        return 0
+      fi
+    done
+  fi
+
+  while IFS= read -r root; do
+    for sub in "$root/bin" "$root"; do
+      if [[ -f "$sub/$name" ]]; then
+        echo "$sub/$name"
+        return 0
+      fi
+    done
+  done < <(split_cmake_prefix_path)
+
+  return 1
+}
+
+qt_bin_directory() {
+  if [[ -n "${QT_ROOT_DIR:-}" && -d "${QT_ROOT_DIR}/bin" ]]; then
+    echo "${QT_ROOT_DIR}/bin"
+    return 0
+  fi
+  if command -v qtpaths6 >/dev/null 2>&1; then
+    echo "$(qtpaths6 --install-prefix)/bin"
+    return 0
+  fi
+  if command -v windeployqt6 >/dev/null 2>&1; then
+    dirname "$(command -v windeployqt6)"
+    return 0
+  fi
+  if command -v windeployqt >/dev/null 2>&1; then
+    dirname "$(command -v windeployqt)"
+    return 0
+  fi
+  return 1
+}
+
+prepare_windows_windeployqt() {
+  # windeployqt treats Qt6*-prefixed DLLs as official Qt modules and tries to
+  # resolve them from QT_INSTALL_BINS. QtKeychain is built into .deps/prefix,
+  # so stage it into the Qt bin directory before install(SCRIPT) runs windeployqt.
+  # See: https://doc.qt.io/qt-6/windows-deployment.html (third-party libraries)
+  local qt_bin
+  qt_bin="$(qt_bin_directory)" || {
+    log "warning: could not locate Qt bin directory for windeployqt prep"
+    return 0
+  }
+
+  local keychain_src
+  keychain_src="$(find_named_file_in_prefixes qt6keychain.dll)" || {
+    log "warning: qt6keychain.dll not found under PREFIX/CMAKE_PREFIX_PATH"
+    return 0
+  }
+
+  if [[ ! -f "$qt_bin/qt6keychain.dll" ]]; then
+    cp -a "$keychain_src" "$qt_bin/qt6keychain.dll"
+    log "Staged qt6keychain.dll into $qt_bin for windeployqt"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Install project into the stage prefix (runs Qt deploy install(SCRIPT)).
 # ---------------------------------------------------------------------------
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    prepare_windows_windeployqt
+    ;;
+esac
+
 log "Installing into $STAGE"
 cmake --install "$BINARY_DIR" --prefix "$STAGE"
 
