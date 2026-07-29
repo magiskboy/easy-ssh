@@ -62,7 +62,7 @@ if "%NSIS_OUT%"=="" (
     exit /b 1
 )
 
-set "DEST=%OUT_DIR%\easy-ssh-%TARGET%-setup.exe"
+set "DEST=%OUT_DIR%\easy-ssh-%TARGET%.exe"
 copy /y "%NSIS_OUT%" "%DEST%" >nul
 if errorlevel 1 (
     echo error: failed to copy installer to %DEST% >&2
