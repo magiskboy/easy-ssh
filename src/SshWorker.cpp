@@ -20,11 +20,46 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#ifndef S_IRUSR
+// Remote SFTP servers use Unix permission bits; MSVC does not define these macros.
+#define S_IRUSR 00400u
+#define S_IWUSR 00200u
+#define S_IXUSR 00100u
+#define S_IRWXU (S_IRUSR | S_IWUSR | S_IXUSR)
+#define S_IRGRP 00040u
+#define S_IWGRP 00020u
+#define S_IXGRP 00010u
+#define S_IROTH 00004u
+#define S_IWOTH 00002u
+#define S_IXOTH 00001u
+#endif
+
 namespace
 {
 constexpr size_t kXferBufSize = 16384;
 constexpr qint64 kProgressEmitBytes = 64 * 1024;
 constexpr qint64 kProgressEmitMs = 100;
+constexpr auto kClientInitBufferError = "Failed to construct client init buffer";
+
+QString optionString(ssh_session session, enum ssh_options_e type)
+{
+    char *value = nullptr;
+    if (ssh_options_get(session, type, &value) != SSH_OK || value == nullptr) {
+        return {};
+    }
+    const QString result = QString::fromUtf8(value);
+    ssh_string_free_char(value);
+    return result;
+}
+
+QString sessionErrorOf(ssh_session session)
+{
+    if (session == nullptr) {
+        return QStringLiteral("Unknown SSH error");
+    }
+    const char *error = ssh_get_error(session);
+    return error ? QString::fromUtf8(error) : QStringLiteral("Unknown SSH error");
+}
 
 QString joinRemotePath(const QString &dir, const QString &name)
 {
@@ -69,16 +104,16 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
-    const QByteArray host = connection.host.toUtf8();
-    const QByteArray user = connection.username.toUtf8();
-    int port = connection.port;
-
-    ssh_options_set(m_session, SSH_OPTIONS_HOST, host.constData());
-    ssh_options_set(m_session, SSH_OPTIONS_USER, user.constData());
-    ssh_options_set(m_session, SSH_OPTIONS_PORT, &port);
-
-    if (ssh_connect(m_session) != SSH_OK) {
+    if (!applyConnectionOptions(m_session, connection)) {
         const QString err = sessionError();
+        cleanup();
+        emit errorOccurred(tr("Connection failed: %1").arg(err));
+        return;
+    }
+
+    QString connectError;
+    if (!connectSessionWithFallback(connection, &connectError)) {
+        const QString err = connectError.isEmpty() ? sessionError() : connectError;
         qCWarning(lcSsh) << "Connection failed:" << err;
         cleanup();
         emit errorOccurred(tr("Connection failed: %1").arg(err));
@@ -122,6 +157,140 @@ void SshWorker::connectToHost(const Connection &connection,
         connect(m_ioTimer, &QTimer::timeout, this, &SshWorker::pollChannel);
     }
     m_ioTimer->start(20);
+}
+
+bool SshWorker::applyConnectionOptions(ssh_session session, const Connection &connection)
+{
+    if (session == nullptr) {
+        return false;
+    }
+
+    if (connection.source == ConnectionSource::SshConfig && !connection.configAlias.isEmpty()) {
+        // Match OpenSSH: set Host to the config alias, then let libssh apply ~/.ssh/config
+        // (including Include / HostName / User / Port / IdentityFile / ProxyJump).
+        const QByteArray alias = connection.configAlias.toUtf8();
+        ssh_options_set(session, SSH_OPTIONS_HOST, alias.constData());
+        if (ssh_options_parse_config(session, nullptr) != SSH_OK) {
+            qCWarning(lcSsh) << "ssh_options_parse_config failed for alias"
+                             << connection.configAlias << ":" << sessionErrorOf(session);
+        }
+    } else {
+        const QByteArray host = connection.host.toUtf8();
+        const QByteArray user = connection.username.toUtf8();
+        int port = connection.port;
+
+        ssh_options_set(session, SSH_OPTIONS_HOST, host.constData());
+        ssh_options_set(session, SSH_OPTIONS_USER, user.constData());
+        ssh_options_set(session, SSH_OPTIONS_PORT, &port);
+
+        // Keep app-defined host/user/port authoritative.
+        const int processConfig = 0;
+        ssh_options_set(session, SSH_OPTIONS_PROCESS_CONFIG, &processConfig);
+    }
+
+    return true;
+}
+
+bool SshWorker::connectSessionWithFallback(const Connection &connection, QString *errorOut)
+{
+    Q_UNUSED(connection);
+
+    logSessionOptions(m_session, "before-connect");
+    if (ssh_connect(m_session) == SSH_OK) {
+        return true;
+    }
+
+    const QString firstError = sessionError();
+    if (errorOut) {
+        *errorOut = firstError;
+    }
+
+#ifdef Q_OS_WIN
+    if (firstError.contains(QLatin1String(kClientInitBufferError), Qt::CaseInsensitive)) {
+        qCWarning(lcSsh) << "Retrying with Windows-compatible SSH algorithm set";
+
+        cleanup();
+        m_session = ssh_new();
+        if (m_session == nullptr) {
+            if (errorOut) {
+                *errorOut = QStringLiteral("Failed to create SSH session");
+            }
+            return false;
+        }
+
+        if (!applyConnectionOptions(m_session, connection)) {
+            if (errorOut) {
+                *errorOut = sessionError();
+            }
+            return false;
+        }
+
+        applyWindowsAlgorithmFallback(m_session);
+        logSessionOptions(m_session, "fallback-connect");
+        if (ssh_connect(m_session) == SSH_OK) {
+            return true;
+        }
+
+        if (errorOut) {
+            *errorOut = sessionError();
+        }
+    }
+#endif
+
+    return false;
+}
+
+void SshWorker::applyWindowsAlgorithmFallback(ssh_session session)
+{
+#ifdef Q_OS_WIN
+    if (session == nullptr) {
+        return;
+    }
+
+    static constexpr auto kKex =
+        "curve25519-sha256,ecdh-sha2-nistp256,diffie-hellman-group14-sha256";
+    static constexpr auto kHostKeys = "ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256";
+    static constexpr auto kCiphers =
+        "chacha20-poly1305@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-gcm@openssh.com,"
+        "aes128-gcm@openssh.com";
+
+    ssh_options_set(session, SSH_OPTIONS_KEY_EXCHANGE, kKex);
+    ssh_options_set(session, SSH_OPTIONS_HOSTKEYS, kHostKeys);
+    ssh_options_set(session, SSH_OPTIONS_CIPHERS_C_S, kCiphers);
+    ssh_options_set(session, SSH_OPTIONS_CIPHERS_S_C, kCiphers);
+#else
+    Q_UNUSED(session);
+#endif
+}
+
+void SshWorker::logSessionOptions(ssh_session session, const char *stage) const
+{
+    if (session == nullptr) {
+        return;
+    }
+
+    unsigned int port = 0;
+    const bool hasPort = ssh_options_get_port(session, &port) == SSH_OK;
+    const QString host = optionString(session, SSH_OPTIONS_HOST);
+    const QString user = optionString(session, SSH_OPTIONS_USER);
+    const QString identity = optionString(session, SSH_OPTIONS_IDENTITY);
+    const QString kex = optionString(session, SSH_OPTIONS_KEY_EXCHANGE);
+    const QString hostKeys = optionString(session, SSH_OPTIONS_HOSTKEYS);
+    const QString c2s = optionString(session, SSH_OPTIONS_CIPHERS_C_S);
+    const QString s2c = optionString(session, SSH_OPTIONS_CIPHERS_S_C);
+
+    qCWarning(lcSsh).noquote()
+        << QStringLiteral("Session options [%1] host=%2 user=%3 port=%4 identity=%5 kex=%6 "
+                          "hostkeys=%7 ciphers_c2s=%8 ciphers_s2c=%9")
+               .arg(QString::fromUtf8(stage ? stage : "unknown"),
+                    host.isEmpty() ? QStringLiteral("<unset>") : host,
+                    user.isEmpty() ? QStringLiteral("<unset>") : user,
+                    hasPort ? QString::number(port) : QStringLiteral("<unset>"),
+                    identity.isEmpty() ? QStringLiteral("<unset>") : identity,
+                    kex.isEmpty() ? QStringLiteral("<default>") : kex,
+                    hostKeys.isEmpty() ? QStringLiteral("<default>") : hostKeys,
+                    c2s.isEmpty() ? QStringLiteral("<default>") : c2s,
+                    s2c.isEmpty() ? QStringLiteral("<default>") : s2c);
 }
 
 void SshWorker::writeToChannel(const QByteArray &data)
@@ -680,8 +849,26 @@ bool SshWorker::authenticate(const Connection &connection, QString &secret)
     }
 
     switch (connection.authType) {
-    case AuthType::PrivateKey:
-        return authenticatePrivateKey(connection.privateKeyPath, secret);
+    case AuthType::PrivateKey: {
+        // Agent-first: try SSH agent before any key file / default identities.
+        if (authenticateWithAgent()) {
+            return true;
+        }
+
+        if (!connection.privateKeyPath.isEmpty()) {
+            if (authenticatePrivateKey(connection.privateKeyPath, secret)) {
+                return true;
+            }
+            return false;
+        }
+
+        if (authenticatePublicKeyAuto(secret)) {
+            return true;
+        }
+
+        emit errorOccurred(tr("Authentication failed: no usable agent identity or default key"));
+        return false;
+    }
     case AuthType::Password:
     default: {
         if (secret.isEmpty()) {
@@ -734,10 +921,20 @@ bool SshWorker::authenticateKeyboardInteractive(const QString &password)
     return rc == SSH_AUTH_SUCCESS;
 }
 
+bool SshWorker::authenticateWithAgent()
+{
+    const int methods = ssh_userauth_list(m_session, nullptr);
+    if (!(methods & SSH_AUTH_METHOD_PUBLICKEY)) {
+        return false;
+    }
+
+    const int rc = ssh_userauth_agent(m_session, nullptr);
+    return rc == SSH_AUTH_SUCCESS;
+}
+
 bool SshWorker::authenticatePrivateKey(const QString &keyPath, const QString &passphrase)
 {
     if (keyPath.isEmpty()) {
-        emit errorOccurred(tr("Private key path is empty"));
         return false;
     }
 
@@ -760,6 +957,14 @@ bool SshWorker::authenticatePrivateKey(const QString &keyPath, const QString &pa
         return false;
     }
     return true;
+}
+
+bool SshWorker::authenticatePublicKeyAuto(const QString &passphrase)
+{
+    const QByteArray phrase = passphrase.toUtf8();
+    const char *phrasePtr = passphrase.isEmpty() ? nullptr : phrase.constData();
+    const int rc = ssh_userauth_publickey_auto(m_session, nullptr, phrasePtr);
+    return rc == SSH_AUTH_SUCCESS;
 }
 
 bool SshWorker::openShell()

@@ -55,6 +55,8 @@ set(EASY_SSH_SOURCES
     src/ConnectionModel.h
     src/ConnectionFilterProxy.cpp
     src/ConnectionFilterProxy.h
+    src/SshConfigParser.cpp
+    src/SshConfigParser.h
     src/ErrorNotifier.cpp
     src/ErrorNotifier.h
     src/Logging.cpp
@@ -195,7 +197,63 @@ qt_generate_deploy_app_script(
 )
 install(SCRIPT ${easy_ssh_deploy_script})
 
-# --- CPack (Windows NSIS prep; usable locally on other platforms too) ---
+# Bundle non-Qt runtime DLLs next to the executable (libssh, QTermWidget, OpenSSL, …).
+if(WIN32)
+    set(_easy_ssh_runtime_search_dirs "")
+    if(CMAKE_PREFIX_PATH)
+        foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
+            if(EXISTS "${_prefix}/bin")
+                list(APPEND _easy_ssh_runtime_search_dirs "${_prefix}/bin")
+            endif()
+        endforeach()
+    endif()
+    if(DEFINED ENV{VCPKG_ROOT})
+        set(_vcpkg_bin "$ENV{VCPKG_ROOT}/installed/x64-windows/bin")
+        if(EXISTS "${_vcpkg_bin}")
+            list(APPEND _easy_ssh_runtime_search_dirs "${_vcpkg_bin}")
+        endif()
+    endif()
+
+    set(_easy_ssh_runtime_dirs_code "")
+    foreach(_dir IN LISTS _easy_ssh_runtime_search_dirs)
+        # install(CODE) embeds paths into cmake_install.cmake; backslashes must be
+        # forward slashes to avoid invalid escapes like \a in D:\a\...
+        string(REPLACE "\\" "/" _dir_fwd "${_dir}")
+        string(APPEND _easy_ssh_runtime_dirs_code "      \"${_dir_fwd}\"\n")
+    endforeach()
+
+    install(CODE "
+set(_exe \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/easy-ssh.exe\")
+if(NOT EXISTS \"\${_exe}\")
+  set(_exe \"\${CMAKE_INSTALL_PREFIX}/easy-ssh.exe\")
+endif()
+if(EXISTS \"\${_exe}\")
+  file(GET_RUNTIME_DEPENDENCIES
+    EXECUTABLES \"\${_exe}\"
+    RESOLVED_DEPENDENCIES_VAR _resolved_deps
+    UNRESOLVED_DEPENDENCIES_VAR _unresolved_deps
+    DIRECTORIES
+${_easy_ssh_runtime_dirs_code}    PRE_EXCLUDE_REGEXES
+      \"api-ms-\"
+      \"ext-ms-\"
+    POST_EXCLUDE_REGEXES
+      \".*[/\\\\\\\\]Windows[/\\\\\\\\]System32/.*\"
+      \".*[/\\\\\\\\]WinSxS/.*\"
+  )
+  foreach(_dep \${_resolved_deps})
+    get_filename_component(_base \"\${_dep}\" NAME)
+    if(NOT EXISTS \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/\${_base}\")
+      file(INSTALL \"\${_dep}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
+    endif()
+  endforeach()
+  if(_unresolved_deps)
+    message(WARNING \"Unresolved Windows runtime dependencies: \${_unresolved_deps}\")
+  endif()
+endif()
+")
+endif()
+
+# --- CPack ---
 set(CPACK_PACKAGE_NAME "easy-ssh")
 set(CPACK_PACKAGE_VENDOR "Easy SSH")
 set(CPACK_PACKAGE_CONTACT "https://github.com/magiskboy/easy-ssh")
@@ -221,7 +279,6 @@ if(WIN32)
     )
     set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
 endif()
-
 include(CPack)
 
 message(STATUS "Easy SSH ${PROJECT_VERSION} (easy-ssh)")

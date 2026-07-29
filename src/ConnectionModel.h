@@ -6,6 +6,9 @@
 #include <QList>
 #include <optional>
 
+class QFileSystemWatcher;
+class QTimer;
+
 class ConnectionModel final : public QAbstractListModel
 {
     Q_OBJECT
@@ -21,6 +24,8 @@ public:
         AuthTypeRole,
         PrivateKeyPathRole,
         StartupDirectoryRole,
+        SourceRole,
+        ConfigAliasRole,
     };
 
     explicit ConnectionModel(QObject *parent = nullptr);
@@ -30,10 +35,12 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void loadAll();
+    void reloadSshConfig();
     bool add(const Connection &connection);
     bool update(const Connection &connection);
     bool removeById(const QUuid &id);
     std::optional<Connection> duplicate(const QUuid &id);
+    std::optional<Connection> importFromSshConfig(const QUuid &id);
 
     std::optional<Connection> connectionAt(int row) const;
     std::optional<Connection> connectionById(const QUuid &id) const;
@@ -43,6 +50,12 @@ public:
 
 private:
     void persist();
+    void rebuildMergedList(const QList<Connection> &appConnections);
+    void ensureConfigWatcher();
+    QList<Connection> appConnectionsOnly() const;
+    QList<Connection> loadSshConfigConnections() const;
 
     QList<Connection> m_connections;
+    QFileSystemWatcher *m_configWatcher = nullptr;
+    QTimer *m_reloadDebounce = nullptr;
 };

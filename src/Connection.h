@@ -9,6 +9,12 @@ enum class AuthType
     PrivateKey = 1,
 };
 
+enum class ConnectionSource
+{
+    App = 0,
+    SshConfig = 1,
+};
+
 struct Connection
 {
     QUuid id;
@@ -19,9 +25,15 @@ struct Connection
     AuthType authType = AuthType::Password;
     QString privateKeyPath;
     QString startupDirectory;
+    ConnectionSource source = ConnectionSource::App;
+    QString configAlias;
 
     QString displayText() const
     {
-        return QStringLiteral("%1 — %2@%3:%4").arg(name, username, host).arg(port);
+        QString text = QStringLiteral("%1 — %2@%3:%4").arg(name, username, host).arg(port);
+        if (source == ConnectionSource::SshConfig) {
+            text += QStringLiteral(" [ssh config]");
+        }
+        return text;
     }
 };

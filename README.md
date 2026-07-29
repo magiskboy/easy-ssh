@@ -116,6 +116,19 @@ cmake --build --preset debug
 ./build/easy-ssh
 ```
 
+Enable local git hooks (clang-format pre-commit, same check as CI):
+
+```bash
+.github/scripts/install-git-hooks.sh
+```
+
+Format all C++ sources:
+
+```bash
+.github/scripts/run-clang-format.sh
+.github/scripts/run-clang-format-check.sh
+```
+
 Release builds:
 
 ```bash
@@ -153,27 +166,37 @@ CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scr
 
 - **Linux:** `.AppImage` (primary) and `.tar.gz` fallback tree
 - **macOS:** `.dmg`
+- **Windows:** single-file portable `.exe` via 7-Zip SFX (fallback: `.zip` if SFX module is unavailable)
 
-Both Linux formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
+Linux and Windows formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
 
-#### Windows (local)
+#### Windows
 
-Windows CI is not enabled yet (libssh / Qt packaging). Locally, build a patched
-QTermWidget first (applies [`third_party/qtermwidget-patches/`](third_party/qtermwidget-patches/)):
+CI builds on `windows-2022` (MSVC + Qt 6.8 via aqt, libssh via vcpkg, patched QTermWidget).
+Locally:
 
 ```bash
 export PREFIX="$PWD/.deps/prefix"
 export BUILD_ROOT="$PWD/.deps/src"
 export GITHUB_WORKSPACE="$PWD"
+export BUILD_QTKEYCHAIN=1
+# After Qt + libssh are available on CMAKE_PREFIX_PATH / CMAKE_TOOLCHAIN_FILE:
 .github/scripts/build-qtermwidget.sh
 cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH="$PREFIX"
 cmake --build build-release
 cmake --install build-release --prefix install
+# Optional installer (requires NSIS):
 cpack -G NSIS --config build-release/CPackConfig.cmake
 ```
 
 The CMake project embeds `resources/windows/easy-ssh.ico` / `.rc` and configures CPack NSIS (Start Menu shortcut, uninstall).
+
+Portable single-file builds:
+
+- Packaging script prefers a 7-Zip installer SFX module (`7zS.sfx` / `7zSD.sfx`) and emits `easy-ssh-<target>-portable.exe`.
+- The SFX executable extracts bundled runtime files to a temp directory and launches `easy-ssh.exe` automatically.
+- If your build machine keeps SFX modules in a non-standard path, set `SFX_MODULE_PATH` before running `.github/scripts/package.sh`.
 
 ## Contributing
 

@@ -24,6 +24,21 @@ SessionTabWidget::SessionTabWidget(QWidget *parent) : QTabWidget(parent)
     ensureWelcomeTab();
 }
 
+void SessionTabWidget::setConnectionModel(ConnectionModel *model)
+{
+    m_connectionModel = model;
+    if (auto *welcome = welcomeWidget()) {
+        welcome->setConnectionModel(m_connectionModel);
+    }
+}
+
+void SessionTabWidget::refreshWelcome()
+{
+    if (auto *welcome = welcomeWidget()) {
+        welcome->refresh();
+    }
+}
+
 void SessionTabWidget::openSshSession(const Connection &connection, const QString &secret)
 {
     removeWelcomeTabIfPresent();
@@ -130,6 +145,7 @@ void SessionTabWidget::onTabCloseRequested(int index)
 
     if (count() == 0) {
         ensureWelcomeTab();
+        refreshWelcome();
     }
 }
 
@@ -184,6 +200,21 @@ void SessionTabWidget::ensureWelcomeTab()
     }
 
     auto *welcome = new WelcomeWidget(this);
+    welcome->setConnectionModel(m_connectionModel);
+    connect(welcome,
+            &WelcomeWidget::openConnectionRequested,
+            this,
+            &SessionTabWidget::openConnectionRequested);
+    connect(welcome,
+            &WelcomeWidget::createConnectionRequested,
+            this,
+            &SessionTabWidget::createConnectionRequested);
+    connect(welcome,
+            &WelcomeWidget::showConnectionsRequested,
+            this,
+            &SessionTabWidget::showConnectionsRequested);
+    connect(welcome, &WelcomeWidget::statusMessage, this, &SessionTabWidget::statusMessage);
+
     m_welcomeIndex = addTab(welcome, tr("Welcome"));
     tabBar()->setTabButton(m_welcomeIndex, QTabBar::LeftSide, nullptr);
     tabBar()->setTabButton(m_welcomeIndex, QTabBar::RightSide, nullptr);
@@ -205,6 +236,14 @@ void SessionTabWidget::removeWelcomeTabIfPresent()
 bool SessionTabWidget::isWelcomeTab(int index) const
 {
     return index >= 0 && index == m_welcomeIndex;
+}
+
+WelcomeWidget *SessionTabWidget::welcomeWidget() const
+{
+    if (m_welcomeIndex < 0) {
+        return nullptr;
+    }
+    return qobject_cast<WelcomeWidget *>(widget(m_welcomeIndex));
 }
 
 QString SessionTabWidget::makeSessionTitle(const Connection &connection)

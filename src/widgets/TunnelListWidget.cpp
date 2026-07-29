@@ -89,8 +89,11 @@ void TunnelListWidget::bindSession(TerminalSessionWidget *session)
     unbindSession();
     m_session = session;
     if (!m_session) {
+        updateSessionBadge();
         return;
     }
+
+    updateSessionBadge();
 
     connect(m_session,
             &TerminalSessionWidget::sessionStateChanged,
@@ -104,6 +107,7 @@ void TunnelListWidget::bindSession(TerminalSessionWidget *session)
     connect(m_session, &QObject::destroyed, this, [this]() {
         m_session = nullptr;
         m_model->clear();
+        updateSessionBadge();
         showEmptyState(tr("Open an SSH session to manage tunnels."));
         updateActionsEnabled();
     });
@@ -125,6 +129,7 @@ void TunnelListWidget::unbindSession()
     }
     m_model->clearRuntimeStatuses();
     m_model->clear();
+    updateSessionBadge();
     showEmptyState(tr("Open an SSH session to manage tunnels."));
     updateActionsEnabled();
 }
@@ -145,7 +150,7 @@ void TunnelListWidget::addTunnel()
     persistAll();
     showList();
     updateActionsEnabled();
-    emit statusMessage(tr("Tunnel added: %1").arg(def.name));
+    emit statusMessage(tr("Tunnel added: %1").arg(def.name), ErrorNotifier::Level::Success);
 
     if (def.enabled && isSessionConnected()) {
         m_session->startTunnel(def);
@@ -163,7 +168,8 @@ void TunnelListWidget::editSelected()
         m_model->index(m_model->rowOf(current->id), TunnelListModel::StatusColumn);
     const QString status = statusIndex.data(Qt::DisplayRole).toString();
     if (status == QLatin1String("Listening") || status == QLatin1String("Starting")) {
-        QMessageBox::information(this, tr("Edit Tunnel"), tr("Disable the tunnel before editing."));
+        ErrorNotifier::status(tr("Disable the tunnel before editing."),
+                              ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -176,7 +182,7 @@ void TunnelListWidget::editSelected()
     const TunnelDefinition def = dialog.tunnel();
     m_model->upsert(def);
     persistAll();
-    emit statusMessage(tr("Tunnel updated: %1").arg(def.name));
+    emit statusMessage(tr("Tunnel updated: %1").arg(def.name), ErrorNotifier::Level::Success);
 
     if (def.enabled && isSessionConnected()) {
         m_session->startTunnel(def);
@@ -214,7 +220,7 @@ void TunnelListWidget::deleteSelected()
         showList();
     }
 
-    emit statusMessage(tr("Tunnel deleted: %1").arg(current->name));
+    emit statusMessage(tr("Tunnel deleted: %1").arg(current->name), ErrorNotifier::Level::Warning);
     updateActionsEnabled();
 }
 
@@ -241,7 +247,7 @@ void TunnelListWidget::toggleSelected()
         } else {
             m_model->setRuntimeStatus(def.id, QStringLiteral("Off"), QString());
         }
-        emit statusMessage(tr("Tunnel disabled: %1").arg(def.name));
+        emit statusMessage(tr("Tunnel disabled: %1").arg(def.name), ErrorNotifier::Level::Status);
     } else {
         def.enabled = true;
         m_model->upsert(def);
@@ -250,7 +256,8 @@ void TunnelListWidget::toggleSelected()
             m_session->startTunnel(def);
         } else {
             m_model->setRuntimeStatus(def.id, QStringLiteral("Off"), QString());
-            emit statusMessage(tr("Tunnel will enable on next connect: %1").arg(def.name));
+            emit statusMessage(tr("Tunnel will enable on next connect: %1").arg(def.name),
+                               ErrorNotifier::Level::Status);
         }
     }
     updateActionsEnabled();
@@ -284,14 +291,14 @@ void TunnelListWidget::onTunnelStatusChanged(const QUuid &tunnelId,
     m_model->setRuntimeStatus(tunnelId, status, detail);
     updateActionsEnabled();
     if (status == QLatin1String("Error") && !detail.isEmpty()) {
-        ErrorNotifier::notify(this, tr("Tunnel"), detail, ErrorNotifier::Level::Warning);
+        ErrorNotifier::status(tr("Tunnel: %1").arg(detail), ErrorNotifier::Level::Error);
     }
 }
 
 void TunnelListWidget::onTunnelError(const QUuid &tunnelId, const QString &message)
 {
     Q_UNUSED(tunnelId);
-    ErrorNotifier::notify(this, tr("Tunnel"), message, ErrorNotifier::Level::Warning);
+    ErrorNotifier::status(tr("Tunnel: %1").arg(message), ErrorNotifier::Level::Error);
 }
 
 void TunnelListWidget::onSessionStateChanged(TerminalSessionWidget::State state)
@@ -381,6 +388,8 @@ void TunnelListWidget::showList()
         stack->setCurrentWidget(m_listHost);
     }
 }
+
+void TunnelListWidget::updateSessionBadge() {}
 
 std::optional<TunnelDefinition> TunnelListWidget::selectedTunnel() const
 {

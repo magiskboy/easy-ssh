@@ -15,7 +15,7 @@ Co-authored-by: Cursor <cursoragent@cursor.com>
  lib/kpty.h                  |   4 ++
  lib/qtermwidget.cpp         |   6 +-
  lib/win/Pty_win.cpp         | 115 +++++++++++++++++++++++++++++++
- lib/win/kpty_win.cpp        | 124 ++++++++++++++++++++++++++++++++++
+ lib/win/kpty_win.cpp        | 125 ++++++++++++++++++++++++++++++++++
  lib/win/kptydevice_win.cpp  | 131 ++++++++++++++++++++++++++++++++++++
  lib/win/kptyprocess_win.cpp |  53 +++++++++++++++
  lib/win/termios_stub.h      |  32 +++++++++
@@ -530,7 +530,7 @@ new file mode 100644
 index 0000000..1ddc572
 --- /dev/null
 +++ b/lib/win/kpty_win.cpp
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,125 @@
 +/*
 + * Windows stub for KPty — no local PTY; Easy SSH feeds Emulation via writeToEmulator.
 + */
@@ -598,8 +598,9 @@ index 0000000..1ddc572
 +{
 +}
 +
-+void KPty::openSlave()
++bool KPty::openSlave()
 +{
++    return false;
 +}
 +
 +void KPty::setCTty()

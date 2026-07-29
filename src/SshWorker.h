@@ -103,13 +103,19 @@ private:
     };
 
     bool verifyKnownHost();
+    bool applyConnectionOptions(ssh_session session, const Connection &connection);
+    bool connectSessionWithFallback(const Connection &connection, QString *errorOut);
+    void applyWindowsAlgorithmFallback(ssh_session session);
+    void logSessionOptions(ssh_session session, const char *stage) const;
     bool promptHostKeyAndUpdate(HostKeyPrompt reason, bool removeExistingEntries);
     bool removeKnownHostsEntriesForSession();
     QString knownHostsFilePath() const;
     bool authenticate(const Connection &connection, QString &secret);
     bool authenticatePassword(const QString &password);
     bool authenticateKeyboardInteractive(const QString &password);
+    bool authenticateWithAgent();
     bool authenticatePrivateKey(const QString &keyPath, const QString &passphrase);
+    bool authenticatePublicKeyAuto(const QString &passphrase);
     bool openShell();
     bool openSftp(QString *failureMessage = nullptr);
     void cleanup();

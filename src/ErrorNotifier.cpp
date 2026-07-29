@@ -7,12 +7,32 @@
 
 namespace
 {
-std::function<void(const QString &)> g_statusSink;
+std::function<void(const QString &, ErrorNotifier::Level)> g_statusSink;
 }
 
-void ErrorNotifier::setStatusSink(std::function<void(const QString &)> sink)
+void ErrorNotifier::setStatusSink(std::function<void(const QString &, Level)> sink)
 {
     g_statusSink = std::move(sink);
+}
+
+void ErrorNotifier::status(const QString &message, Level level)
+{
+    if (g_statusSink) {
+        g_statusSink(message, level);
+    }
+
+    switch (level) {
+    case Level::Status:
+    case Level::Success:
+        qCInfo(lcApp) << message;
+        break;
+    case Level::Warning:
+        qCWarning(lcApp) << message;
+        break;
+    case Level::Error:
+        qCCritical(lcApp) << message;
+        break;
+    }
 }
 
 void ErrorNotifier::notify(QWidget *parent,
@@ -23,20 +43,16 @@ void ErrorNotifier::notify(QWidget *parent,
     const QString statusText =
         title.isEmpty() ? message : QStringLiteral("%1: %2").arg(title, message);
 
-    if (g_statusSink) {
-        g_statusSink(statusText);
-    }
+    status(statusText, level);
 
     switch (level) {
     case Level::Status:
-        qCWarning(lcApp) << statusText;
+    case Level::Success:
         break;
     case Level::Warning:
-        qCWarning(lcApp) << statusText;
         QMessageBox::warning(parent, title.isEmpty() ? QObject::tr("Warning") : title, message);
         break;
     case Level::Error:
-        qCCritical(lcApp) << statusText;
         QMessageBox::critical(parent, title.isEmpty() ? QObject::tr("Error") : title, message);
         break;
     }

@@ -69,12 +69,21 @@ jobs:
             target: macos-amd64
             os_family: macos
 
-          # Windows: needs patched QTermWidget (third_party/qtermwidget-patches)
-          # plus libssh/Qt packaging; enable when the Windows job is wired.
+          - runner: windows-2022
+            target: windows-amd64
+            os_family: windows
+            qt_host: windows
+            qt_arch: win64_msvc2022_64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Setup MSVC
+        if: matrix.os_family == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Install Linux build tools
         if: matrix.os_family == 'linux'
@@ -90,8 +99,8 @@ jobs:
             libsecret-1-dev \
             libglib2.0-dev
 
-      - name: Install Qt (Linux via aqt)
-        if: matrix.os_family == 'linux'
+      - name: Install Qt (Linux / Windows via aqt)
+        if: matrix.os_family == 'linux' || matrix.os_family == 'windows'
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -114,35 +123,117 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "$(brew --prefix qt)/bin" >> "$GITHUB_PATH"
 
-      - name: Build QTermWidget (and QtKeychain on Linux)
+      - name: Cache vcpkg libssh
+        if: matrix.os_family == 'windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            .deps/vcpkg/installed
+            .deps/vcpkg/packages
+            .deps/vcpkg/downloads
+            .deps/vcpkg/vcpkg.exe
+          key: vcpkg-libssh-x64-windows-${{ hashFiles('.github/workflows/ci.yml') }}
+
+      - name: Install libssh (vcpkg)
+        if: matrix.os_family == 'windows'
+        run: |
+          set -euo pipefail
+          VCPKG_ROOT="${GITHUB_WORKSPACE}/.deps/vcpkg"
+          if [[ ! -f "${VCPKG_ROOT}/vcpkg.exe" ]]; then
+            if [[ -d "${VCPKG_ROOT}" && ! -d "${VCPKG_ROOT}/.git" ]]; then
+              # Cache restored partial contents without the git repo; clone into a
+              # temp dir and move the .git tree in so cached installed/ is preserved.
+              tmp="$(mktemp -d)"
+              git clone --depth 1 https://github.com/microsoft/vcpkg.git "$tmp"
+              cp -r "$tmp/.git" "${VCPKG_ROOT}/.git"
+              cp -n "$tmp"/* "${VCPKG_ROOT}/" 2>/dev/null || true
+              cp -rn "$tmp"/scripts "${VCPKG_ROOT}/" 2>/dev/null || true
+              rm -rf "$tmp"
+            elif [[ ! -d "${VCPKG_ROOT}/.git" ]]; then
+              git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
+            fi
+            # bootstrap-vcpkg.sh can break under Git Bash when MSVC paths contain spaces.
+            (cd "${VCPKG_ROOT}" && cmd.exe //c "bootstrap-vcpkg.bat -disableMetrics")
+          fi
+          "${VCPKG_ROOT}/vcpkg.exe" install libssh:x64-windows --disable-metrics
+          {
+            echo "VCPKG_ROOT=${VCPKG_ROOT}"
+            echo "CMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+            echo "VCPKG_TARGET_TRIPLET=x64-windows"
+          } >> "$GITHUB_ENV"
+          echo "${VCPKG_ROOT}/installed/x64-windows/bin" >> "$GITHUB_PATH"
+          # Also expose for DLL bundling / find_package fallbacks.
+          echo "CMAKE_PREFIX_PATH=${VCPKG_ROOT}/installed/x64-windows${CMAKE_PREFIX_PATH:+;${CMAKE_PREFIX_PATH}}" >> "$GITHUB_ENV"
+
+      - name: Build QTermWidget (and QtKeychain on Linux/Windows)
         env:
           PREFIX: ${{ github.workspace }}/.deps/prefix
-          BUILD_QTKEYCHAIN: ${{ matrix.os_family == 'linux' && '1' || '0' }}
+          BUILD_QTKEYCHAIN: ${{ (matrix.os_family == 'linux' || matrix.os_family == 'windows') && '1' || '0' }}
         run: |
+          set -euo pipefail
           chmod +x .github/scripts/build-qtermwidget.sh
           .github/scripts/build-qtermwidget.sh
+
+          case "$(uname -s)" in
+            MINGW*|MSYS*|CYGWIN*) CMAKE_SEP=';' ;;
+            *) CMAKE_SEP=':' ;;
+          esac
+
+          # Preserve Qt from install-qt-action (QT_ROOT_DIR) — CMAKE_PREFIX_PATH alone
+          # is not always exported into subsequent steps on all runners.
+          PREFIX_PATH="${PREFIX}"
+          if [[ -n "${QT_ROOT_DIR:-}" ]]; then
+            PREFIX_PATH="${PREFIX_PATH}${CMAKE_SEP}${QT_ROOT_DIR}"
+          fi
+          if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+            PREFIX_PATH="${PREFIX_PATH}${CMAKE_SEP}${CMAKE_PREFIX_PATH}"
+          fi
+
           {
-            echo "CMAKE_PREFIX_PATH=${PREFIX}${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
-            echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-            echo "LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-            echo "DYLD_FALLBACK_LIBRARY_PATH=${PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+            echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}"
+            echo "PREFIX=${PREFIX}"
+            echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+            echo "LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+            echo "DYLD_FALLBACK_LIBRARY_PATH=${PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
           } >> "$GITHUB_ENV"
+          echo "${PREFIX}/bin" >> "$GITHUB_PATH"
 
       - name: Configure
         run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [[ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]]; then
+            EXTRA_ARGS+=(
+              "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+              "-DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET:-x64-windows}"
+            )
+          fi
           cmake -S . -B build-release \
             -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
-            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install"
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" \
+            ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 
       - name: Build
         run: cmake --build build-release --parallel
 
-      - name: Package
+      - name: Package (Linux)
+        if: matrix.os_family == 'linux'
         run: |
-          chmod +x .github/scripts/package.sh
-          .github/scripts/package.sh "${{ matrix.target }}" build-release dist
+          chmod +x .github/scripts/package-linux.sh
+          .github/scripts/package-linux.sh "${{ matrix.target }}" build-release dist
+
+      - name: Package (macOS)
+        if: matrix.os_family == 'macos'
+        run: |
+          chmod +x .github/scripts/package-macos.sh
+          .github/scripts/package-macos.sh "${{ matrix.target }}" build-release dist
+
+      - name: Package (Windows)
+        if: matrix.os_family == 'windows'
+        shell: cmd
+        run: .github\scripts\package-windows.bat "${{ matrix.target }}" build-release dist
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

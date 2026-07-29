@@ -2,9 +2,11 @@
 
 #include <QFont>
 #include <QKeySequence>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QUuid>
 
 class AppSettings final : public QObject
 {
@@ -28,6 +30,10 @@ public:
 
     QString defaultDownloadDir() const;
     void setDefaultDownloadDir(const QString &path);
+
+    // --- Recent connections ---
+    QList<QUuid> recentConnectionIds(int limit = 8) const;
+    void recordRecentConnection(const QUuid &id);
 
     // --- Terminal ---
     QFont terminalFont() const;
