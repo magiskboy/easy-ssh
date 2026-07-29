@@ -88,12 +88,15 @@ EASY_SSH_PREFIX=/usr/local curl -fsSL https://raw.githubusercontent.com/magiskbo
 
 ### Prerequisites
 
-- CMake 3.21+
+- CMake 3.28+
 - A C++20 compiler
 - Qt 6.6+ (Widgets)
 - [libssh](https://www.libssh.org/) (>= 0.11, required for ProxyJump)
 - [QTermWidget](https://github.com/lxqt/qtermwidget)
 - [QtKeychain](https://github.com/frankosterfeld/qtkeychain)
+
+Version pins for CI and FetchContent builds live in
+[`cmake/EasySshVersions.cmake`](cmake/EasySshVersions.cmake).
 
 #### Fedora
 
@@ -110,11 +113,24 @@ sudo dnf install -y --setopt=install_weak_deps=False \
 
 ### Build
 
+**Local development (Fedora system packages):**
+
 ```bash
-cmake --preset debug
-cmake --build --preset debug
-./build/easy-ssh
+cmake --preset dev-system
+cmake --build --preset dev-system
+./build/src/easy-ssh
 ```
+
+**Release-style build (download Qt + build deps from source via CMake):**
+
+```bash
+cmake --preset ci-release
+cmake --build --preset ci-release
+./build-release/src/easy-ssh
+```
+
+Requires Python 3 + pip for `aqtinstall` when `EASY_SSH_FETCH_QT=ON`.
+First configure may take several minutes while Qt and FetchContent deps download.
 
 Enable local git hooks (clang-format pre-commit, same check as CI):
 
@@ -129,12 +145,12 @@ Format all C++ sources:
 .github/scripts/run-clang-format-check.sh
 ```
 
-Release builds:
+Release builds (system packages):
 
 ```bash
 cmake --preset release
 cmake --build --preset release
-./build-release/easy-ssh
+./build-release/src/easy-ssh
 ```
 
 ### Icons
@@ -162,41 +178,37 @@ On Linux this installs:
 - `share/metainfo/io.github.magiskboy.easy-ssh.metainfo.xml`
 - hicolor icons under `share/icons/hicolor/...`
 
-CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scripts/package.sh):
-
-- **Linux:** `.AppImage` (primary) and `.tar.gz` fallback tree
-- **macOS:** `.dmg`
-- **Windows:** single-file portable `.exe` via 7-Zip SFX (fallback: `.zip` if SFX module is unavailable)
-
-Linux and Windows formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
-
-#### Windows
-
-CI builds on `windows-2022` (MSVC + Qt 6.8 via aqt, libssh via vcpkg, patched QTermWidget).
-Locally:
+**Self-contained packages (CPack):**
 
 ```bash
-export PREFIX="$PWD/.deps/prefix"
-export BUILD_ROOT="$PWD/.deps/src"
-export GITHUB_WORKSPACE="$PWD"
-export BUILD_QTKEYCHAIN=1
-# After Qt + libssh are available on CMAKE_PREFIX_PATH / CMAKE_TOOLCHAIN_FILE:
-.github/scripts/build-qtermwidget.sh
-cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH="$PREFIX"
-cmake --build build-release
-cmake --install build-release --prefix install
-# Optional installer (requires NSIS):
+cmake --preset ci-release
+cmake --build --preset ci-release
+cmake --install build-release --prefix staging
+cd build-release
+cpack -C Release -G "DEB;RPM;AppImage;TGZ"   # Linux
+# cpack -C Release -G DragNDrop              # macOS
+# cpack -C Release -G NSIS                   # Windows (requires NSIS)
+```
+
+CI produces fat packages (bundled Qt, libssh, QTermWidget, QtKeychain):
+
+- **Linux:** `.deb`, `.rpm`, `.AppImage`, `.tar.gz`
+- **macOS:** `.dmg`
+- **Windows:** NSIS `.exe` installer
+
+#### Windows (local)
+
+Use the `ci-release` preset with MSVC and NSIS installed:
+
+```bash
+cmake --preset ci-release
+cmake --build --preset ci-release
+cmake --install build-release --prefix staging
 cpack -G NSIS --config build-release/CPackConfig.cmake
 ```
 
-The CMake project embeds `resources/windows/easy-ssh.ico` / `.rc` and configures CPack NSIS (Start Menu shortcut, uninstall).
-
-Portable single-file builds:
-
-- Packaging script prefers a 7-Zip installer SFX module (`7zS.sfx` / `7zSD.sfx`) and emits `easy-ssh-<target>-portable.exe`.
-- The SFX executable extracts bundled runtime files to a temp directory and launches `easy-ssh.exe` automatically.
-- If your build machine keeps SFX modules in a non-standard path, set `SFX_MODULE_PATH` before running `.github/scripts/package.sh`.
+The CMake project embeds `resources/windows/easy-ssh.ico` / `.rc` and configures
+CPack NSIS (Start Menu shortcut, uninstall).
 
 ## Contributing
 

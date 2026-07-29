@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.28)
 
 project(easy-ssh
     VERSION 0.1.0
@@ -6,290 +6,14 @@ project(easy-ssh
     LANGUAGES CXX
 )
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+include(cmake/EasySshVersions.cmake)
+include(cmake/EasySshOptions.cmake)
+include(cmake/EasySshDefaults.cmake)
+include(cmake/EasySshDependencies.cmake)
 
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
+add_subdirectory(src)
+add_subdirectory(resources)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-include(GNUInstallDirs)
-
-# Portable install layout: look for bundled libs next to the binary.
-# Include both lib and lib64 — distros differ (Debian vs Fedora).
-if(NOT APPLE AND NOT WIN32)
-    set(CMAKE_INSTALL_RPATH
-        "$ORIGIN/../lib:$ORIGIN/../lib64:$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
-    )
-    set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
-    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-endif()
-
-find_package(Qt6 6.6 REQUIRED COMPONENTS
-    Core
-    Gui
-    Widgets
-    Concurrent
-    Network
-)
-
-qt_standard_project_setup()
-
-find_package(libssh 0.11 REQUIRED)
-find_package(qtermwidget6 REQUIRED)
-find_package(Qt6Keychain REQUIRED)
-
-set(EASY_SSH_SOURCES
-    src/main.cpp
-    src/MainWindow.cpp
-    src/MainWindow.h
-    src/AppSettings.cpp
-    src/AppSettings.h
-    src/Connection.h
-    src/ConnectionStore.cpp
-    src/ConnectionStore.h
-    src/ConnectionModel.cpp
-    src/ConnectionModel.h
-    src/ConnectionFilterProxy.cpp
-    src/ConnectionFilterProxy.h
-    src/SshConfigParser.cpp
-    src/SshConfigParser.h
-    src/ErrorNotifier.cpp
-    src/ErrorNotifier.h
-    src/Logging.cpp
-    src/Logging.h
-    src/SecretStore.cpp
-    src/SecretStore.h
-    src/SshWorker.cpp
-    src/SshWorker.h
-    src/SftpTypes.h
-    src/RemoteFileModel.cpp
-    src/RemoteFileModel.h
-    src/OpenFileTracker.cpp
-    src/OpenFileTracker.h
-    src/Tunnel.h
-    src/TunnelStore.cpp
-    src/TunnelStore.h
-    src/TunnelListModel.cpp
-    src/TunnelListModel.h
-    src/terminal/TerminalIoBridge.h
-    src/widgets/AboutDialog.cpp
-    src/widgets/AboutDialog.h
-    src/widgets/ConnectionDialog.cpp
-    src/widgets/ConnectionDialog.h
-    src/widgets/ConnectionListWidget.cpp
-    src/widgets/ConnectionListWidget.h
-    src/widgets/FileExplorerWidget.cpp
-    src/widgets/FileExplorerWidget.h
-    src/widgets/SessionTabWidget.cpp
-    src/widgets/SessionTabWidget.h
-    src/widgets/SettingsDialog.cpp
-    src/widgets/SettingsDialog.h
-    src/widgets/ShortcutsDialog.cpp
-    src/widgets/ShortcutsDialog.h
-    src/widgets/TerminalSessionWidget.cpp
-    src/widgets/TerminalSessionWidget.h
-    src/widgets/TunnelDialog.cpp
-    src/widgets/TunnelDialog.h
-    src/widgets/TunnelListWidget.cpp
-    src/widgets/TunnelListWidget.h
-    src/widgets/WelcomeWidget.cpp
-    src/widgets/WelcomeWidget.h
-)
-
-if(WIN32)
-    list(APPEND EASY_SSH_SOURCES src/terminal/TerminalIoBridge_win.cpp)
-else()
-    list(APPEND EASY_SSH_SOURCES src/terminal/TerminalIoBridge_unix.cpp)
-endif()
-
-set(EASY_SSH_PLATFORM_SOURCES)
-if(WIN32)
-    enable_language(RC)
-    list(APPEND EASY_SSH_PLATFORM_SOURCES
-        resources/windows/easy-ssh.rc
-    )
-endif()
-
-if(APPLE)
-    set(MACOSX_BUNDLE_ICON_FILE easy-ssh.icns)
-    set(EASY_SSH_MACOS_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/easy-ssh.icns")
-    set_source_files_properties("${EASY_SSH_MACOS_ICON}" PROPERTIES
-        MACOSX_PACKAGE_LOCATION "Resources"
-    )
-    list(APPEND EASY_SSH_PLATFORM_SOURCES "${EASY_SSH_MACOS_ICON}")
-endif()
-
-qt_add_executable(easy-ssh
-    ${EASY_SSH_SOURCES}
-    ${EASY_SSH_PLATFORM_SOURCES}
-)
-
-qt_add_resources(easy-ssh "app_icons"
-    PREFIX "/icons"
-    BASE resources/icons
-    FILES
-        resources/icons/app-256.png
-)
-
-set_target_properties(easy-ssh PROPERTIES
-    WIN32_EXECUTABLE TRUE
-    MACOSX_BUNDLE TRUE
-    OUTPUT_NAME easy-ssh
-    MACOSX_BUNDLE_BUNDLE_NAME "Easy SSH"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.magiskboy.easy-ssh"
-    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_COPYRIGHT "Copyright (C) Easy SSH contributors"
-)
-
-target_include_directories(easy-ssh
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_link_libraries(easy-ssh
-    PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-        Qt6::Concurrent
-        Qt6::Network
-        ssh
-        qtermwidget6
-        Qt6Keychain::Qt6Keychain
-)
-
-target_compile_definitions(easy-ssh
-    PRIVATE
-        APP_VERSION="${PROJECT_VERSION}"
-)
-
-install(TARGETS easy-ssh
-    BUNDLE  DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-install(FILES
-    resources/linux/io.github.magiskboy.easy-ssh.desktop
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
-)
-
-install(FILES
-    resources/linux/io.github.magiskboy.easy-ssh.metainfo.xml
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
-)
-
-foreach(_icon_size IN ITEMS 16 22 24 32 48 64 128 256 512)
-    install(FILES
-        resources/linux/icons/hicolor/${_icon_size}x${_icon_size}/apps/io.github.magiskboy.easy-ssh.png
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_icon_size}x${_icon_size}/apps
-    )
-endforeach()
-
-qt_generate_deploy_app_script(
-    TARGET easy-ssh
-    OUTPUT_SCRIPT easy_ssh_deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
-install(SCRIPT ${easy_ssh_deploy_script})
-
-# Bundle non-Qt runtime DLLs next to the executable (libssh, QTermWidget, OpenSSL, …).
-if(WIN32)
-    set(_easy_ssh_runtime_search_dirs "")
-    if(CMAKE_PREFIX_PATH)
-        foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
-            if(EXISTS "${_prefix}/bin")
-                list(APPEND _easy_ssh_runtime_search_dirs "${_prefix}/bin")
-            endif()
-        endforeach()
-    endif()
-    if(DEFINED ENV{VCPKG_ROOT})
-        set(_vcpkg_bin "$ENV{VCPKG_ROOT}/installed/x64-windows/bin")
-        if(EXISTS "${_vcpkg_bin}")
-            list(APPEND _easy_ssh_runtime_search_dirs "${_vcpkg_bin}")
-        endif()
-    endif()
-
-    set(_easy_ssh_runtime_dirs_code "")
-    foreach(_dir IN LISTS _easy_ssh_runtime_search_dirs)
-        # install(CODE) embeds paths into cmake_install.cmake; backslashes must be
-        # forward slashes to avoid invalid escapes like \a in D:\a\...
-        string(REPLACE "\\" "/" _dir_fwd "${_dir}")
-        string(APPEND _easy_ssh_runtime_dirs_code "      \"${_dir_fwd}\"\n")
-    endforeach()
-
-    install(CODE "
-set(_exe \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/easy-ssh.exe\")
-if(NOT EXISTS \"\${_exe}\")
-  set(_exe \"\${CMAKE_INSTALL_PREFIX}/easy-ssh.exe\")
-endif()
-if(EXISTS \"\${_exe}\")
-  file(GET_RUNTIME_DEPENDENCIES
-    EXECUTABLES \"\${_exe}\"
-    RESOLVED_DEPENDENCIES_VAR _resolved_deps
-    UNRESOLVED_DEPENDENCIES_VAR _unresolved_deps
-    DIRECTORIES
-${_easy_ssh_runtime_dirs_code}    PRE_EXCLUDE_REGEXES
-      \"api-ms-\"
-      \"ext-ms-\"
-    POST_EXCLUDE_REGEXES
-      \".*[/\\\\\\\\]Windows[/\\\\\\\\]System32/.*\"
-      \".*[/\\\\\\\\]WinSxS/.*\"
-  )
-  foreach(_dep \${_resolved_deps})
-    get_filename_component(_base \"\${_dep}\" NAME)
-    if(NOT EXISTS \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/\${_base}\")
-      file(INSTALL \"\${_dep}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
-    endif()
-  endforeach()
-  if(_unresolved_deps)
-    message(WARNING \"Unresolved Windows runtime dependencies: \${_unresolved_deps}\")
-  endif()
-endif()
-")
-endif()
-
-# --- CPack ---
-set(CPACK_PACKAGE_NAME "easy-ssh")
-set(CPACK_PACKAGE_VENDOR "Easy SSH")
-set(CPACK_PACKAGE_CONTACT "https://github.com/magiskboy/easy-ssh")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Lightweight SSH / SFTP client")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "Easy SSH")
-set(CPACK_VERBATIM_VARIABLES ON)
-set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-
-if(WIN32)
-    set(CPACK_GENERATOR "NSIS")
-    set(CPACK_NSIS_DISPLAY_NAME "Easy SSH")
-    set(CPACK_NSIS_PACKAGE_NAME "Easy SSH")
-    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/easy-ssh.ico")
-    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/easy-ssh.ico")
-    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\easy-ssh.exe")
-    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-    set(CPACK_NSIS_CREATE_ICONS_EXTRA
-        "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Easy SSH.lnk' '$INSTDIR\\\\bin\\\\easy-ssh.exe'"
-    )
-    set(CPACK_NSIS_DELETE_ICONS_EXTRA
-        "Delete '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Easy SSH.lnk'"
-    )
-    set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
-endif()
-include(CPack)
-
-# Default ON for Linux so compile_commands.json includes QtTest for the IDE/clangd.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(_easy_ssh_it_default ON)
-else()
-    set(_easy_ssh_it_default OFF)
-endif()
-option(EASY_SSH_INTEGRATION_TESTS "Build local headless integration tests (Linux)"
-       ${_easy_ssh_it_default})
-unset(_easy_ssh_it_default)
 if(EASY_SSH_INTEGRATION_TESTS)
     if(UNIX AND NOT APPLE)
         enable_testing()
@@ -299,8 +23,14 @@ if(EASY_SSH_INTEGRATION_TESTS)
     endif()
 endif()
 
+include(cmake/EasySshInstall.cmake)
+include(cmake/EasySshPackaging.cmake)
+
 message(STATUS "Easy SSH ${PROJECT_VERSION} (easy-ssh)")
 message(STATUS "  Qt6:          ${Qt6_VERSION}")
 message(STATUS "  libssh:       found")
 message(STATUS "  QTermWidget6: found")
 message(STATUS "  Qt6Keychain:  found")
+message(STATUS "  System deps:  ${EASY_SSH_USE_SYSTEM_PACKAGES}")
+message(STATUS "  Fetch Qt:     ${EASY_SSH_FETCH_QT}")
+message(STATUS "  Bundle RT:    ${EASY_SSH_BUNDLE_RUNTIME}")

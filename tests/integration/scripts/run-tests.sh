@@ -25,6 +25,8 @@ fi
 
 cmake -S "${REPO}" -B "${BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Debug \
+    -DEASY_SSH_USE_SYSTEM_PACKAGES=ON \
+    -DEASY_SSH_FETCH_QT=OFF \
     -DEASY_SSH_INTEGRATION_TESTS=ON
 
 cmake --build "${BUILD_DIR}" --target easy-ssh-integration-tests -j"$(nproc)"

@@ -1,15 +1,19 @@
-# Build
+# Build trees (CMake presets: build, build-release, build-integration, …)
 /build/
-/build-release/
-/build-integration/
+/build-*/
 /cmake-build-*/
 /out/
-/dist/
-compile_commands.json
 
-# Local dependency cache (downloaded RPMs / extracted prefix)
+# CPack / local install staging
+/dist/
+/staging/
+
+# FetchContent (_deps inside build-*) and aqtinstall (Qt cache, CI tools)
 /.deps/
 aqtinstall.log
+
+# CMake export (generated in build dirs; also ignore stray copy at repo root)
+compile_commands.json
 
 # Editor / IDE
 /.idea/
@@ -28,6 +32,12 @@ CMakeLists.txt.user
 *.dll
 *.exe
 *.app
+
+# CPack artifacts (when cpack is run outside dist/)
+*.deb
+*.rpm
+*.AppImage
+*.dmg
 
 # OS
 .DS_Store

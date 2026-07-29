@@ -4,7 +4,7 @@ Headless integration tests exercise **SshWorker** core paths (connect, ProxyJump
 
 ## Prerequisites
 
-- Qt 6.6+, libssh, CMake 3.21+
+- Qt 6.6+, libssh, CMake 3.28+
 - **Podman** (preferred) or Docker
 - `podman-compose` (preferred on Fedora) or `podman compose` / `docker compose`
 
@@ -46,8 +46,8 @@ Bastion1 defines two users for credential scenarios:
 ## Manual CMake
 
 ```bash
-cmake -B build-integration -DEASY_SSH_INTEGRATION_TESTS=ON
-cmake --build build-integration --target easy-ssh-integration-tests
+cmake --preset integration
+cmake --build --preset integration --target easy-ssh-integration-tests
 source tests/integration/fixtures/endpoints.env
 ./build-integration/tests/integration/easy-ssh-integration-tests
 ```
