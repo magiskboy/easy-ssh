@@ -77,6 +77,12 @@ jobs:
         with:
           arch: x64
 
+      - name: Install Windows build tools
+        if: matrix.os_family == 'windows'
+        shell: bash
+        run: |
+          python -m pip install --user "aqtinstall>=3.1.0"
+
       - name: Install Linux build tools
         if: matrix.os_family == 'linux'
         run: |
@@ -94,6 +100,8 @@ jobs:
             zlib1g-dev \
             libsecret-1-dev \
             libglib2.0-dev
+          python3 -m pip install --user "aqtinstall>=3.1.0"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install Linux AppImage tool
         if: matrix.os_family == 'linux'
@@ -120,8 +128,9 @@ jobs:
         if: matrix.os_family == 'macos'
         run: |
           brew update
-          brew install cmake ninja pkg-config python@3.13
-          echo "$(brew --prefix python@3.13)/bin" >> "$GITHUB_PATH"
+          brew install cmake ninja pkg-config pipx
+          pipx install aqtinstall
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Cache dependencies
         uses: actions/cache@v4

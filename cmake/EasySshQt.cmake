@@ -13,7 +13,6 @@ if(Qt6_FOUND)
     return()
 endif()
 
-find_program(EASY_SSH_PYTHON3 python3 REQUIRED)
 set(EASY_SSH_QT_ROOT "${CMAKE_SOURCE_DIR}/.deps/qt/${EASY_SSH_QT_VERSION}")
 
 # Map host platform to aqtinstall host/arch tokens.
@@ -50,14 +49,26 @@ set(_qt_marker "${EASY_SSH_QT_PREFIX}/lib/cmake/Qt6/Qt6Config.cmake")
 if(NOT EXISTS "${_qt_marker}")
     message(STATUS "EasySshQt: installing Qt ${EASY_SSH_QT_VERSION} via aqt (${_aqt_host}/${_aqt_arch})")
 
-    execute_process(
-        COMMAND ${EASY_SSH_PYTHON3} -m pip install --user "aqtinstall>=3.1.0"
-        RESULT_VARIABLE _pip_result
-        OUTPUT_VARIABLE _pip_out
-        ERROR_VARIABLE _pip_err
-    )
-    if(NOT _pip_result EQUAL 0)
-        message(FATAL_ERROR "EasySshQt: pip install aqtinstall failed:\n${_pip_err}")
+    find_program(EASY_SSH_AQT aqt)
+    if(EASY_SSH_AQT)
+        set(_aqt_launcher "${EASY_SSH_AQT}")
+        set(_aqt_launch_mode "exe")
+    else()
+        find_program(EASY_SSH_PYTHON3 NAMES python3 python python3.exe python.exe REQUIRED)
+        execute_process(
+            COMMAND ${EASY_SSH_PYTHON3} -m aqt --help
+            RESULT_VARIABLE _aqt_probe
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if(NOT _aqt_probe EQUAL 0)
+            message(
+                FATAL_ERROR
+                "EasySshQt: aqtinstall not found. Install it first, e.g.:\n"
+                "  pip install aqtinstall   or   pipx install aqtinstall   or   brew install pipx && pipx install aqtinstall"
+            )
+        endif()
+        set(_aqt_launch_mode "module")
     endif()
 
     file(MAKE_DIRECTORY "${EASY_SSH_QT_ROOT}")
@@ -67,14 +78,30 @@ if(NOT EXISTS "${_qt_marker}")
         list(APPEND _aqt_modules qttools)
     endif()
 
-    execute_process(
-        COMMAND ${EASY_SSH_PYTHON3} -m aqt install-qt
+    if(_aqt_launch_mode STREQUAL "exe")
+        set(_aqt_cmd
+            "${_aqt_launcher}" install-qt
             ${_aqt_host}
             desktop
-            ${_aqt_arch}
             ${EASY_SSH_QT_VERSION}
+            ${_aqt_arch}
             --outputdir "${EASY_SSH_QT_ROOT}"
             --modules ${_aqt_modules}
+        )
+    else()
+        set(_aqt_cmd
+            ${EASY_SSH_PYTHON3} -m aqt install-qt
+            ${_aqt_host}
+            desktop
+            ${EASY_SSH_QT_VERSION}
+            ${_aqt_arch}
+            --outputdir "${EASY_SSH_QT_ROOT}"
+            --modules ${_aqt_modules}
+        )
+    endif()
+
+    execute_process(
+        COMMAND ${_aqt_cmd}
         RESULT_VARIABLE _aqt_result
         OUTPUT_VARIABLE _aqt_out
         ERROR_VARIABLE _aqt_err
