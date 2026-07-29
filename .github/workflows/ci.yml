@@ -131,6 +131,7 @@ jobs:
             .deps/vcpkg/installed
             .deps/vcpkg/packages
             .deps/vcpkg/downloads
+            .deps/vcpkg/vcpkg.exe
           key: vcpkg-libssh-x64-windows-${{ hashFiles('.github/workflows/ci.yml') }}
 
       - name: Install libssh (vcpkg)
@@ -138,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           VCPKG_ROOT="${GITHUB_WORKSPACE}/.deps/vcpkg"
-          if [[ ! -x "${VCPKG_ROOT}/vcpkg.exe" && ! -x "${VCPKG_ROOT}/vcpkg" ]]; then
+          if [[ ! -f "${VCPKG_ROOT}/vcpkg.exe" ]]; then
             if [[ -d "${VCPKG_ROOT}" && ! -d "${VCPKG_ROOT}/.git" ]]; then
               # Cache restored partial contents without the git repo; clone into a
               # temp dir and move the .git tree in so cached installed/ is preserved.
@@ -148,12 +149,13 @@ jobs:
               cp -n "$tmp"/* "${VCPKG_ROOT}/" 2>/dev/null || true
               cp -rn "$tmp"/scripts "${VCPKG_ROOT}/" 2>/dev/null || true
               rm -rf "$tmp"
-            else
+            elif [[ ! -d "${VCPKG_ROOT}/.git" ]]; then
               git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
             fi
-            "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+            # bootstrap-vcpkg.sh can break under Git Bash when MSVC paths contain spaces.
+            (cd "${VCPKG_ROOT}" && cmd.exe //c "bootstrap-vcpkg.bat -disableMetrics")
           fi
-          "${VCPKG_ROOT}/vcpkg" install libssh:x64-windows --disable-metrics
+          "${VCPKG_ROOT}/vcpkg.exe" install libssh:x64-windows --disable-metrics
           {
             echo "VCPKG_ROOT=${VCPKG_ROOT}"
             echo "CMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
