@@ -98,7 +98,11 @@ void ConnectionListWidget::createConnection()
                    dialog.password(),
                    dialog.passwordProvided(),
                    dialog.passphrase(),
-                   dialog.passphraseProvided());
+                   dialog.passphraseProvided(),
+                   dialog.gatewayPassword(),
+                   dialog.gatewayPasswordProvided(),
+                   dialog.gatewayPassphrase(),
+                   dialog.gatewayPassphraseProvided());
 
     emit statusMessage(tr("Created connection: %1").arg(connection.name),
                        ErrorNotifier::Level::Success);
@@ -141,7 +145,11 @@ void ConnectionListWidget::editSelectedConnection()
                    dialog.password(),
                    dialog.passwordProvided(),
                    dialog.passphrase(),
-                   dialog.passphraseProvided());
+                   dialog.passphraseProvided(),
+                   dialog.gatewayPassword(),
+                   dialog.gatewayPasswordProvided(),
+                   dialog.gatewayPassphrase(),
+                   dialog.gatewayPassphraseProvided());
 
     emit statusMessage(tr("Updated connection: %1").arg(connection.name),
                        ErrorNotifier::Level::Success);
@@ -227,6 +235,8 @@ void ConnectionListWidget::duplicateSelectedConnection()
     if (m_secretStore) {
         m_secretStore->copySecret(*id, copy->id, SecretStore::Kind::Password);
         m_secretStore->copySecret(*id, copy->id, SecretStore::Kind::Passphrase);
+        m_secretStore->copySecret(*id, copy->id, SecretStore::Kind::GatewayPassword);
+        m_secretStore->copySecret(*id, copy->id, SecretStore::Kind::GatewayPassphrase);
     }
 
     emit statusMessage(tr("Duplicated connection: %1").arg(copy->name),
@@ -368,7 +378,11 @@ void ConnectionListWidget::persistSecrets(const Connection &connection,
                                           const QString &password,
                                           bool passwordProvided,
                                           const QString &passphrase,
-                                          bool passphraseProvided)
+                                          bool passphraseProvided,
+                                          const QString &gatewayPassword,
+                                          bool gatewayPasswordProvided,
+                                          const QString &gatewayPassphrase,
+                                          bool gatewayPassphraseProvided)
 {
     if (!m_secretStore) {
         return;
@@ -396,6 +410,29 @@ void ConnectionListWidget::persistSecrets(const Connection &connection,
         if (isEdit) {
             m_secretStore->deleteSecret(connection.id, SecretStore::Kind::Password);
         }
+    }
+
+    const bool usesCustomGateway =
+        connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials;
+    if (!usesCustomGateway) {
+        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassword);
+        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassphrase);
+        return;
+    }
+
+    const AuthType gatewayAuth = connection.jumpHops.first().authType;
+    if (gatewayAuth == AuthType::Password) {
+        if (gatewayPasswordProvided) {
+            m_secretStore->storeSecret(
+                connection.id, SecretStore::Kind::GatewayPassword, gatewayPassword);
+        }
+        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassphrase);
+    } else {
+        if (gatewayPassphraseProvided) {
+            m_secretStore->storeSecret(
+                connection.id, SecretStore::Kind::GatewayPassphrase, gatewayPassphrase);
+        }
+        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassword);
     }
 }
 

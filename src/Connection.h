@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QList>
 #include <QString>
 #include <QUuid>
 
@@ -15,6 +16,16 @@ enum class ConnectionSource
     SshConfig = 1,
 };
 
+struct JumpHop
+{
+    QString host;
+    quint16 port = 22;
+    QString username;
+    AuthType authType = AuthType::Password;
+    QString privateKeyPath;
+    bool useTargetCredentials = true;
+};
+
 struct Connection
 {
     QUuid id;
@@ -28,12 +39,45 @@ struct Connection
     ConnectionSource source = ConnectionSource::App;
     QString configAlias;
 
+    QList<JumpHop> jumpHops;
+
+    int keepAliveIntervalSec = 0;
+    int keepAliveCountMax = 3;
+    bool compressionEnabled = false;
+
+    bool usesJumpHost() const { return !jumpHops.isEmpty(); }
+
+    QString proxyJumpString() const
+    {
+        QStringList hops;
+        for (const JumpHop &hop : jumpHops) {
+            if (hop.host.isEmpty() || hop.username.isEmpty()) {
+                continue;
+            }
+            QString entry = hop.username + QLatin1Char('@') + hop.host;
+            if (hop.port != 22) {
+                entry += QLatin1Char(':') + QString::number(hop.port);
+            }
+            hops.append(entry);
+        }
+        return hops.join(QLatin1Char(','));
+    }
+
     QString displayText() const
     {
         QString text = QStringLiteral("%1 — %2@%3:%4").arg(name, username, host).arg(port);
+        if (usesJumpHost()) {
+            text += QStringLiteral(" [via gateway]");
+        }
         if (source == ConnectionSource::SshConfig) {
             text += QStringLiteral(" [ssh config]");
         }
         return text;
     }
+};
+
+struct SessionCredentials
+{
+    QString targetSecret;
+    QString gatewaySecret;
 };

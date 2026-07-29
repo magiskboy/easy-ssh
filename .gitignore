@@ -1,6 +1,7 @@
 # Build
 /build/
 /build-release/
+/build-integration/
 /cmake-build-*/
 /out/
 /dist/

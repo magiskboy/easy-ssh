@@ -39,7 +39,8 @@ void SessionTabWidget::refreshWelcome()
     }
 }
 
-void SessionTabWidget::openSshSession(const Connection &connection, const QString &secret)
+void SessionTabWidget::openSshSession(const Connection &connection,
+                                      const SessionCredentials &credentials)
 {
     removeWelcomeTabIfPresent();
 
@@ -60,7 +61,7 @@ void SessionTabWidget::openSshSession(const Connection &connection, const QStrin
     const int index = addTab(session, title);
     setCurrentIndex(index);
 
-    session->start(connection, secret);
+    session->start(connection, credentials);
     updateTabPresentation(session);
     emit sessionOpened(title);
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Connection.h"
 #include "ErrorNotifier.h"
 
 #include <QHash>
@@ -37,6 +38,8 @@ private:
     void syncFileExplorerToActiveSession();
     void syncTunnelsToActiveSession();
     void openConnectionById(const QUuid &id);
+    void readTargetSecretForConnect(const Connection &connection);
+    void finishConnect(const Connection &connection, const SessionCredentials &credentials);
     void wireActiveSessionStateSync(TerminalSessionWidget *session);
     void openSettings();
     void openShortcuts();
@@ -60,4 +63,8 @@ private:
     QList<QAction *> m_terminalActions;
     QHash<QString, QAction *> m_shortcutActions;
     TerminalSessionWidget *m_wiredSessionState = nullptr;
+
+    QUuid m_pendingConnectId;
+    SessionCredentials m_pendingCredentials;
+    bool m_pendingNeedTargetSecret = false;
 };

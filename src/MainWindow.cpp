@@ -162,18 +162,26 @@ void MainWindow::setupUi()
                    bool ok,
                    const QString &value,
                    const QString &error) {
-                Q_UNUSED(kind);
-
                 const auto connection = m_connectionModel->connectionById(connectionId);
                 if (!connection) {
                     return;
                 }
 
                 if (!ok) {
-                    // Private-key auth can proceed without a stored passphrase (agent / unlocked
-                    // key).
-                    if (connection->authType == AuthType::PrivateKey) {
-                        m_sessionTabs->openSshSession(*connection, QString());
+                    if (kind == SecretStore::Kind::GatewayPassphrase &&
+                        connection->usesJumpHost() &&
+                        !connection->jumpHops.first().useTargetCredentials &&
+                        connection->jumpHops.first().authType == AuthType::PrivateKey) {
+                        m_pendingCredentials.gatewaySecret.clear();
+                        m_pendingNeedTargetSecret = true;
+                        readTargetSecretForConnect(*connection);
+                        return;
+                    }
+
+                    if (kind == SecretStore::Kind::Passphrase &&
+                        connection->authType == AuthType::PrivateKey) {
+                        m_pendingCredentials.targetSecret.clear();
+                        finishConnect(*connection, m_pendingCredentials);
                         return;
                     }
 
@@ -181,8 +189,22 @@ void MainWindow::setupUi()
                                           tr("Credentials"),
                                           tr("Failed to read credentials: %1").arg(error),
                                           ErrorNotifier::Level::Warning);
+                    m_pendingConnectId = {};
+                    m_pendingNeedTargetSecret = false;
+                    m_pendingCredentials = {};
                     return;
                 }
+
+                if (kind == SecretStore::Kind::GatewayPassword ||
+                    kind == SecretStore::Kind::GatewayPassphrase) {
+                    m_pendingCredentials.gatewaySecret = value;
+                    m_pendingConnectId = connectionId;
+                    m_pendingNeedTargetSecret = true;
+                    readTargetSecretForConnect(*connection);
+                    return;
+                }
+
+                m_pendingCredentials.targetSecret = value;
 
                 if (connection->authType == AuthType::Password && value.isEmpty()) {
                     ErrorNotifier::notify(this,
@@ -191,12 +213,13 @@ void MainWindow::setupUi()
                                              "Edit the connection and set a password.")
                                               .arg(connection->name),
                                           ErrorNotifier::Level::Warning);
+                    m_pendingConnectId = {};
+                    m_pendingNeedTargetSecret = false;
+                    m_pendingCredentials = {};
                     return;
                 }
 
-                m_sessionTabs->openSshSession(*connection, value);
-                AppSettings::instance().recordRecentConnection(connectionId);
-                m_sessionTabs->refreshWelcome();
+                finishConnect(*connection, m_pendingCredentials);
             });
 
     connect(
@@ -524,12 +547,40 @@ void MainWindow::openConnectionById(const QUuid &id)
         return;
     }
 
-    const auto kind = connection->authType == AuthType::PrivateKey ? SecretStore::Kind::Passphrase
-                                                                   : SecretStore::Kind::Password;
+    m_pendingConnectId = id;
+    m_pendingNeedTargetSecret = false;
+    m_pendingCredentials = {};
 
     setStatusText(tr("Reading credentials for %1…").arg(connection->name),
                   ErrorNotifier::Level::Status);
-    m_secretStore->readSecret(id, kind);
+
+    if (connection->usesJumpHost() && !connection->jumpHops.first().useTargetCredentials) {
+        const JumpHop &hop = connection->jumpHops.first();
+        const auto gatewayKind = hop.authType == AuthType::PrivateKey
+                                     ? SecretStore::Kind::GatewayPassphrase
+                                     : SecretStore::Kind::GatewayPassword;
+        m_secretStore->readSecret(id, gatewayKind);
+        return;
+    }
+
+    readTargetSecretForConnect(*connection);
+}
+
+void MainWindow::readTargetSecretForConnect(const Connection &connection)
+{
+    const auto kind = connection.authType == AuthType::PrivateKey ? SecretStore::Kind::Passphrase
+                                                                  : SecretStore::Kind::Password;
+    m_secretStore->readSecret(connection.id, kind);
+}
+
+void MainWindow::finishConnect(const Connection &connection, const SessionCredentials &credentials)
+{
+    m_sessionTabs->openSshSession(connection, credentials);
+    AppSettings::instance().recordRecentConnection(connection.id);
+    m_sessionTabs->refreshWelcome();
+    m_pendingConnectId = {};
+    m_pendingNeedTargetSecret = false;
+    m_pendingCredentials = {};
 }
 
 void MainWindow::updateSessionStatusInfo()

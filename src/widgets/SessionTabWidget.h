@@ -22,7 +22,7 @@ public:
     void setConnectionModel(ConnectionModel *model);
     void refreshWelcome();
 
-    void openSshSession(const Connection &connection, const QString &secret);
+    void openSshSession(const Connection &connection, const SessionCredentials &credentials);
     void disconnectCurrentSession();
     void reconnectCurrentSession();
     void closeCurrentSession();

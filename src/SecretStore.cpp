@@ -15,6 +15,10 @@ QString SecretStore::keyFor(const QUuid &connectionId, Kind kind)
     switch (kind) {
     case Kind::Passphrase:
         return id + QStringLiteral("/passphrase");
+    case Kind::GatewayPassword:
+        return id + QStringLiteral("/gateway/password");
+    case Kind::GatewayPassphrase:
+        return id + QStringLiteral("/gateway/passphrase");
     case Kind::Password:
     default:
         return id + QStringLiteral("/password");
@@ -88,6 +92,8 @@ void SecretStore::deleteAllSecrets(const QUuid &connectionId)
 {
     deleteSecret(connectionId, Kind::Password);
     deleteSecret(connectionId, Kind::Passphrase);
+    deleteSecret(connectionId, Kind::GatewayPassword);
+    deleteSecret(connectionId, Kind::GatewayPassphrase);
 }
 
 void SecretStore::copySecret(const QUuid &fromId, const QUuid &toId, Kind kind)

@@ -2,6 +2,8 @@
 
 #include "Logging.h"
 
+#include <libssh/server.h>
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -81,7 +83,7 @@ SshWorker::~SshWorker()
 }
 
 void SshWorker::connectToHost(const Connection &connection,
-                              const QString &secret,
+                              const SessionCredentials &credentials,
                               int cols,
                               int rows)
 {
@@ -92,8 +94,19 @@ void SshWorker::connectToHost(const Connection &connection,
 
     cleanup();
 
+    m_connectConnection = connection;
+    m_connectCredentials = credentials;
+    m_jumpContexts.clear();
+    m_jumpCallbacks.clear();
+
+    m_keepAliveIntervalSec = qMax(0, connection.keepAliveIntervalSec);
+    m_keepAliveCountMax = qMax(1, connection.keepAliveCountMax);
+    m_lastKeepAliveMs = 0;
+    m_keepAliveMissed = 0;
+
     qCWarning(lcSsh) << "Connecting to" << connection.username + QLatin1Char('@') + connection.host
-                     << "port" << connection.port;
+                     << "port" << connection.port
+                     << (connection.usesJumpHost() ? "(via gateway)" : "(direct)");
 
     m_ptyCols = qBound(2, cols, 1000);
     m_ptyRows = qBound(2, rows, 500);
@@ -113,7 +126,10 @@ void SshWorker::connectToHost(const Connection &connection,
 
     QString connectError;
     if (!connectSessionWithFallback(connection, &connectError)) {
-        const QString err = connectError.isEmpty() ? sessionError() : connectError;
+        QString err = connectError.isEmpty() ? sessionError() : connectError;
+        if (connection.usesJumpHost()) {
+            err = tr("Gateway: %1").arg(err);
+        }
         qCWarning(lcSsh) << "Connection failed:" << err;
         cleanup();
         emit errorOccurred(tr("Connection failed: %1").arg(err));
@@ -125,7 +141,7 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
-    QString mutableSecret = secret;
+    QString mutableSecret = credentials.targetSecret;
     if (!authenticate(connection, mutableSecret)) {
         qCWarning(lcSsh) << "Authentication failed for" << connection.host;
         mutableSecret.fill(QChar(u'\0'));
@@ -156,6 +172,7 @@ void SshWorker::connectToHost(const Connection &connection,
         m_ioTimer = new QTimer(this);
         connect(m_ioTimer, &QTimer::timeout, this, &SshWorker::pollChannel);
     }
+    m_lastKeepAliveMs = QDateTime::currentMSecsSinceEpoch();
     m_ioTimer->start(20);
 }
 
@@ -174,6 +191,7 @@ bool SshWorker::applyConnectionOptions(ssh_session session, const Connection &co
             qCWarning(lcSsh) << "ssh_options_parse_config failed for alias"
                              << connection.configAlias << ":" << sessionErrorOf(session);
         }
+        applyAdvancedOptions(session, connection);
     } else {
         const QByteArray host = connection.host.toUtf8();
         const QByteArray user = connection.username.toUtf8();
@@ -186,9 +204,66 @@ bool SshWorker::applyConnectionOptions(ssh_session session, const Connection &co
         // Keep app-defined host/user/port authoritative.
         const int processConfig = 0;
         ssh_options_set(session, SSH_OPTIONS_PROCESS_CONFIG, &processConfig);
+
+        if (connection.usesJumpHost()) {
+            const QByteArray proxyJump = connection.proxyJumpString().toUtf8();
+            if (proxyJump.isEmpty()) {
+                qCWarning(lcSsh) << "ProxyJump string is empty despite configured hops";
+                return false;
+            }
+            if (ssh_options_set(session, SSH_OPTIONS_PROXYJUMP, proxyJump.constData()) != 0) {
+                qCWarning(lcSsh) << "Failed to set ProxyJump:" << sessionErrorOf(session);
+                return false;
+            }
+            registerJumpCallbacks(session, connection);
+        }
+
+        applyAdvancedOptions(session, connection);
     }
 
     return true;
+}
+
+void SshWorker::applyAdvancedOptions(ssh_session session, const Connection &connection)
+{
+    if (session == nullptr) {
+        return;
+    }
+
+    if (connection.source == ConnectionSource::App) {
+        const char *compression = connection.compressionEnabled ? "yes" : "no";
+        ssh_options_set(session, SSH_OPTIONS_COMPRESSION, compression);
+    } else if (connection.compressionEnabled) {
+        ssh_options_set(session, SSH_OPTIONS_COMPRESSION, "yes");
+    }
+}
+
+void SshWorker::registerJumpCallbacks(ssh_session session, const Connection &connection)
+{
+    m_jumpContexts.clear();
+    m_jumpCallbacks.clear();
+    m_jumpContexts.reserve(static_cast<size_t>(connection.jumpHops.size()));
+    m_jumpCallbacks.reserve(static_cast<size_t>(connection.jumpHops.size()));
+
+    for (int i = 0; i < connection.jumpHops.size(); ++i) {
+        JumpHopContext context;
+        context.worker = this;
+        context.hopIndex = i;
+        m_jumpContexts.push_back(context);
+
+        ssh_jump_callbacks_struct callbacks{};
+        callbacks.userdata = &m_jumpContexts.back();
+        callbacks.before_connection = &SshWorker::jumpBeforeConnectionCb;
+        callbacks.verify_knownhost = &SshWorker::jumpVerifyKnownHostCb;
+        callbacks.authenticate = &SshWorker::jumpAuthenticateCb;
+        m_jumpCallbacks.push_back(callbacks);
+
+        if (ssh_options_set(
+                session, SSH_OPTIONS_PROXYJUMP_CB_LIST_APPEND, &m_jumpCallbacks.back()) != 0) {
+            qCWarning(lcSsh) << "Failed to register jump callback for hop" << i << ":"
+                             << sessionErrorOf(session);
+        }
+    }
 }
 
 bool SshWorker::connectSessionWithFallback(const Connection &connection, QString *errorOut)
@@ -278,10 +353,11 @@ void SshWorker::logSessionOptions(ssh_session session, const char *stage) const
     const QString hostKeys = optionString(session, SSH_OPTIONS_HOSTKEYS);
     const QString c2s = optionString(session, SSH_OPTIONS_CIPHERS_C_S);
     const QString s2c = optionString(session, SSH_OPTIONS_CIPHERS_S_C);
+    const QString compression = optionString(session, SSH_OPTIONS_COMPRESSION);
 
     qCWarning(lcSsh).noquote()
         << QStringLiteral("Session options [%1] host=%2 user=%3 port=%4 identity=%5 kex=%6 "
-                          "hostkeys=%7 ciphers_c2s=%8 ciphers_s2c=%9")
+                          "hostkeys=%7 ciphers_c2s=%8 ciphers_s2c=%9 compression=%10")
                .arg(QString::fromUtf8(stage ? stage : "unknown"),
                     host.isEmpty() ? QStringLiteral("<unset>") : host,
                     user.isEmpty() ? QStringLiteral("<unset>") : user,
@@ -290,7 +366,8 @@ void SshWorker::logSessionOptions(ssh_session session, const char *stage) const
                     kex.isEmpty() ? QStringLiteral("<default>") : kex,
                     hostKeys.isEmpty() ? QStringLiteral("<default>") : hostKeys,
                     c2s.isEmpty() ? QStringLiteral("<default>") : c2s,
-                    s2c.isEmpty() ? QStringLiteral("<default>") : s2c);
+                    s2c.isEmpty() ? QStringLiteral("<default>") : s2c,
+                    compression.isEmpty() ? QStringLiteral("<default>") : compression);
 }
 
 void SshWorker::writeToChannel(const QByteArray &data)
@@ -611,6 +688,7 @@ void SshWorker::pollChannel()
     pollTunnelBridges();
 
     if (m_channel == nullptr) {
+        pollKeepAlive(false);
         return;
     }
 
@@ -623,6 +701,7 @@ void SshWorker::pollChannel()
     constexpr int kMaxBytesPerTick = 64 * 1024;
     int totalRead = 0;
     char buffer[4096];
+    bool hadActivity = false;
 
     while (totalRead < kMaxBytesPerTick) {
         const int nbytes = ssh_channel_read_nonblocking(m_channel, buffer, sizeof(buffer), 0);
@@ -645,6 +724,7 @@ void SshWorker::pollChannel()
             break;
         }
         totalRead += nbytes;
+        hadActivity = true;
         emit dataReceived(QByteArray(buffer, nbytes));
     }
 
@@ -658,50 +738,117 @@ void SshWorker::pollChannel()
             break;
         }
         totalRead += nbytes;
+        hadActivity = true;
         emit dataReceived(QByteArray(buffer, nbytes));
     }
 
+    pollKeepAlive(hadActivity);
+
     if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel)) {
         disconnectSession();
+        return;
+    }
+
+    if (m_session && !ssh_is_connected(m_session)) {
+        disconnectSession();
+    }
+}
+
+void SshWorker::pollKeepAlive(bool hadChannelActivity)
+{
+    if (m_keepAliveIntervalSec <= 0 || m_session == nullptr || !m_running) {
+        return;
+    }
+
+    if (hadChannelActivity) {
+        m_keepAliveMissed = 0;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_lastKeepAliveMs > 0 &&
+        now - m_lastKeepAliveMs < static_cast<qint64>(m_keepAliveIntervalSec) * 1000) {
+        return;
+    }
+
+    m_lastKeepAliveMs = now;
+
+    if (ssh_send_keepalive(m_session) != SSH_OK || !ssh_is_connected(m_session)) {
+        ++m_keepAliveMissed;
+        if (m_keepAliveMissed >= m_keepAliveCountMax) {
+            emit errorOccurred(tr("Connection lost (keepalive)"));
+            disconnectSession();
+        }
+        return;
+    }
+
+    if (hadChannelActivity) {
+        m_keepAliveMissed = 0;
     }
 }
 
 bool SshWorker::verifyKnownHost()
 {
-    const enum ssh_known_hosts_e state = ssh_session_is_known_server(m_session);
+    return verifyKnownHostForSession(m_session, QString());
+}
+
+bool SshWorker::verifyKnownHostForSession(ssh_session session, const QString &contextLabel)
+{
+    if (session == nullptr) {
+        return false;
+    }
+
+    const enum ssh_known_hosts_e state = ssh_session_is_known_server(session);
 
     switch (state) {
     case SSH_KNOWN_HOSTS_OK:
         return true;
 
     case SSH_KNOWN_HOSTS_CHANGED:
-        return promptHostKeyAndUpdate(HostKeyPrompt::Changed, true);
+        return promptHostKeyAndUpdateForSession(
+            session, HostKeyPrompt::Changed, true, contextLabel);
 
     case SSH_KNOWN_HOSTS_OTHER:
-        return promptHostKeyAndUpdate(HostKeyPrompt::Other, true);
+        return promptHostKeyAndUpdateForSession(session, HostKeyPrompt::Other, true, contextLabel);
 
     case SSH_KNOWN_HOSTS_ERROR:
-        emit errorOccurred(tr("Error checking known hosts: %1").arg(sessionError()));
+        if (contextLabel.isEmpty()) {
+            emit errorOccurred(tr("Error checking known hosts: %1").arg(sessionErrorOf(session)));
+        }
         return false;
 
     case SSH_KNOWN_HOSTS_NOT_FOUND:
     case SSH_KNOWN_HOSTS_UNKNOWN:
-        return promptHostKeyAndUpdate(HostKeyPrompt::Unknown, false);
-    }
+        return promptHostKeyAndUpdateForSession(
+            session, HostKeyPrompt::Unknown, false, contextLabel);
 
-    emit errorOccurred(tr("Unexpected known_hosts state"));
-    return false;
+    default:
+        if (contextLabel.isEmpty()) {
+            emit errorOccurred(tr("Unexpected known_hosts state"));
+        }
+        return false;
+    }
 }
 
 bool SshWorker::promptHostKeyAndUpdate(HostKeyPrompt reason, bool removeExistingEntries)
 {
-    const QString fingerprint = fingerprintOf(m_session);
+    return promptHostKeyAndUpdateForSession(m_session, reason, removeExistingEntries, QString());
+}
+
+bool SshWorker::promptHostKeyAndUpdateForSession(ssh_session session,
+                                                 HostKeyPrompt reason,
+                                                 bool removeExistingEntries,
+                                                 const QString &contextLabel)
+{
+    const QString fingerprint = fingerprintOf(session);
     if (fingerprint.isEmpty()) {
-        emit errorOccurred(tr("Unable to read server host key fingerprint"));
+        if (contextLabel.isEmpty()) {
+            emit errorOccurred(tr("Unable to read server host key fingerprint"));
+        }
         return false;
     }
 
-    qCWarning(lcSsh) << "Host key prompt" << static_cast<int>(reason) << fingerprint;
+    qCWarning(lcSsh) << "Host key prompt" << static_cast<int>(reason) << fingerprint
+                     << contextLabel;
 
     {
         QMutexLocker locker(&m_hostKeyMutex);
@@ -709,7 +856,7 @@ bool SshWorker::promptHostKeyAndUpdate(HostKeyPrompt reason, bool removeExisting
         m_hostKeyAccepted = false;
     }
 
-    emit hostKeyPrompt(reason, fingerprint);
+    emit hostKeyPrompt(reason, fingerprint, contextLabel);
 
     {
         QMutexLocker locker(&m_hostKeyMutex);
@@ -718,18 +865,24 @@ bool SshWorker::promptHostKeyAndUpdate(HostKeyPrompt reason, bool removeExisting
         }
         if (!m_hostKeyAccepted) {
             qCWarning(lcSsh) << "Host key rejected by user";
-            emit errorOccurred(tr("Host key was rejected"));
+            if (contextLabel.isEmpty()) {
+                emit errorOccurred(tr("Host key was rejected"));
+            }
             return false;
         }
     }
 
-    if (removeExistingEntries && !removeKnownHostsEntriesForSession()) {
-        emit errorOccurred(tr("Failed to update known_hosts: could not remove old host key"));
+    if (removeExistingEntries && !removeKnownHostsEntriesForSession(session)) {
+        if (contextLabel.isEmpty()) {
+            emit errorOccurred(tr("Failed to update known_hosts: could not remove old host key"));
+        }
         return false;
     }
 
-    if (ssh_session_update_known_hosts(m_session) != SSH_OK) {
-        emit errorOccurred(tr("Failed to update known_hosts: %1").arg(sessionError()));
+    if (ssh_session_update_known_hosts(session) != SSH_OK) {
+        if (contextLabel.isEmpty()) {
+            emit errorOccurred(tr("Failed to update known_hosts: %1").arg(sessionErrorOf(session)));
+        }
         return false;
     }
 
@@ -737,12 +890,11 @@ bool SshWorker::promptHostKeyAndUpdate(HostKeyPrompt reason, bool removeExisting
     return true;
 }
 
-QString SshWorker::knownHostsFilePath() const
+QString knownHostsFilePathFor(ssh_session session)
 {
-    if (m_session != nullptr) {
+    if (session != nullptr) {
         char *path = nullptr;
-        if (ssh_options_get(m_session, SSH_OPTIONS_KNOWNHOSTS, &path) == SSH_OK &&
-            path != nullptr) {
+        if (ssh_options_get(session, SSH_OPTIONS_KNOWNHOSTS, &path) == SSH_OK && path != nullptr) {
             const QString result = QString::fromUtf8(path);
             ssh_string_free_char(path);
             if (!result.isEmpty()) {
@@ -775,23 +927,23 @@ bool SshWorker::knownHostsLineMatchesHost(const QString &hostField, const QStrin
     return false;
 }
 
-bool SshWorker::removeKnownHostsEntriesForSession()
+bool SshWorker::removeKnownHostsEntriesForSession(ssh_session session)
 {
-    if (m_session == nullptr) {
+    if (session == nullptr) {
         return false;
     }
 
     char *hostC = nullptr;
-    if (ssh_options_get(m_session, SSH_OPTIONS_HOST, &hostC) != SSH_OK || hostC == nullptr) {
+    if (ssh_options_get(session, SSH_OPTIONS_HOST, &hostC) != SSH_OK || hostC == nullptr) {
         return false;
     }
     const QString host = QString::fromUtf8(hostC);
     ssh_string_free_char(hostC);
 
     unsigned int port = 22;
-    ssh_options_get_port(m_session, &port);
+    ssh_options_get_port(session, &port);
 
-    const QString path = knownHostsFilePath();
+    const QString path = knownHostsFilePathFor(session);
     QFile in(path);
     if (!in.exists()) {
         return true;
@@ -839,100 +991,109 @@ bool SshWorker::removeKnownHostsEntriesForSession()
 
 bool SshWorker::authenticate(const Connection &connection, QString &secret)
 {
-    int rc = ssh_userauth_none(m_session, nullptr);
+    if (!authenticateSession(m_session, connection, secret)) {
+        emit errorOccurred(tr("Authentication failed: %1").arg(sessionError()));
+        return false;
+    }
+    return true;
+}
+
+bool SshWorker::authenticateSession(ssh_session session, const Connection &profile, QString secret)
+{
+    if (session == nullptr) {
+        return false;
+    }
+
+    int rc = ssh_userauth_none(session, nullptr);
     if (rc == SSH_AUTH_ERROR) {
-        emit errorOccurred(tr("Authentication error: %1").arg(sessionError()));
         return false;
     }
     if (rc == SSH_AUTH_SUCCESS) {
         return true;
     }
 
-    switch (connection.authType) {
+    switch (profile.authType) {
     case AuthType::PrivateKey: {
-        // Agent-first: try SSH agent before any key file / default identities.
-        if (authenticateWithAgent()) {
+        if (authenticateWithAgent(session)) {
             return true;
         }
 
-        if (!connection.privateKeyPath.isEmpty()) {
-            if (authenticatePrivateKey(connection.privateKeyPath, secret)) {
+        if (!profile.privateKeyPath.isEmpty()) {
+            if (authenticatePrivateKey(session, profile.privateKeyPath, secret)) {
                 return true;
             }
             return false;
         }
 
-        if (authenticatePublicKeyAuto(secret)) {
+        if (authenticatePublicKeyAuto(session, secret)) {
             return true;
         }
 
-        emit errorOccurred(tr("Authentication failed: no usable agent identity or default key"));
         return false;
     }
     case AuthType::Password:
     default: {
         if (secret.isEmpty()) {
-            emit errorOccurred(tr("Password is empty"));
             return false;
         }
 
-        if (authenticatePassword(secret)) {
+        if (authenticatePassword(session, secret)) {
             return true;
         }
 
-        // Many servers disable password auth and only offer keyboard-interactive.
-        const int methods = ssh_userauth_list(m_session, nullptr);
+        const int methods = ssh_userauth_list(session, nullptr);
         if (methods & SSH_AUTH_METHOD_INTERACTIVE) {
-            if (authenticateKeyboardInteractive(secret)) {
+            if (authenticateKeyboardInteractive(session, secret)) {
                 return true;
             }
         }
 
-        emit errorOccurred(tr("Authentication failed: %1").arg(sessionError()));
         return false;
     }
     }
 }
 
-bool SshWorker::authenticatePassword(const QString &password)
+bool SshWorker::authenticatePassword(ssh_session session, const QString &password)
 {
     const QByteArray pwd = password.toUtf8();
-    const int rc = ssh_userauth_password(m_session, nullptr, pwd.constData());
+    const int rc = ssh_userauth_password(session, nullptr, pwd.constData());
     return rc == SSH_AUTH_SUCCESS;
 }
 
-bool SshWorker::authenticateKeyboardInteractive(const QString &password)
+bool SshWorker::authenticateKeyboardInteractive(ssh_session session, const QString &password)
 {
-    int rc = ssh_userauth_kbdint(m_session, nullptr, nullptr);
+    int rc = ssh_userauth_kbdint(session, nullptr, nullptr);
     while (rc == SSH_AUTH_INFO) {
-        const int nprompts = ssh_userauth_kbdint_getnprompts(m_session);
+        const int nprompts = ssh_userauth_kbdint_getnprompts(session);
         for (int i = 0; i < nprompts; ++i) {
             char echo = 0;
-            const char *prompt = ssh_userauth_kbdint_getprompt(m_session, i, &echo);
+            const char *prompt = ssh_userauth_kbdint_getprompt(session, i, &echo);
             Q_UNUSED(prompt);
             Q_UNUSED(echo);
             const QByteArray answer = password.toUtf8();
-            if (ssh_userauth_kbdint_setanswer(m_session, i, answer.constData()) < 0) {
+            if (ssh_userauth_kbdint_setanswer(session, i, answer.constData()) < 0) {
                 return false;
             }
         }
-        rc = ssh_userauth_kbdint(m_session, nullptr, nullptr);
+        rc = ssh_userauth_kbdint(session, nullptr, nullptr);
     }
     return rc == SSH_AUTH_SUCCESS;
 }
 
-bool SshWorker::authenticateWithAgent()
+bool SshWorker::authenticateWithAgent(ssh_session session)
 {
-    const int methods = ssh_userauth_list(m_session, nullptr);
+    const int methods = ssh_userauth_list(session, nullptr);
     if (!(methods & SSH_AUTH_METHOD_PUBLICKEY)) {
         return false;
     }
 
-    const int rc = ssh_userauth_agent(m_session, nullptr);
+    const int rc = ssh_userauth_agent(session, nullptr);
     return rc == SSH_AUTH_SUCCESS;
 }
 
-bool SshWorker::authenticatePrivateKey(const QString &keyPath, const QString &passphrase)
+bool SshWorker::authenticatePrivateKey(ssh_session session,
+                                       const QString &keyPath,
+                                       const QString &passphrase)
 {
     if (keyPath.isEmpty()) {
         return false;
@@ -945,26 +1106,106 @@ bool SshWorker::authenticatePrivateKey(const QString &keyPath, const QString &pa
 
     int rc = ssh_pki_import_privkey_file(path.constData(), phrasePtr, nullptr, nullptr, &key);
     if (rc != SSH_OK) {
-        emit errorOccurred(tr("Failed to load private key: %1").arg(sessionError()));
         return false;
     }
 
-    rc = ssh_userauth_publickey(m_session, nullptr, key);
+    rc = ssh_userauth_publickey(session, nullptr, key);
     ssh_key_free(key);
 
-    if (rc != SSH_AUTH_SUCCESS) {
-        emit errorOccurred(tr("Private key authentication failed: %1").arg(sessionError()));
-        return false;
-    }
-    return true;
+    return rc == SSH_AUTH_SUCCESS;
 }
 
-bool SshWorker::authenticatePublicKeyAuto(const QString &passphrase)
+bool SshWorker::authenticatePublicKeyAuto(ssh_session session, const QString &passphrase)
 {
     const QByteArray phrase = passphrase.toUtf8();
     const char *phrasePtr = passphrase.isEmpty() ? nullptr : phrase.constData();
-    const int rc = ssh_userauth_publickey_auto(m_session, nullptr, phrasePtr);
+    const int rc = ssh_userauth_publickey_auto(session, nullptr, phrasePtr);
     return rc == SSH_AUTH_SUCCESS;
+}
+
+int SshWorker::jumpBeforeConnectionCb(ssh_session session, void *userdata)
+{
+    auto *context = static_cast<JumpHopContext *>(userdata);
+    if (context == nullptr || context->worker == nullptr) {
+        return SSH_ERROR;
+    }
+    return context->worker->handleJumpBeforeConnection(session, context->hopIndex);
+}
+
+int SshWorker::jumpVerifyKnownHostCb(ssh_session session, void *userdata)
+{
+    auto *context = static_cast<JumpHopContext *>(userdata);
+    if (context == nullptr || context->worker == nullptr) {
+        return SSH_ERROR;
+    }
+    return context->worker->handleJumpVerifyKnownHost(session, context->hopIndex);
+}
+
+int SshWorker::jumpAuthenticateCb(ssh_session session, void *userdata)
+{
+    auto *context = static_cast<JumpHopContext *>(userdata);
+    if (context == nullptr || context->worker == nullptr) {
+        return SSH_ERROR;
+    }
+    return context->worker->handleJumpAuthenticate(session, context->hopIndex);
+}
+
+int SshWorker::handleJumpBeforeConnection(ssh_session session, int hopIndex)
+{
+    if (hopIndex < 0 || hopIndex >= m_connectConnection.jumpHops.size()) {
+        return SSH_ERROR;
+    }
+
+    const JumpHop &hop = m_connectConnection.jumpHops.at(hopIndex);
+    qCWarning(lcSsh) << "Connecting to gateway hop" << (hopIndex + 1)
+                     << hop.username + QLatin1Char('@') << hop.host << "port" << hop.port;
+    Q_UNUSED(session);
+    return SSH_OK;
+}
+
+int SshWorker::handleJumpVerifyKnownHost(ssh_session session, int hopIndex)
+{
+    if (hopIndex < 0 || hopIndex >= m_connectConnection.jumpHops.size()) {
+        return SSH_ERROR;
+    }
+
+    const JumpHop &hop = m_connectConnection.jumpHops.at(hopIndex);
+    const QString context = tr("Gateway (%1@%2:%3)").arg(hop.username, hop.host).arg(hop.port);
+
+    if (verifyKnownHostForSession(session, context)) {
+        return SSH_OK;
+    }
+
+    qCWarning(lcSsh) << "Gateway host key verification failed for" << hop.username << hop.host;
+    return SSH_ERROR;
+}
+
+int SshWorker::handleJumpAuthenticate(ssh_session session, int hopIndex)
+{
+    if (hopIndex < 0 || hopIndex >= m_connectConnection.jumpHops.size()) {
+        return SSH_ERROR;
+    }
+
+    const JumpHop &hop = m_connectConnection.jumpHops.at(hopIndex);
+    Connection authProfile = m_connectConnection;
+    authProfile.username = hop.username;
+    authProfile.authType = hop.authType;
+    authProfile.privateKeyPath = hop.privateKeyPath;
+
+    QString secret;
+    if (hop.useTargetCredentials || hopIndex > 0) {
+        secret = m_connectCredentials.targetSecret;
+    } else {
+        secret = m_connectCredentials.gatewaySecret;
+    }
+
+    if (authenticateSession(session, authProfile, secret)) {
+        return SSH_OK;
+    }
+
+    qCWarning(lcSsh) << "Gateway authentication failed for" << hop.username << hop.host << ":"
+                     << sessionErrorOf(session);
+    return SSH_ERROR;
 }
 
 bool SshWorker::openShell()
@@ -1060,10 +1301,15 @@ void SshWorker::cleanup()
 
 QString SshWorker::sessionError() const
 {
-    if (m_session == nullptr) {
+    return sessionErrorOf(m_session);
+}
+
+QString SshWorker::sessionErrorOf(ssh_session session) const
+{
+    if (session == nullptr) {
         return tr("Unknown error");
     }
-    const char *err = ssh_get_error(m_session);
+    const char *err = ssh_get_error(session);
     return err ? QString::fromUtf8(err) : tr("Unknown error");
 }
 

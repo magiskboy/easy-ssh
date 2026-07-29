@@ -49,6 +49,12 @@ QVariant ConnectionModel::data(const QModelIndex &index, int role) const
         return static_cast<int>(connection.source);
     case ConfigAliasRole:
         return connection.configAlias;
+    case UsesJumpHostRole:
+        return connection.usesJumpHost();
+    case KeepAliveIntervalRole:
+        return connection.keepAliveIntervalSec;
+    case CompressionEnabledRole:
+        return connection.compressionEnabled;
     default:
         return {};
     }
@@ -68,6 +74,9 @@ QHash<int, QByteArray> ConnectionModel::roleNames() const
         {StartupDirectoryRole, QByteArrayLiteral("startupDirectory")},
         {SourceRole, QByteArrayLiteral("source")},
         {ConfigAliasRole, QByteArrayLiteral("configAlias")},
+        {UsesJumpHostRole, QByteArrayLiteral("usesJumpHost")},
+        {KeepAliveIntervalRole, QByteArrayLiteral("keepAliveIntervalSec")},
+        {CompressionEnabledRole, QByteArrayLiteral("compressionEnabled")},
     };
 }
 
