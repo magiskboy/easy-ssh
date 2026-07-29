@@ -136,9 +136,9 @@ jobs:
       - name: Install Enigma Virtual Box
         if: matrix.os_family == 'windows'
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/enigmavb_en.exe" \
-            "https://enigmaprotector.com/assets/files/enigmavb_en.exe"
-          "$RUNNER_TEMP/enigmavb_en.exe" /VERYSILENT /SUPPRESSMSGBOXES \
+          curl -fsSL -o "$RUNNER_TEMP/enigmavb.exe" \
+            "https://enigmaprotector.com/assets/files/enigmavb.exe"
+          "$RUNNER_TEMP/enigmavb.exe" /VERYSILENT /SUPPRESSMSGBOXES \
             /DIR="C:/Program Files/Enigma Virtual Box"
           echo "ENIGMA_VB_DIR=C:/Program Files/Enigma Virtual Box" >> "$GITHUB_ENV"
 
