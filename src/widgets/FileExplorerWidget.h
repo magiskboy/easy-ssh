@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ErrorNotifier.h"
 #include "SftpTypes.h"
 
 #include <QList>
@@ -30,7 +31,7 @@ public:
     void rebindShortcuts();
 
 signals:
-    void statusMessage(const QString &message);
+    void statusMessage(const QString &message, ErrorNotifier::Level level);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -87,12 +88,15 @@ private:
     void startNextOpenWithDownload();
     void completeOpenWithItem();
     void navigateTo(const QString &path);
+    void setSessionBadge(const QString &name, const QString &detail = QString());
+    void updateSessionBadge();
     QString openWithTempRoot() const;
     static QString formatByteSize(qint64 bytes);
     static QString elideMiddle(const QString &text, const QFontMetrics &metrics, int maxWidth);
 
     RemoteFileModel *m_model = nullptr;
     QTreeView *m_tree = nullptr;
+    QLabel *m_sessionBadge = nullptr;
     QLabel *m_pathLabel = nullptr;
     QLabel *m_emptyLabel = nullptr;
     QWidget *m_stackHost = nullptr;

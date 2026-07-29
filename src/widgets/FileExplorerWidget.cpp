@@ -50,7 +50,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent) : QWidget(parent)
     connect(
         m_openTracker, &OpenFileTracker::statusMessage, this, &FileExplorerWidget::statusMessage);
     connect(m_openTracker, &OpenFileTracker::syncFailed, this, [this](const QString &message) {
-        ErrorNotifier::notify(this, tr("Auto Sync"), message, ErrorNotifier::Level::Warning);
+        ErrorNotifier::status(tr("Auto Sync: %1").arg(message), ErrorNotifier::Level::Warning);
     });
 
     m_refreshAction = new QAction(tr("Refresh"), this);
@@ -92,6 +92,13 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent) : QWidget(parent)
     addAction(m_mkdirAction);
     addAction(m_renameAction);
     addAction(m_deleteAction);
+
+    m_sessionBadge = new QLabel(this);
+    m_sessionBadge->setContentsMargins(8, 6, 8, 2);
+    m_sessionBadge->setWordWrap(true);
+    m_sessionBadge->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_sessionBadge->hide();
+    layout->addWidget(m_sessionBadge);
 
     m_pathLabel = new QLabel(this);
     m_pathLabel->setContentsMargins(8, 4, 8, 4);
@@ -238,10 +245,13 @@ void FileExplorerWidget::bindSession(TerminalSessionWidget *session)
     m_model->bindSession(session);
 
     if (!m_session) {
+        updateSessionBadge();
         setIdleState(tr("Connect to a session to browse remote files."));
         updateActionsEnabled();
         return;
     }
+
+    updateSessionBadge();
 
     connect(m_session,
             &TerminalSessionWidget::pathCanonicalized,
@@ -321,8 +331,34 @@ void FileExplorerWidget::unbindSession()
     finishTransferProgress();
     m_model->unbindSession();
     setOpInFlight(false);
+    updateSessionBadge();
     setIdleState(tr("Connect to a session to browse remote files."));
     updateActionsEnabled();
+}
+
+void FileExplorerWidget::setSessionBadge(const QString &name, const QString &detail)
+{
+    if (!m_sessionBadge) {
+        return;
+    }
+    if (name.isEmpty()) {
+        m_sessionBadge->clear();
+        m_sessionBadge->hide();
+        return;
+    }
+    m_sessionBadge->setText(tr("Session: %1").arg(name));
+    m_sessionBadge->setToolTip(detail.isEmpty() ? name : detail);
+    m_sessionBadge->show();
+}
+
+void FileExplorerWidget::updateSessionBadge()
+{
+    if (!m_session) {
+        setSessionBadge(QString());
+        return;
+    }
+    const Connection connection = m_session->connection();
+    setSessionBadge(connection.name, connection.displayText());
 }
 
 void FileExplorerWidget::applySettings()
@@ -356,7 +392,7 @@ void FileExplorerWidget::refreshCurrent()
     }
 
     m_model->refresh({});
-    emit statusMessage(tr("Refreshing…"));
+    emit statusMessage(tr("Refreshing…"), ErrorNotifier::Level::Status);
 }
 
 void FileExplorerWidget::uploadFiles()
@@ -416,7 +452,8 @@ void FileExplorerWidget::startUpload(const QStringList &localPaths)
     m_pendingUploadRemoteDir = remoteDir;
     m_awaitingUploadListing = true;
     setOpInFlight(true);
-    emit statusMessage(tr("Checking for existing files in %1…").arg(remoteDir));
+    emit statusMessage(tr("Checking for existing files in %1…").arg(remoteDir),
+                       ErrorNotifier::Level::Status);
     m_session->listDirectory(remoteDir);
 }
 
@@ -443,7 +480,7 @@ void FileExplorerWidget::confirmConflictsAndUpload(const QStringList &localPaths
             m_pendingUploadRemoteDir.clear();
             m_awaitingUploadListing = false;
             setOpInFlight(false);
-            emit statusMessage(tr("Upload canceled"));
+            emit statusMessage(tr("Upload canceled"), ErrorNotifier::Level::Warning);
             return;
         }
     }
@@ -460,7 +497,7 @@ void FileExplorerWidget::beginUpload(const QStringList &localPaths, const QStrin
     setOpInFlight(true);
     m_awaitingSftpResult = true;
     startTransferProgress(tr("Uploading…"));
-    emit statusMessage(tr("Uploading to %1…").arg(remoteDir));
+    emit statusMessage(tr("Uploading to %1…").arg(remoteDir), ErrorNotifier::Level::Status);
     m_refreshAfterOp = remoteDir;
     m_session->uploadFiles(localPaths, remoteDir);
 }
@@ -507,7 +544,8 @@ void FileExplorerWidget::download()
 
     const QStringList remotePaths = selectedRemotePaths();
     if (remotePaths.isEmpty()) {
-        QMessageBox::information(this, tr("Download"), tr("Select one or more items to download."));
+        ErrorNotifier::status(tr("Select one or more items to download."),
+                              ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -522,7 +560,7 @@ void FileExplorerWidget::download()
     setOpInFlight(true);
     m_awaitingSftpResult = true;
     startTransferProgress(tr("Downloading…"));
-    emit statusMessage(tr("Downloading to %1…").arg(localDir));
+    emit statusMessage(tr("Downloading to %1…").arg(localDir), ErrorNotifier::Level::Status);
     m_refreshAfterOp.clear();
     m_session->downloadPaths(remotePaths, localDir);
 }
@@ -535,8 +573,8 @@ void FileExplorerWidget::openWith()
 
     const QStringList remoteFiles = selectedRemoteFiles();
     if (remoteFiles.isEmpty()) {
-        QMessageBox::information(
-            this, tr("Open With"), tr("Select one or more files to open locally."));
+        ErrorNotifier::status(tr("Select one or more files to open locally."),
+                              ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -582,7 +620,8 @@ void FileExplorerWidget::startNextOpenWithDownload()
 
     const OpenWithItem &item = m_openWithQueue.first();
     emit statusMessage(
-        tr("Downloading %1 for editing…").arg(QFileInfo(item.remotePath).fileName()));
+        tr("Downloading %1 for editing…").arg(QFileInfo(item.remotePath).fileName()),
+        ErrorNotifier::Level::Status);
     m_refreshAfterOp.clear();
     m_session->downloadPaths({item.remotePath}, item.localDir);
 }
@@ -609,7 +648,8 @@ void FileExplorerWidget::completeOpenWithItem()
                 ErrorNotifier::Level::Warning);
         } else {
             emit statusMessage(tr("Opened %1 — saves will sync automatically.")
-                                   .arg(QFileInfo(item.localPath).fileName()));
+                                   .arg(QFileInfo(item.localPath).fileName()),
+                               ErrorNotifier::Level::Success);
         }
     }
 
@@ -740,7 +780,7 @@ void FileExplorerWidget::deleteNextPending()
     }
 
     const QString path = m_pendingDeletes.first();
-    emit statusMessage(tr("Deleting %1…").arg(path));
+    emit statusMessage(tr("Deleting %1…").arg(path), ErrorNotifier::Level::Status);
     m_session->removePath(path, true);
 }
 
@@ -756,7 +796,7 @@ void FileExplorerWidget::onPathCanonicalized(const QString &requested, const QSt
     m_pendingRootRequest.clear();
     m_awaitingSftpResult = false;
     navigateTo(canonical);
-    emit statusMessage(tr("Browsing %1").arg(canonical));
+    emit statusMessage(tr("Browsing %1").arg(canonical), ErrorNotifier::Level::Status);
 }
 
 void FileExplorerWidget::navigateTo(const QString &path)
@@ -775,17 +815,34 @@ void FileExplorerWidget::navigateTo(const QString &path)
 
 void FileExplorerWidget::onItemActivated(const QModelIndex &index)
 {
-    if (!index.isValid() || !m_model->isDirectory(index)) {
+    if (!index.isValid()) {
         return;
     }
 
-    const QString path = m_model->pathForIndex(index);
-    if (path.isEmpty()) {
+    if (m_model->isDirectory(index)) {
+        const QString path = m_model->pathForIndex(index);
+        if (path.isEmpty()) {
+            return;
+        }
+
+        navigateTo(path);
+        emit statusMessage(tr("Browsing %1").arg(path), ErrorNotifier::Level::Status);
         return;
     }
 
-    navigateTo(path);
-    emit statusMessage(tr("Browsing %1").arg(path));
+    if (m_model->isParentNavEntry(index)) {
+        return;
+    }
+
+    // Ensure the activated file is selected so openWith() uses it.
+    if (m_tree->selectionModel() && !m_tree->selectionModel()->isSelected(index)) {
+        m_tree->selectionModel()->select(index,
+                                         QItemSelectionModel::ClearAndSelect |
+                                             QItemSelectionModel::Rows);
+        m_tree->setCurrentIndex(index);
+    }
+
+    openWith();
 }
 
 void FileExplorerWidget::clearSelection()
@@ -800,7 +857,7 @@ void FileExplorerWidget::clearSelection()
 
 void FileExplorerWidget::onSftpFinished(const QString &message)
 {
-    emit statusMessage(message);
+    emit statusMessage(message, ErrorNotifier::Level::Success);
 
     if (m_openWithActive) {
         completeOpenWithItem();
@@ -855,7 +912,7 @@ void FileExplorerWidget::onSftpError(const QString &message)
     }
 
     if (!m_awaitingSftpResult && !m_openWithActive) {
-        ErrorNotifier::notify(this, tr("Auto Sync"), message, ErrorNotifier::Level::Warning);
+        ErrorNotifier::status(tr("Auto Sync: %1").arg(message), ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -866,7 +923,7 @@ void FileExplorerWidget::onSftpError(const QString &message)
     m_awaitingSftpResult = false;
     finishTransferProgress();
     setOpInFlight(false);
-    ErrorNotifier::notify(this, tr("SFTP"), message, ErrorNotifier::Level::Warning);
+    ErrorNotifier::status(tr("SFTP: %1").arg(message), ErrorNotifier::Level::Error);
     updateActionsEnabled();
 }
 
@@ -879,7 +936,7 @@ void FileExplorerWidget::onSftpCanceled(const QString &message)
     m_awaitingSftpResult = false;
     finishTransferProgress();
     setOpInFlight(false);
-    emit statusMessage(message);
+    emit statusMessage(message, ErrorNotifier::Level::Warning);
     updateActionsEnabled();
 }
 
@@ -1015,7 +1072,7 @@ void FileExplorerWidget::copySelectedPath()
     }
 
     QGuiApplication::clipboard()->setText(path);
-    emit statusMessage(tr("Copied path: %1").arg(path));
+    emit statusMessage(tr("Copied path: %1").arg(path), ErrorNotifier::Level::Success);
 }
 
 void FileExplorerWidget::updateActionsEnabled()
@@ -1141,7 +1198,7 @@ void FileExplorerWidget::showSftpUnavailable(const QString &message)
     m_pathLabel->setText(tr("SFTP unavailable"));
     m_emptyLabel->setText(tr("%1\n\nTerminal session is still active.").arg(detail));
     showTree(false);
-    emit statusMessage(detail);
+    emit statusMessage(detail, ErrorNotifier::Level::Warning);
     updateActionsEnabled();
 }
 

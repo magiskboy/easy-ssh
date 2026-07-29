@@ -17,6 +17,7 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QStandardPaths>
 #include <QThread>
 #include <QTimer>
@@ -54,12 +55,29 @@ TerminalSessionWidget::TerminalSessionWidget(QWidget *parent) : QWidget(parent)
     m_term->setTerminalSizeHint(false);
     applySettings();
     m_term->installEventFilter(this);
-    layout->addWidget(m_term, 1);
 
-    m_overlay = new QLabel(this);
-    m_overlay->setAlignment(Qt::AlignCenter);
-    m_overlay->setWordWrap(true);
-    layout->addWidget(m_overlay);
+    m_overlayPanel = new QWidget(this);
+    auto *overlayLayout = new QVBoxLayout(m_overlayPanel);
+    overlayLayout->setContentsMargins(16, 16, 16, 16);
+    overlayLayout->setSpacing(12);
+
+    m_overlayLabel = new QLabel(m_overlayPanel);
+    m_overlayLabel->setAlignment(Qt::AlignCenter);
+    m_overlayLabel->setWordWrap(true);
+
+    m_reconnectButton = new QPushButton(tr("Reconnect"), m_overlayPanel);
+    m_reconnectButton->setDefault(true);
+    m_reconnectButton->setAutoDefault(true);
+    connect(m_reconnectButton, &QPushButton::clicked, this, &TerminalSessionWidget::reconnect);
+
+    overlayLayout->addStretch(1);
+    overlayLayout->addWidget(m_overlayLabel);
+    overlayLayout->addWidget(m_reconnectButton, 0, Qt::AlignHCenter);
+    overlayLayout->addStretch(1);
+
+    // Overlay sits above the terminal so reconnect stays one click away after drops.
+    layout->addWidget(m_overlayPanel, 1);
+    layout->addWidget(m_term, 1);
 
     m_resizeDebounce = new QTimer(this);
     m_resizeDebounce->setSingleShot(true);
@@ -155,7 +173,7 @@ void TerminalSessionWidget::saveLog()
 
     m_term->saveHistory(&file);
     file.close();
-    emit statusMessage(tr("Saved log: %1").arg(path));
+    emit statusMessage(tr("Saved log: %1").arg(path), ErrorNotifier::Level::Success);
 }
 
 void TerminalSessionWidget::saveScreenshot()
@@ -183,7 +201,7 @@ void TerminalSessionWidget::saveScreenshot()
         return;
     }
 
-    emit statusMessage(tr("Saved screenshot: %1").arg(path));
+    emit statusMessage(tr("Saved screenshot: %1").arg(path), ErrorNotifier::Level::Success);
 }
 
 void TerminalSessionWidget::disconnectSession()
@@ -198,7 +216,7 @@ void TerminalSessionWidget::disconnectSession()
     }
     showDisconnectedState();
     setState(State::Disconnected);
-    emit statusMessage(tr("Disconnected: %1").arg(m_displayName));
+    emit statusMessage(tr("Disconnected: %1").arg(m_displayName), ErrorNotifier::Level::Warning);
     emit sessionDisconnected();
 }
 
@@ -266,6 +284,11 @@ Connection TerminalSessionWidget::connection() const
 TerminalSessionWidget::State TerminalSessionWidget::sessionState() const
 {
     return m_state;
+}
+
+QDateTime TerminalSessionWidget::connectedAt() const
+{
+    return m_connectedAt;
 }
 
 bool TerminalSessionWidget::isSftpAvailable() const
@@ -439,6 +462,11 @@ void TerminalSessionWidget::setState(State state)
         return;
     }
     m_state = state;
+    if (m_state == State::Connected) {
+        m_connectedAt = QDateTime::currentDateTimeUtc();
+    } else if (m_state != State::Connecting) {
+        m_connectedAt = {};
+    }
     emit sessionStateChanged(m_state);
 }
 
@@ -451,7 +479,7 @@ void TerminalSessionWidget::beginConnect()
 
     showConnectingState();
     setState(State::Connecting);
-    emit statusMessage(tr("Connecting to %1…").arg(m_displayName));
+    emit statusMessage(tr("Connecting to %1…").arg(m_displayName), ErrorNotifier::Level::Status);
 
     m_thread = new QThread(this);
     m_worker = new SshWorker();
@@ -504,7 +532,9 @@ void TerminalSessionWidget::onConnected()
     m_sftpAvailable = true;
     m_sftpUnavailableReason.clear();
 
-    m_overlay->hide();
+    if (m_overlayPanel) {
+        m_overlayPanel->hide();
+    }
     m_term->show();
 
     if (!m_teletypeStarted) {
@@ -521,7 +551,7 @@ void TerminalSessionWidget::onConnected()
     QTimer::singleShot(0, this, &TerminalSessionWidget::syncPtySize);
     QTimer::singleShot(150, this, &TerminalSessionWidget::syncPtySize);
     setState(State::Connected);
-    emit statusMessage(tr("Connected: %1").arg(m_displayName));
+    emit statusMessage(tr("Connected: %1").arg(m_displayName), ErrorNotifier::Level::Success);
     startEnabledTunnels();
 }
 
@@ -593,7 +623,7 @@ void TerminalSessionWidget::onErrorOccurred(const QString &message)
     }
     showErrorState(message);
     setState(State::Failed);
-    emit statusMessage(tr("Error: %1").arg(message));
+    emit statusMessage(tr("Error: %1").arg(message), ErrorNotifier::Level::Error);
     emit sessionFailed(message);
 
     m_shuttingDown = true;
@@ -628,7 +658,7 @@ void TerminalSessionWidget::onDisconnected()
     // Drop / shell exit: keep the tab so the user can reconnect.
     showDisconnectedState();
     setState(State::Disconnected);
-    emit statusMessage(tr("Disconnected: %1").arg(m_displayName));
+    emit statusMessage(tr("Disconnected: %1").arg(m_displayName), ErrorNotifier::Level::Warning);
     emit sessionDisconnected();
 
     // Worker already cleaned SSH; stop the idle thread so reconnect can start fresh.
@@ -764,34 +794,47 @@ void TerminalSessionWidget::clearSecret()
 
 void TerminalSessionWidget::showConnectingState()
 {
-    if (!m_teletypeStarted) {
-        m_term->hide();
-    }
-    m_overlay->setText(tr("Connecting…"));
-    m_overlay->setEnabled(true);
-    m_overlay->show();
+    showOverlay(tr("Connecting…"), false);
 }
 
 void TerminalSessionWidget::showDisconnectedState()
 {
-    if (m_teletypeStarted) {
-        m_term->show();
-    } else {
-        m_term->hide();
-    }
-    m_overlay->setText(tr("Disconnected — use Session → Reconnect or the tab menu."));
-    m_overlay->setEnabled(true);
-    m_overlay->show();
+    showOverlay(tr("Disconnected from %1.").arg(m_displayName), true);
 }
 
 void TerminalSessionWidget::showErrorState(const QString &message)
 {
+    showOverlay(tr("Connection failed:\n%1").arg(message), true);
+}
+
+void TerminalSessionWidget::showOverlay(const QString &message, bool showReconnect)
+{
+    if (!m_overlayPanel || !m_overlayLabel || !m_reconnectButton) {
+        return;
+    }
+
+    m_overlayLabel->setText(message);
+    m_reconnectButton->setVisible(showReconnect);
+    m_overlayPanel->show();
+
     if (m_teletypeStarted) {
+        // Keep scrollback visible; overlay becomes a compact reconnect banner.
         m_term->show();
+        m_overlayPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        if (auto *root = qobject_cast<QVBoxLayout *>(layout())) {
+            root->setStretchFactor(m_overlayPanel, 0);
+            root->setStretchFactor(m_term, 1);
+        }
     } else {
         m_term->hide();
+        m_overlayPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+        if (auto *root = qobject_cast<QVBoxLayout *>(layout())) {
+            root->setStretchFactor(m_overlayPanel, 1);
+            root->setStretchFactor(m_term, 0);
+        }
     }
-    m_overlay->setText(tr("Connection failed:\n%1\n\nUse Reconnect to try again.").arg(message));
-    m_overlay->setEnabled(true);
-    m_overlay->show();
+
+    if (showReconnect) {
+        m_reconnectButton->setFocus(Qt::OtherFocusReason);
+    }
 }

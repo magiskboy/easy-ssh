@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Connection.h"
+#include "ErrorNotifier.h"
 #include "SftpTypes.h"
 #include "SshWorker.h"
 #include "Tunnel.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QStringList>
 #include <QUuid>
 #include <QVector>
@@ -13,6 +15,7 @@
 
 class QEvent;
 class QLabel;
+class QPushButton;
 class QTermWidget;
 class QThread;
 class QTimer;
@@ -66,11 +69,12 @@ public:
     QUuid connectionId() const;
     Connection connection() const;
     State sessionState() const;
+    QDateTime connectedAt() const;
     bool isSftpAvailable() const;
     QString sftpUnavailableReason() const;
 
 signals:
-    void statusMessage(const QString &message);
+    void statusMessage(const QString &message, ErrorNotifier::Level level);
     void sessionFailed(const QString &message);
     void sessionDisconnected();
     void sessionStateChanged(TerminalSessionWidget::State state);
@@ -105,6 +109,7 @@ private:
     void showConnectingState();
     void showDisconnectedState();
     void showErrorState(const QString &message);
+    void showOverlay(const QString &message, bool showReconnect);
     void clearSecret();
     void readTerminalSize(int *cols, int *rows) const;
     void schedulePtySizeSync();
@@ -113,8 +118,11 @@ private:
     QString m_secret;
     QString m_displayName;
     State m_state = State::Disconnected;
+    QDateTime m_connectedAt;
     QTermWidget *m_term = nullptr;
-    QLabel *m_overlay = nullptr;
+    QWidget *m_overlayPanel = nullptr;
+    QLabel *m_overlayLabel = nullptr;
+    QPushButton *m_reconnectButton = nullptr;
     QThread *m_thread = nullptr;
     SshWorker *m_worker = nullptr;
     QTimer *m_resizeDebounce = nullptr;

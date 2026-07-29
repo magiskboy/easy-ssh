@@ -100,7 +100,8 @@ void ConnectionListWidget::createConnection()
                    dialog.passphrase(),
                    dialog.passphraseProvided());
 
-    emit statusMessage(tr("Created connection: %1").arg(connection.name));
+    emit statusMessage(tr("Created connection: %1").arg(connection.name),
+                       ErrorNotifier::Level::Success);
 }
 
 void ConnectionListWidget::editSelectedConnection()
@@ -142,7 +143,8 @@ void ConnectionListWidget::editSelectedConnection()
                    dialog.passphrase(),
                    dialog.passphraseProvided());
 
-    emit statusMessage(tr("Updated connection: %1").arg(connection.name));
+    emit statusMessage(tr("Updated connection: %1").arg(connection.name),
+                       ErrorNotifier::Level::Success);
 }
 
 void ConnectionListWidget::deleteSelectedConnection()
@@ -181,7 +183,8 @@ void ConnectionListWidget::deleteSelectedConnection()
         m_secretStore->deleteAllSecrets(*id);
     }
 
-    emit statusMessage(tr("Deleted connection: %1 (open sessions kept)").arg(name));
+    emit statusMessage(tr("Deleted connection: %1 (open sessions kept)").arg(name),
+                       ErrorNotifier::Level::Warning);
 }
 
 void ConnectionListWidget::openSelectedConnection()
@@ -226,7 +229,8 @@ void ConnectionListWidget::duplicateSelectedConnection()
         m_secretStore->copySecret(*id, copy->id, SecretStore::Kind::Passphrase);
     }
 
-    emit statusMessage(tr("Duplicated connection: %1").arg(copy->name));
+    emit statusMessage(tr("Duplicated connection: %1").arg(copy->name),
+                       ErrorNotifier::Level::Success);
 }
 
 void ConnectionListWidget::onFilterTextChanged(const QString &text)

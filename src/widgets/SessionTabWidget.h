@@ -1,13 +1,16 @@
 #pragma once
 
 #include "Connection.h"
+#include "ErrorNotifier.h"
 
 #include <QHash>
 #include <QList>
 #include <QTabWidget>
 #include <QUuid>
 
+class ConnectionModel;
 class TerminalSessionWidget;
+class WelcomeWidget;
 
 class SessionTabWidget final : public QTabWidget
 {
@@ -15,6 +18,9 @@ class SessionTabWidget final : public QTabWidget
 
 public:
     explicit SessionTabWidget(QWidget *parent = nullptr);
+
+    void setConnectionModel(ConnectionModel *model);
+    void refreshWelcome();
 
     void openSshSession(const Connection &connection, const QString &secret);
     void disconnectCurrentSession();
@@ -31,7 +37,10 @@ signals:
     void sessionOpened(const QString &displayName);
     void sessionClosed(const QString &displayName);
     void activeSessionChanged(const QString &displayName);
-    void statusMessage(const QString &message);
+    void statusMessage(const QString &message, ErrorNotifier::Level level);
+    void openConnectionRequested(const QUuid &id);
+    void createConnectionRequested();
+    void showConnectionsRequested();
 
 private slots:
     void onTabCloseRequested(int index);
@@ -42,10 +51,12 @@ private:
     void ensureWelcomeTab();
     void removeWelcomeTabIfPresent();
     bool isWelcomeTab(int index) const;
+    WelcomeWidget *welcomeWidget() const;
     QString makeSessionTitle(const Connection &connection);
     void updateTabPresentation(TerminalSessionWidget *session);
     TerminalSessionWidget *terminalAt(int index) const;
 
+    ConnectionModel *m_connectionModel = nullptr;
     int m_welcomeIndex = -1;
     QHash<QUuid, int> m_sessionSerialByConnection;
 };
