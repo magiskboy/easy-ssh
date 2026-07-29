@@ -138,9 +138,8 @@ jobs:
         run: |
           curl -fsSL -o "$RUNNER_TEMP/enigmavb.exe" \
             "https://enigmaprotector.com/assets/files/enigmavb.exe"
-          "$RUNNER_TEMP/enigmavb.exe" /VERYSILENT /SUPPRESSMSGBOXES \
-            /DIR="C:/Program Files/Enigma Virtual Box"
-          echo "ENIGMA_VB_DIR=C:/Program Files/Enigma Virtual Box" >> "$GITHUB_ENV"
+          7z x -o"$RUNNER_TEMP/enigmavb" "$RUNNER_TEMP/enigmavb.exe" -y
+          echo "ENIGMA_VB_DIR=${RUNNER_TEMP}/enigmavb" >> "$GITHUB_ENV"
 
       - name: Install libssh (vcpkg)
         if: matrix.os_family == 'windows'
