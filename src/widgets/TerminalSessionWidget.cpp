@@ -5,6 +5,7 @@
 #include "Logging.h"
 #include "SshWorker.h"
 #include "TunnelStore.h"
+#include "terminal/TerminalIoBridge.h"
 
 #include <QAbstractButton>
 #include <QDir>
@@ -16,7 +17,6 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
-#include <QSocketNotifier>
 #include <QStandardPaths>
 #include <QThread>
 #include <QTimer>
@@ -24,18 +24,11 @@
 
 #include <qtermwidget.h>
 
-#include <cerrno>
-#include <fcntl.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-
 namespace
 {
 constexpr int kMinTerminalCols = 2;
 constexpr int kMinTerminalRows = 2;
-constexpr int kMaxPendingDisplayBytes = 1024 * 1024;
 constexpr int kResizeDebounceMs = 80;
-constexpr int kFlushRetryMs = 16;
 constexpr int kDefaultPtyCols = 80;
 constexpr int kDefaultPtyRows = 24;
 
@@ -73,9 +66,7 @@ TerminalSessionWidget::TerminalSessionWidget(QWidget *parent) : QWidget(parent)
     m_resizeDebounce->setInterval(kResizeDebounceMs);
     connect(m_resizeDebounce, &QTimer::timeout, this, &TerminalSessionWidget::syncPtySize);
 
-    m_flushTimer = new QTimer(this);
-    m_flushTimer->setInterval(kFlushRetryMs);
-    connect(m_flushTimer, &QTimer::timeout, this, &TerminalSessionWidget::flushPendingDisplay);
+    m_ioBridge = new TerminalIoBridge(this);
 
     m_term->hide();
     showDisconnectedState();
@@ -86,7 +77,9 @@ TerminalSessionWidget::TerminalSessionWidget(QWidget *parent) : QWidget(parent)
 
 TerminalSessionWidget::~TerminalSessionWidget()
 {
-    teardownPtyBridge();
+    if (m_ioBridge) {
+        m_ioBridge->teardown();
+    }
     shutdownWorker();
     clearSecret();
 }
@@ -200,7 +193,9 @@ void TerminalSessionWidget::disconnectSession()
     }
 
     shutdownWorker();
-    teardownPtyBridge();
+    if (m_ioBridge) {
+        m_ioBridge->teardown();
+    }
     showDisconnectedState();
     setState(State::Disconnected);
     emit statusMessage(tr("Disconnected: %1").arg(m_displayName));
@@ -515,11 +510,8 @@ void TerminalSessionWidget::onConnected()
     if (!m_teletypeStarted) {
         m_term->startTerminalTeletype();
         m_teletypeStarted = true;
-        setupPtyBridge();
-    } else {
-        // Reconnect: keep existing teletype, reattach the PTY write bridge.
-        setupPtyBridge();
     }
+    m_ioBridge->start(m_term);
 
     m_term->setFocus(Qt::OtherFocusReason);
     m_lastCols = 0;
@@ -535,17 +527,10 @@ void TerminalSessionWidget::onConnected()
 
 void TerminalSessionWidget::onDataReceived(const QByteArray &data)
 {
-    if (!m_teletypeStarted || data.isEmpty()) {
+    if (!m_teletypeStarted || data.isEmpty() || !m_ioBridge) {
         return;
     }
-
-    m_pendingDisplay.append(data);
-    if (m_pendingDisplay.size() > kMaxPendingDisplayBytes) {
-        // Prefer keeping the newest screen update under pressure (htop redraws).
-        m_pendingDisplay = m_pendingDisplay.right(kMaxPendingDisplayBytes / 2);
-    }
-
-    flushPendingDisplay();
+    m_ioBridge->feed(data);
 }
 
 void TerminalSessionWidget::onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
@@ -603,7 +588,9 @@ void TerminalSessionWidget::onErrorOccurred(const QString &message)
     qCWarning(lcSsh) << "Session error:" << message;
     m_sftpAvailable = false;
     m_sftpUnavailableReason.clear();
-    teardownPtyBridge();
+    if (m_ioBridge) {
+        m_ioBridge->teardown();
+    }
     showErrorState(message);
     setState(State::Failed);
     emit statusMessage(tr("Error: %1").arg(message));
@@ -630,7 +617,9 @@ void TerminalSessionWidget::onDisconnected()
 {
     m_sftpAvailable = false;
     m_sftpUnavailableReason.clear();
-    teardownPtyBridge();
+    if (m_ioBridge) {
+        m_ioBridge->teardown();
+    }
 
     if (m_shuttingDown) {
         return;
@@ -697,7 +686,9 @@ void TerminalSessionWidget::syncPtySize()
 
     m_lastCols = cols;
     m_lastRows = rows;
-    syncLocalPtyWinsize(cols, rows);
+    if (m_ioBridge) {
+        m_ioBridge->syncSize(cols, rows);
+    }
 
     QMetaObject::invokeMethod(
         m_worker,
@@ -737,104 +728,6 @@ void TerminalSessionWidget::readTerminalSize(int *cols, int *rows) const
 
     *cols = c;
     *rows = r;
-}
-
-void TerminalSessionWidget::syncLocalPtyWinsize(int cols, int rows)
-{
-    if (!m_term || !m_teletypeStarted) {
-        return;
-    }
-    const int fd = m_term->getPtySlaveFd();
-    if (fd < 0) {
-        return;
-    }
-
-    struct winsize ws{};
-    ws.ws_col = static_cast<unsigned short>(cols);
-    ws.ws_row = static_cast<unsigned short>(rows);
-    ws.ws_xpixel = 0;
-    ws.ws_ypixel = 0;
-    ::ioctl(fd, TIOCSWINSZ, &ws);
-}
-
-void TerminalSessionWidget::flushPendingDisplay()
-{
-    if (m_pendingDisplay.isEmpty() || m_term == nullptr || !m_teletypeStarted) {
-        if (m_ptyWriteNotifier) {
-            m_ptyWriteNotifier->setEnabled(false);
-        }
-        m_flushTimer->stop();
-        return;
-    }
-
-    const int fd = m_term->getPtySlaveFd();
-    if (fd < 0) {
-        return;
-    }
-
-    while (!m_pendingDisplay.isEmpty()) {
-        const ssize_t written =
-            ::write(fd, m_pendingDisplay.constData(), static_cast<size_t>(m_pendingDisplay.size()));
-
-        if (written > 0) {
-            m_pendingDisplay.remove(0, static_cast<int>(written));
-            continue;
-        }
-
-        if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-            // PTY buffer full: let the emulator drain the master side, then retry.
-            if (m_ptyWriteNotifier) {
-                m_ptyWriteNotifier->setEnabled(true);
-            }
-            if (!m_flushTimer->isActive()) {
-                m_flushTimer->start();
-            }
-            return;
-        }
-
-        // Hard write error — drop pending to avoid a tight crash loop.
-        m_pendingDisplay.clear();
-        break;
-    }
-
-    if (m_ptyWriteNotifier) {
-        m_ptyWriteNotifier->setEnabled(false);
-    }
-    m_flushTimer->stop();
-}
-
-void TerminalSessionWidget::setupPtyBridge()
-{
-    teardownPtyBridge();
-
-    const int fd = m_term->getPtySlaveFd();
-    if (fd < 0) {
-        return;
-    }
-
-    const int flags = ::fcntl(fd, F_GETFL, 0);
-    if (flags >= 0) {
-        ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    }
-
-    m_ptyWriteNotifier = new QSocketNotifier(fd, QSocketNotifier::Write, this);
-    m_ptyWriteNotifier->setEnabled(false);
-    connect(m_ptyWriteNotifier,
-            &QSocketNotifier::activated,
-            this,
-            &TerminalSessionWidget::flushPendingDisplay);
-}
-
-void TerminalSessionWidget::teardownPtyBridge()
-{
-    m_flushTimer->stop();
-    m_pendingDisplay.clear();
-
-    if (m_ptyWriteNotifier) {
-        m_ptyWriteNotifier->setEnabled(false);
-        delete m_ptyWriteNotifier;
-        m_ptyWriteNotifier = nullptr;
-    }
 }
 
 void TerminalSessionWidget::shutdownWorker()

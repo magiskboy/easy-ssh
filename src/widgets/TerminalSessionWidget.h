@@ -13,10 +13,10 @@
 
 class QEvent;
 class QLabel;
-class QSocketNotifier;
 class QTermWidget;
 class QThread;
 class QTimer;
+class TerminalIoBridge;
 
 class TerminalSessionWidget final : public QWidget
 {
@@ -97,7 +97,6 @@ private slots:
     void onDisconnected();
     void onSendData(const char *data, int length);
     void syncPtySize();
-    void flushPendingDisplay();
 
 private:
     void setState(State state);
@@ -106,11 +105,8 @@ private:
     void showConnectingState();
     void showDisconnectedState();
     void showErrorState(const QString &message);
-    void setupPtyBridge();
-    void teardownPtyBridge();
     void clearSecret();
     void readTerminalSize(int *cols, int *rows) const;
-    void syncLocalPtyWinsize(int cols, int rows);
     void schedulePtySizeSync();
 
     Connection m_connection;
@@ -122,9 +118,7 @@ private:
     QThread *m_thread = nullptr;
     SshWorker *m_worker = nullptr;
     QTimer *m_resizeDebounce = nullptr;
-    QTimer *m_flushTimer = nullptr;
-    QSocketNotifier *m_ptyWriteNotifier = nullptr;
-    QByteArray m_pendingDisplay;
+    TerminalIoBridge *m_ioBridge = nullptr;
     bool m_teletypeStarted = false;
     bool m_shuttingDown = false;
     bool m_sftpAvailable = false;

@@ -57,7 +57,9 @@ Easy SSH focuses on what you need most: a solid interactive terminal, remote fil
 
 Built with Qt 6 for a native look on **Linux**, **Windows**, and **macOS**.
 
-> **Note:** Linux is the primary development and test target today. Other platforms depend on available Qt, libssh, and QTermWidget packages.
+> **Note:** Linux is the primary development and test target today. Windows builds
+> use a patched QTermWidget with direct VT feed (no local PTY / ConPTY). See
+> [`third_party/qtermwidget-patches/`](third_party/qtermwidget-patches/).
 
 ## Install (Linux / macOS)
 
@@ -154,12 +156,18 @@ CI builds self-contained archives via [`.github/scripts/package.sh`](.github/scr
 
 Both Linux formats bundle Qt and third-party libraries (`libssh`, QTermWidget, QtKeychain).
 
-#### Windows (local only)
+#### Windows (local)
 
-Windows CI is skipped until a ConPTY-backed terminal replaces QTermWidget. To prepare an installer locally on Windows:
+Windows CI is not enabled yet (libssh / Qt packaging). Locally, build a patched
+QTermWidget first (applies [`third_party/qtermwidget-patches/`](third_party/qtermwidget-patches/)):
 
 ```bash
-cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+export PREFIX="$PWD/.deps/prefix"
+export BUILD_ROOT="$PWD/.deps/src"
+export GITHUB_WORKSPACE="$PWD"
+.github/scripts/build-qtermwidget.sh
+cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$PREFIX"
 cmake --build build-release
 cmake --install build-release --prefix install
 cpack -G NSIS --config build-release/CPackConfig.cmake

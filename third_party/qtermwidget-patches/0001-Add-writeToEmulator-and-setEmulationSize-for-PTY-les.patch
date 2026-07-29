@@ -1,0 +1,66 @@
+From 35d223d7f2ce9f9db8eb78ed96153b8b87bb35da Mon Sep 17 00:00:00 2001
+From: easy-ssh <dev@easy-ssh>
+Date: Wed, 29 Jul 2026 07:59:54 +0700
+Subject: [PATCH 1/2] Add writeToEmulator and setEmulationSize for PTY-less
+ teletype
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ lib/qtermwidget.cpp | 16 ++++++++++++++++
+ lib/qtermwidget.h   | 13 +++++++++++++
+ 2 files changed, 29 insertions(+)
+
+diff --git a/lib/qtermwidget.cpp b/lib/qtermwidget.cpp
+index b916708..ec5485e 100644
+--- a/lib/qtermwidget.cpp
++++ b/lib/qtermwidget.cpp
+@@ -749,6 +749,22 @@ int QTermWidget::getPtySlaveFd() const
+     return m_impl->m_session->getPtySlaveFd();
+ }
+ 
++void QTermWidget::writeToEmulator(const char *data, int length)
++{
++    if (!m_impl || !m_impl->m_session || data == nullptr || length <= 0) {
++        return;
++    }
++    m_impl->m_session->emulation()->receiveData(data, length);
++}
++
++void QTermWidget::setEmulationSize(int lines, int columns)
++{
++    if (!m_impl || !m_impl->m_session) {
++        return;
++    }
++    m_impl->m_session->emulation()->setImageSize(lines, columns);
++}
++
+ void QTermWidget::setKeyboardCursorShape(KeyboardCursorShape shape)
+ {
+     m_impl->m_terminalDisplay->setKeyboardCursorShape(shape);
+diff --git a/lib/qtermwidget.h b/lib/qtermwidget.h
+index d96b410..cb7727d 100644
+--- a/lib/qtermwidget.h
++++ b/lib/qtermwidget.h
+@@ -211,6 +211,19 @@ public:
+      */
+     int getPtySlaveFd() const override;
+ 
++    /**
++     * Feed remote VT bytes straight into the emulator (no local PTY required).
++     * Intended for SSH/serial teletype on platforms without Unix PTY (e.g. Windows).
++     */
++    void writeToEmulator(const char *data, int length);
++
++    /**
++     * Resize the emulation screen without ioctl on a local PTY.
++     * @param lines Number of rows
++     * @param columns Number of columns
++     */
++    void setEmulationSize(int lines, int columns);
++
+     /**
+      * Sets the shape of the keyboard cursor.  This is the cursor drawn
+      * at the position in the terminal where keyboard input will appear.
+-- 
+2.55.0
+

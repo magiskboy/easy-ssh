@@ -69,7 +69,8 @@ jobs:
             target: macos-amd64
             os_family: macos
 
-          # Windows skipped until a ConPTY-backed terminal replaces QTermWidget.
+          # Windows: needs patched QTermWidget (third_party/qtermwidget-patches)
+          # plus libssh/Qt packaging; enable when the Windows job is wired.
 
     steps:
       - name: Checkout
