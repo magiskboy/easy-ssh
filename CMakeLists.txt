@@ -281,7 +281,15 @@ if(WIN32)
 endif()
 include(CPack)
 
-option(EASY_SSH_INTEGRATION_TESTS "Build local headless integration tests (Linux)" OFF)
+# Default ON for Linux so compile_commands.json includes QtTest for the IDE/clangd.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_easy_ssh_it_default ON)
+else()
+    set(_easy_ssh_it_default OFF)
+endif()
+option(EASY_SSH_INTEGRATION_TESTS "Build local headless integration tests (Linux)"
+       ${_easy_ssh_it_default})
+unset(_easy_ssh_it_default)
 if(EASY_SSH_INTEGRATION_TESTS)
     if(UNIX AND NOT APPLE)
         enable_testing()

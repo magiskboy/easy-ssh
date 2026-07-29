@@ -5,7 +5,7 @@
 #include <QCoreApplication>
 #include <QTcpSocket>
 #include <QUuid>
-#include <QTest>
+#include <QtTest>
 
 namespace
 {
