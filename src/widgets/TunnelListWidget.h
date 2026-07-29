@@ -49,7 +49,6 @@ private:
 
     TunnelListModel *m_model = nullptr;
     QTableView *m_table = nullptr;
-    QLabel *m_sessionBadge = nullptr;
     QLabel *m_emptyLabel = nullptr;
     QWidget *m_listHost = nullptr;
 

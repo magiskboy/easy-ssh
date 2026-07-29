@@ -93,13 +93,6 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent) : QWidget(parent)
     addAction(m_renameAction);
     addAction(m_deleteAction);
 
-    m_sessionBadge = new QLabel(this);
-    m_sessionBadge->setContentsMargins(8, 6, 8, 2);
-    m_sessionBadge->setWordWrap(true);
-    m_sessionBadge->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    m_sessionBadge->hide();
-    layout->addWidget(m_sessionBadge);
-
     m_pathLabel = new QLabel(this);
     m_pathLabel->setContentsMargins(8, 4, 8, 4);
     m_pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -338,17 +331,8 @@ void FileExplorerWidget::unbindSession()
 
 void FileExplorerWidget::setSessionBadge(const QString &name, const QString &detail)
 {
-    if (!m_sessionBadge) {
-        return;
-    }
-    if (name.isEmpty()) {
-        m_sessionBadge->clear();
-        m_sessionBadge->hide();
-        return;
-    }
-    m_sessionBadge->setText(tr("Session: %1").arg(name));
-    m_sessionBadge->setToolTip(detail.isEmpty() ? name : detail);
-    m_sessionBadge->show();
+    Q_UNUSED(name);
+    Q_UNUSED(detail);
 }
 
 void FileExplorerWidget::updateSessionBadge()

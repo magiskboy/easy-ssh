@@ -27,12 +27,6 @@ TunnelListWidget::TunnelListWidget(QWidget *parent) : QWidget(parent)
     m_deleteAction = new QAction(tr("Delete"), this);
     m_toggleAction = new QAction(tr("Enable"), this);
 
-    m_sessionBadge = new QLabel(this);
-    m_sessionBadge->setContentsMargins(8, 6, 8, 2);
-    m_sessionBadge->setWordWrap(true);
-    m_sessionBadge->hide();
-    layout->addWidget(m_sessionBadge);
-
     auto *stackHost = new QWidget(this);
     auto *stack = new QStackedLayout(stackHost);
     stack->setContentsMargins(0, 0, 0, 0);
@@ -395,21 +389,7 @@ void TunnelListWidget::showList()
     }
 }
 
-void TunnelListWidget::updateSessionBadge()
-{
-    if (!m_sessionBadge) {
-        return;
-    }
-    if (!m_session) {
-        m_sessionBadge->clear();
-        m_sessionBadge->hide();
-        return;
-    }
-    const Connection connection = m_session->connection();
-    m_sessionBadge->setText(tr("Session: %1").arg(connection.name));
-    m_sessionBadge->setToolTip(connection.displayText());
-    m_sessionBadge->show();
-}
+void TunnelListWidget::updateSessionBadge() {}
 
 std::optional<TunnelDefinition> TunnelListWidget::selectedTunnel() const
 {

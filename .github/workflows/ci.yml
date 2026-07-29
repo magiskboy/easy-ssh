@@ -133,20 +133,14 @@ jobs:
             .deps/vcpkg/downloads
           key: vcpkg-libssh-x64-windows-${{ hashFiles('.github/workflows/ci.yml') }}
 
-      - name: Install 7-Zip SFX module
+      - name: Install Enigma Virtual Box
         if: matrix.os_family == 'windows'
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/7z-extra.7z" \
-            "https://www.7-zip.org/a/7z2408-extra.7z"
-          7z x -o"$RUNNER_TEMP/7z-extra" "$RUNNER_TEMP/7z-extra.7z"
-          echo "SFX_MODULE_PATH=${RUNNER_TEMP}/7z-extra/7zS.sfx" >> "$GITHUB_ENV"
-
-      - name: Download VC++ Redistributable
-        if: matrix.os_family == 'windows'
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/vc_redist.x64.exe" \
-            "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          echo "VCREDIST_PATH=${RUNNER_TEMP}/vc_redist.x64.exe" >> "$GITHUB_ENV"
+          curl -fsSL -o "$RUNNER_TEMP/enigmavb_en.exe" \
+            "https://enigmaprotector.com/assets/files/enigmavb_en.exe"
+          "$RUNNER_TEMP/enigmavb_en.exe" /VERYSILENT /SUPPRESSMSGBOXES \
+            /DIR="C:/Program Files/Enigma Virtual Box"
+          echo "ENIGMA_VB_DIR=C:/Program Files/Enigma Virtual Box" >> "$GITHUB_ENV"
 
       - name: Install libssh (vcpkg)
         if: matrix.os_family == 'windows'
@@ -231,10 +225,22 @@ jobs:
       - name: Build
         run: cmake --build build-release --parallel
 
-      - name: Package
+      - name: Package (Linux)
+        if: matrix.os_family == 'linux'
         run: |
-          chmod +x .github/scripts/package.sh
-          .github/scripts/package.sh "${{ matrix.target }}" build-release dist
+          chmod +x .github/scripts/package-linux.sh
+          .github/scripts/package-linux.sh "${{ matrix.target }}" build-release dist
+
+      - name: Package (macOS)
+        if: matrix.os_family == 'macos'
+        run: |
+          chmod +x .github/scripts/package-macos.sh
+          .github/scripts/package-macos.sh "${{ matrix.target }}" build-release dist
+
+      - name: Package (Windows)
+        if: matrix.os_family == 'windows'
+        shell: cmd
+        run: .github\scripts\package-windows.bat "${{ matrix.target }}" build-release dist
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

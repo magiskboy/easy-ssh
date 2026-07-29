@@ -96,7 +96,6 @@ private:
 
     RemoteFileModel *m_model = nullptr;
     QTreeView *m_tree = nullptr;
-    QLabel *m_sessionBadge = nullptr;
     QLabel *m_pathLabel = nullptr;
     QLabel *m_emptyLabel = nullptr;
     QWidget *m_stackHost = nullptr;
