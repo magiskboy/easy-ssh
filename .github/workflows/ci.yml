@@ -164,15 +164,6 @@ jobs:
       - name: Configure
         run: |
           set -euo pipefail
-          # Configure-time prefix is baked into qtermwidget FULL_* data paths and
-          # should match the packaged layout. Staging for AppImage uses
-          # `cmake --install --prefix` later (relative destinations).
-          case "${{ matrix.os_family }}" in
-            linux) install_prefix="/usr" ;;
-            macos) install_prefix="/usr/local" ;;
-            windows) install_prefix="C:/Program Files/Easy SSH" ;;
-            *) echo "unsupported os_family: ${{ matrix.os_family }}" >&2; exit 1 ;;
-          esac
           cmake -S . -B build-release \
             -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
@@ -181,7 +172,7 @@ jobs:
             -DEASY_SSH_BUNDLE_RUNTIME=ON \
             -DEASY_SSH_INTEGRATION_TESTS=OFF \
             -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
-            -DCMAKE_INSTALL_PREFIX="${install_prefix}"
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/staging"
 
       - name: Build
         run: cmake --build build-release --parallel
