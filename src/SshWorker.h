@@ -20,6 +20,10 @@
 #include <libssh/libssh.h>
 #include <libssh/sftp.h>
 
+#if defined(LIBSSH_VERSION_INT) && (LIBSSH_VERSION_INT < SSH_VERSION_INT(0, 11, 0))
+#error "easy-ssh requires libssh >= 0.11 for ProxyJump (SSH_OPTIONS_PROXYJUMP)"
+#endif
+
 class QTcpServer;
 class QTcpSocket;
 

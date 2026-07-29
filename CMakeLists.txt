@@ -38,7 +38,7 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS
 
 qt_standard_project_setup()
 
-find_package(libssh REQUIRED)
+find_package(libssh 0.11 REQUIRED)
 find_package(qtermwidget6 REQUIRED)
 find_package(Qt6Keychain REQUIRED)
 
