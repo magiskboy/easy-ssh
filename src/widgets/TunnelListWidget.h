@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ErrorNotifier.h"
 #include "Tunnel.h"
 #include "widgets/TerminalSessionWidget.h"
 
@@ -23,7 +24,7 @@ public:
     void unbindSession();
 
 signals:
-    void statusMessage(const QString &message);
+    void statusMessage(const QString &message, ErrorNotifier::Level level);
 
 private slots:
     void addTunnel();
@@ -42,11 +43,13 @@ private:
     void updateActionsEnabled();
     void showEmptyState(const QString &message);
     void showList();
+    void updateSessionBadge();
     std::optional<TunnelDefinition> selectedTunnel() const;
     bool isSessionConnected() const;
 
     TunnelListModel *m_model = nullptr;
     QTableView *m_table = nullptr;
+    QLabel *m_sessionBadge = nullptr;
     QLabel *m_emptyLabel = nullptr;
     QWidget *m_listHost = nullptr;
 

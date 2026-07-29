@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Connection.h"
+#include "ErrorNotifier.h"
 
 #include <QUuid>
 #include <QWidget>
@@ -35,7 +36,7 @@ public:
 signals:
     void connectionActivated(const QUuid &id);
     void connectionSelected(const QUuid &id);
-    void statusMessage(const QString &message);
+    void statusMessage(const QString &message, ErrorNotifier::Level level);
 
 private slots:
     void onFilterTextChanged(const QString &text);

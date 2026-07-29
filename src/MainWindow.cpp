@@ -15,14 +15,20 @@
 #include "widgets/TunnelListWidget.h"
 
 #include <QAction>
+#include <QDateTime>
+#include <QFrame>
+#include <QHBoxLayout>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPalette>
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QTimer>
+#include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
@@ -33,7 +39,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     setupUi();
     setupMenus();
 
-    ErrorNotifier::setStatusSink([this](const QString &text) { setStatusText(text); });
+    ErrorNotifier::setStatusSink(
+        [this](const QString &text, ErrorNotifier::Level level) { setStatusText(text, level); });
 
     connect(&AppSettings::instance(),
             &AppSettings::settingsChanged,
@@ -46,6 +53,10 @@ void MainWindow::setupUi()
     setWindowTitle(QStringLiteral("Easy SSH"));
     resize(1100, 700);
 
+    // Explicit painted separators — palette(mid) + splitter stylesheets are often invisible
+    // under native Linux styles.
+    const QString sepColor = palette().color(QPalette::Dark).name();
+
     m_connectionList = new ConnectionListWidget(this);
     m_connectionList->setConnectionModel(m_connectionModel);
     m_connectionList->setSecretStore(m_secretStore);
@@ -55,8 +66,6 @@ void MainWindow::setupUi()
 
     m_sideTabs = new QTabWidget(this);
     m_sideTabs->setDocumentMode(true);
-    m_sideTabs->setMinimumWidth(220);
-    m_sideTabs->setMaximumWidth(420);
     m_sideTabs->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     m_sideTabs->addTab(m_connectionList, tr("Connections"));
     m_sideTabs->addTab(m_fileExplorer, tr("Files"));
@@ -64,36 +73,83 @@ void MainWindow::setupUi()
 
     m_sessionTabs = new SessionTabWidget(this);
     m_sessionTabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_sessionTabs->setConnectionModel(m_connectionModel);
+
+    // Left panel + permanent 1px vertical rule (moves with the panel when resizing).
+    auto *sidePanel = new QWidget(this);
+    sidePanel->setMinimumWidth(220);
+    sidePanel->setMaximumWidth(420);
+    auto *sideLayout = new QHBoxLayout(sidePanel);
+    sideLayout->setContentsMargins(0, 0, 0, 0);
+    sideLayout->setSpacing(0);
+    sideLayout->addWidget(m_sideTabs, 1);
+
+    auto *sideSeparator = new QFrame(sidePanel);
+    sideSeparator->setFrameShape(QFrame::NoFrame);
+    sideSeparator->setFixedWidth(1);
+    sideSeparator->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    sideSeparator->setStyleSheet(
+        QStringLiteral("background-color: %1; border: none;").arg(sepColor));
+    sideLayout->addWidget(sideSeparator);
 
     auto *rootSplitter = new QSplitter(Qt::Horizontal, this);
     rootSplitter->setChildrenCollapsible(false);
-    rootSplitter->addWidget(m_sideTabs);
+    rootSplitter->setHandleWidth(2);
+    rootSplitter->addWidget(sidePanel);
     rootSplitter->addWidget(m_sessionTabs);
     rootSplitter->setStretchFactor(0, 0);
     rootSplitter->setStretchFactor(1, 1);
     rootSplitter->setSizes({280, 820});
 
-    setCentralWidget(rootSplitter);
+    auto *central = new QWidget(this);
+    auto *rootLayout = new QVBoxLayout(central);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+    rootLayout->addWidget(rootSplitter, 1);
+
+    // Horizontal rule above the status bar so the bottom region is clearly separated.
+    auto *statusSeparator = new QFrame(central);
+    statusSeparator->setFrameShape(QFrame::NoFrame);
+    statusSeparator->setFixedHeight(1);
+    statusSeparator->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    statusSeparator->setStyleSheet(
+        QStringLiteral("background-color: %1; border: none;").arg(sepColor));
+    rootLayout->addWidget(statusSeparator);
+
+    setCentralWidget(central);
 
     m_statusLabel = new QLabel(tr("Ready"), this);
     statusBar()->addWidget(m_statusLabel, 1);
 
+    m_sessionInfoLabel = new QLabel(this);
+    m_sessionInfoLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_sessionInfoLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    statusBar()->addPermanentWidget(m_sessionInfoLabel);
+
+    m_sessionInfoTimer = new QTimer(this);
+    m_sessionInfoTimer->setInterval(1000);
+    connect(m_sessionInfoTimer, &QTimer::timeout, this, &MainWindow::updateSessionStatusInfo);
+    updateSessionStatusInfo();
+
     connect(m_connectionList,
             &ConnectionListWidget::connectionActivated,
             this,
-            [this](const QUuid &id) {
-                const auto connection = m_connectionModel->connectionById(id);
-                if (!connection) {
-                    return;
-                }
+            &MainWindow::openConnectionById);
 
-                const auto kind = connection->authType == AuthType::PrivateKey
-                                      ? SecretStore::Kind::Passphrase
-                                      : SecretStore::Kind::Password;
-
-                setStatusText(tr("Reading credentials for %1…").arg(connection->name));
-                m_secretStore->readSecret(id, kind);
-            });
+    connect(m_sessionTabs,
+            &SessionTabWidget::openConnectionRequested,
+            this,
+            &MainWindow::openConnectionById);
+    connect(m_sessionTabs,
+            &SessionTabWidget::createConnectionRequested,
+            m_connectionList,
+            &ConnectionListWidget::createConnection);
+    connect(m_sessionTabs, &SessionTabWidget::showConnectionsRequested, this, [this]() {
+        if (m_sideTabs && m_connectionList) {
+            m_sideTabs->setCurrentWidget(m_connectionList);
+            m_connectionList->focusSearch();
+        }
+    });
 
     connect(m_secretStore,
             &SecretStore::readFinished,
@@ -136,6 +192,8 @@ void MainWindow::setupUi()
                 }
 
                 m_sessionTabs->openSshSession(*connection, value);
+                AppSettings::instance().recordRecentConnection(connectionId);
+                m_sessionTabs->refreshWelcome();
             });
 
     connect(
@@ -149,6 +207,11 @@ void MainWindow::setupUi()
 
     connect(
         m_connectionList, &ConnectionListWidget::statusMessage, this, &MainWindow::setStatusText);
+    connect(m_connectionList, &ConnectionListWidget::statusMessage, this, [this](const QString &, ErrorNotifier::Level) {
+        if (m_sessionTabs) {
+            m_sessionTabs->refreshWelcome();
+        }
+    });
 
     connect(m_sessionTabs, &SessionTabWidget::statusMessage, this, &MainWindow::setStatusText);
 
@@ -157,14 +220,16 @@ void MainWindow::setupUi()
     connect(m_tunnelList, &TunnelListWidget::statusMessage, this, &MainWindow::setStatusText);
 
     connect(m_sessionTabs, &SessionTabWidget::sessionClosed, this, [this](const QString &name) {
-        setStatusText(tr("Closed session: %1").arg(name));
+        setStatusText(tr("Closed session: %1").arg(name), ErrorNotifier::Level::Warning);
         updateTerminalActionsEnabled();
         syncFileExplorerToActiveSession();
         syncTunnelsToActiveSession();
+        updateSessionStatusInfo();
     });
 
     connect(m_sessionTabs, &SessionTabWidget::sessionOpened, this, [this](const QString &) {
         updateTerminalActionsEnabled();
+        updateSessionStatusInfo();
     });
 
     connect(
@@ -172,30 +237,31 @@ void MainWindow::setupUi()
             updateTerminalActionsEnabled();
             syncFileExplorerToActiveSession();
             syncTunnelsToActiveSession();
+            updateSessionStatusInfo();
 
             if (name.isEmpty() || name == tr("Welcome")) {
-                setStatusText(tr("Ready"));
+                setStatusText(tr("Ready"), ErrorNotifier::Level::Status);
                 return;
             }
 
             if (auto *session = m_sessionTabs->activeTerminal()) {
                 switch (session->sessionState()) {
                 case TerminalSessionWidget::State::Connecting:
-                    setStatusText(tr("Connecting: %1").arg(name));
+                    setStatusText(tr("Connecting: %1").arg(name), ErrorNotifier::Level::Status);
                     return;
                 case TerminalSessionWidget::State::Connected:
-                    setStatusText(tr("Connected: %1").arg(name));
+                    setStatusText(tr("Connected: %1").arg(name), ErrorNotifier::Level::Success);
                     return;
                 case TerminalSessionWidget::State::Disconnected:
-                    setStatusText(tr("Disconnected: %1").arg(name));
+                    setStatusText(tr("Disconnected: %1").arg(name), ErrorNotifier::Level::Warning);
                     return;
                 case TerminalSessionWidget::State::Failed:
-                    setStatusText(tr("Failed: %1").arg(name));
+                    setStatusText(tr("Failed: %1").arg(name), ErrorNotifier::Level::Error);
                     return;
                 }
             }
 
-            setStatusText(tr("Active session: %1").arg(name));
+            setStatusText(tr("Active session: %1").arg(name), ErrorNotifier::Level::Status);
         });
 }
 
@@ -393,11 +459,31 @@ void MainWindow::rebindShortcuts()
     }
 }
 
-void MainWindow::setStatusText(const QString &text)
+void MainWindow::setStatusText(const QString &text, ErrorNotifier::Level level)
 {
-    if (m_statusLabel) {
-        m_statusLabel->setText(text);
+    if (!m_statusLabel) {
+        return;
     }
+
+    m_statusLabel->setText(text);
+
+    const bool dark = palette().color(QPalette::Window).lightness() < 128;
+    QString color;
+    switch (level) {
+    case ErrorNotifier::Level::Status:
+        m_statusLabel->setStyleSheet(QString());
+        return;
+    case ErrorNotifier::Level::Success:
+        color = dark ? QStringLiteral("#81c784") : QStringLiteral("#2e7d32");
+        break;
+    case ErrorNotifier::Level::Warning:
+        color = dark ? QStringLiteral("#ffb74d") : QStringLiteral("#ef6c00");
+        break;
+    case ErrorNotifier::Level::Error:
+        color = dark ? QStringLiteral("#ef5350") : QStringLiteral("#c62828");
+        break;
+    }
+    m_statusLabel->setStyleSheet(QStringLiteral("color: %1;").arg(color));
 }
 
 void MainWindow::updateTerminalActionsEnabled()
@@ -406,6 +492,67 @@ void MainWindow::updateTerminalActionsEnabled()
     for (QAction *action : m_terminalActions) {
         action->setEnabled(enabled);
     }
+}
+
+void MainWindow::openConnectionById(const QUuid &id)
+{
+    const auto connection = m_connectionModel->connectionById(id);
+    if (!connection) {
+        setStatusText(tr("Connection not found."), ErrorNotifier::Level::Warning);
+        return;
+    }
+
+    const auto kind = connection->authType == AuthType::PrivateKey ? SecretStore::Kind::Passphrase
+                                                                   : SecretStore::Kind::Password;
+
+    setStatusText(tr("Reading credentials for %1…").arg(connection->name),
+                  ErrorNotifier::Level::Status);
+    m_secretStore->readSecret(id, kind);
+}
+
+void MainWindow::updateSessionStatusInfo()
+{
+    if (!m_sessionInfoLabel) {
+        return;
+    }
+
+    auto *session = m_sessionTabs ? m_sessionTabs->activeTerminal() : nullptr;
+    if (!session) {
+        m_sessionInfoLabel->clear();
+        if (m_sessionInfoTimer) {
+            m_sessionInfoTimer->stop();
+        }
+        return;
+    }
+
+    const Connection connection = session->connection();
+    const QString host = connection.host.isEmpty() ? QStringLiteral("—") : connection.host;
+    const QString user = connection.username.isEmpty() ? QStringLiteral("—") : connection.username;
+
+    QString ttl = QStringLiteral("—");
+    if (session->sessionState() == TerminalSessionWidget::State::Connected &&
+        session->connectedAt().isValid()) {
+        const qint64 seconds = session->connectedAt().secsTo(QDateTime::currentDateTimeUtc());
+        ttl = formatSessionTtl(qMax<qint64>(0, seconds));
+        if (m_sessionInfoTimer && !m_sessionInfoTimer->isActive()) {
+            m_sessionInfoTimer->start();
+        }
+    } else if (m_sessionInfoTimer) {
+        m_sessionInfoTimer->stop();
+    }
+
+    m_sessionInfoLabel->setText(tr("%1 | %2 | %3").arg(host, user, ttl));
+}
+
+QString MainWindow::formatSessionTtl(qint64 seconds)
+{
+    const qint64 hours = seconds / 3600;
+    const qint64 minutes = (seconds % 3600) / 60;
+    const qint64 secs = seconds % 60;
+    return QStringLiteral("%1:%2:%3")
+        .arg(hours, 2, 10, QLatin1Char('0'))
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(secs, 2, 10, QLatin1Char('0'));
 }
 
 void MainWindow::syncFileExplorerToActiveSession()
@@ -463,5 +610,6 @@ void MainWindow::wireActiveSessionStateSync(TerminalSessionWidget *session)
             [this](TerminalSessionWidget::State) {
                 syncFileExplorerToActiveSession();
                 syncTunnelsToActiveSession();
+                updateSessionStatusInfo();
             });
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ErrorNotifier.h"
+
 #include <QHash>
 #include <QObject>
 #include <QPointer>
@@ -21,7 +23,7 @@ public:
     void clear();
 
 signals:
-    void statusMessage(const QString &message);
+    void statusMessage(const QString &message, ErrorNotifier::Level level);
     void syncFailed(const QString &message);
 
 private slots:

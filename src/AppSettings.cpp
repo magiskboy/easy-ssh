@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include <QtGlobal>
+#include <QUuid>
 
 #include <iterator>
 
@@ -23,6 +24,8 @@ constexpr auto kCursorBlink = "terminal/cursorBlink";
 constexpr auto kConfirmMultilinePaste = "terminal/confirmMultilinePaste";
 
 constexpr auto kAutoReconnect = "session/autoReconnect";
+constexpr auto kRecentConnections = "session/recentConnectionIds";
+constexpr int kMaxRecentConnections = 8;
 
 struct ShortcutDef
 {
@@ -164,6 +167,47 @@ QString AppSettings::defaultDownloadDir() const
 void AppSettings::setDefaultDownloadDir(const QString &path)
 {
     setStringValue(QLatin1String(kDownloadDir), path);
+}
+
+QList<QUuid> AppSettings::recentConnectionIds(int limit) const
+{
+    QSettings settings;
+    const QStringList stored = settings.value(QLatin1String(kRecentConnections)).toStringList();
+    QList<QUuid> ids;
+    ids.reserve(stored.size());
+    for (const QString &value : stored) {
+        const QUuid id = QUuid::fromString(value);
+        if (!id.isNull()) {
+            ids.append(id);
+        }
+        if (limit > 0 && ids.size() >= limit) {
+            break;
+        }
+    }
+    return ids;
+}
+
+void AppSettings::recordRecentConnection(const QUuid &id)
+{
+    if (id.isNull()) {
+        return;
+    }
+
+    QList<QUuid> ids = recentConnectionIds(0);
+    ids.removeAll(id);
+    ids.prepend(id);
+    while (ids.size() > kMaxRecentConnections) {
+        ids.removeLast();
+    }
+
+    QStringList stored;
+    stored.reserve(ids.size());
+    for (const QUuid &entry : ids) {
+        stored.append(entry.toString(QUuid::WithoutBraces));
+    }
+
+    QSettings settings;
+    settings.setValue(QLatin1String(kRecentConnections), stored);
 }
 
 QFont AppSettings::terminalFont() const

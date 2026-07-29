@@ -131,7 +131,8 @@ void OpenFileTracker::flushPendingUploads()
         }
 
         ensureWatching(localPath);
-        emit statusMessage(tr("Uploading saved file: %1").arg(QFileInfo(localPath).fileName()));
+        emit statusMessage(tr("Uploading saved file: %1").arg(QFileInfo(localPath).fileName()),
+                           ErrorNotifier::Level::Status);
         entry.session->uploadFileTo(localPath, entry.remotePath);
     }
 }
