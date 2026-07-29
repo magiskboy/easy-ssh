@@ -50,4 +50,7 @@ else()
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Internet")
 endif()
 
+set(CPACK_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION OFF⁠)
+
+
 include(CPack)
