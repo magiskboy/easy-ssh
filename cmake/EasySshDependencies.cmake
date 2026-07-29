@@ -134,7 +134,21 @@ if(_easy_ssh_need_lxqt_bt)
     if(NOT _lxqt_bt_binary_dir)
         message(FATAL_ERROR "FetchContent lxqt-build-tools has no BINARY_DIR")
     endif()
-    # qtermwidget 2.4.x find_package(lxqt2-build-tools); expose the FetchContent build tree.
+    # FetchContent keeps CMAKE_PROJECT_NAME from the top-level project (easy-ssh), so
+    # lxqt-build-tools writes easy-ssh-config.cmake — shim lxqt2-build-tools-config.cmake.
+    set(_lxqt_modules "${_lxqt_bt_binary_dir}/CMakeFiles/${PROJECT_NAME}/cmake/modules")
+    set(_lxqt_find_modules "${_lxqt_bt_binary_dir}/CMakeFiles/${PROJECT_NAME}/cmake/find-modules")
+    if(NOT IS_DIRECTORY "${_lxqt_modules}")
+        message(FATAL_ERROR "EasySshDeps: lxqt modules dir not found at ${_lxqt_modules}")
+    endif()
+    set(_lxqt_shim "${_lxqt_bt_binary_dir}/lxqt2-build-tools-config.cmake")
+    file(WRITE "${_lxqt_shim}" "
+set(LXQT_CMAKE_MODULES_DIR \"${_lxqt_modules}\")
+set(LXQT_CMAKE_FIND_MODULES_DIR \"${_lxqt_find_modules}\")
+list(APPEND CMAKE_MODULE_PATH \"\${LXQT_CMAKE_MODULES_DIR}\" \"\${LXQT_CMAKE_FIND_MODULES_DIR}\")
+set(lxqt2-build-tools_FOUND TRUE)
+set(lxqt2-build-tools_VERSION \"${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG}\")
+")
     set(lxqt2-build-tools_DIR "${_lxqt_bt_binary_dir}" CACHE PATH "" FORCE)
     list(APPEND CMAKE_PREFIX_PATH "${_lxqt_bt_binary_dir}")
     set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
