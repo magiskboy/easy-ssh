@@ -133,6 +133,21 @@ jobs:
             .deps/vcpkg/downloads
           key: vcpkg-libssh-x64-windows-${{ hashFiles('.github/workflows/ci.yml') }}
 
+      - name: Install 7-Zip SFX module
+        if: matrix.os_family == 'windows'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/7z-extra.7z" \
+            "https://www.7-zip.org/a/7z2408-extra.7z"
+          7z x -o"$RUNNER_TEMP/7z-extra" "$RUNNER_TEMP/7z-extra.7z"
+          echo "SFX_MODULE_PATH=${RUNNER_TEMP}/7z-extra/7zS.sfx" >> "$GITHUB_ENV"
+
+      - name: Download VC++ Redistributable
+        if: matrix.os_family == 'windows'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/vc_redist.x64.exe" \
+            "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+          echo "VCREDIST_PATH=${RUNNER_TEMP}/vc_redist.x64.exe" >> "$GITHUB_ENV"
+
       - name: Install libssh (vcpkg)
         if: matrix.os_family == 'windows'
         run: |

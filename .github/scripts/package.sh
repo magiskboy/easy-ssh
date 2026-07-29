@@ -688,6 +688,24 @@ archive_windows() {
   mv "$STAGE"/* "$wrap/easy-ssh/"
   shopt -u dotglob
 
+  # Bundle VC++ Redistributable for first-run on fresh machines.
+  if [[ -n "${VCREDIST_PATH:-}" && -f "${VCREDIST_PATH}" ]]; then
+    cp -a "$VCREDIST_PATH" "$wrap/easy-ssh/vc_redist.x64.exe"
+    log "Bundled vc_redist.x64.exe"
+
+    cat >"$wrap/easy-ssh/easy-ssh-launcher.bat" <<'BATEOF'
+@echo off
+:: Install VC++ Redistributable silently if not already present.
+reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" /v Major >nul 2>&1
+if errorlevel 1 (
+    echo Installing Visual C++ Redistributable...
+    "%~dp0vc_redist.x64.exe" /install /quiet /norestart
+)
+start "" "%~dp0bin\easy-ssh.exe"
+BATEOF
+    log "Created easy-ssh-launcher.bat"
+  fi
+
   local exe_rel="${exe#"$STAGE"/}"
   local run_rel
   run_rel="$(printf '%s' "$exe_rel" | sed 's#/#\\\\#g')"
@@ -720,13 +738,18 @@ archive_windows() {
       7z a -t7z -mx=9 "$archive7z" easy-ssh >/dev/null
     )
 
+    local run_cmd="easy-ssh\\\\${run_rel}"
+    if [[ -f "$payload_root/easy-ssh/easy-ssh-launcher.bat" ]]; then
+      run_cmd="easy-ssh\\\\easy-ssh-launcher.bat"
+    fi
+
     cat >"$cfg" <<EOF
 ;!@Install@!UTF-8!
 Title="Easy SSH Portable"
 ExtractTitle="Easy SSH"
 ExtractDialogText="Extracting Easy SSH..."
 GUIMode="2"
-RunProgram="easy-ssh\\\\${run_rel}"
+RunProgram="${run_cmd}"
 ;!@InstallEnd@!
 EOF
 
