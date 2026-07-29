@@ -115,8 +115,6 @@ void MainWindow::setupUi()
                     // key).
                     if (connection->authType == AuthType::PrivateKey) {
                         m_sessionTabs->openSshSession(*connection, QString());
-                        AppSettings::instance().recordRecentConnection(connectionId);
-                        m_sessionTabs->refreshWelcome();
                         return;
                     }
 

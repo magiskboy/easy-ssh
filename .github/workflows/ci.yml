@@ -166,8 +166,18 @@ jobs:
             *) CMAKE_SEP=':' ;;
           esac
 
+          # Preserve Qt from install-qt-action (QT_ROOT_DIR) — CMAKE_PREFIX_PATH alone
+          # is not always exported into subsequent steps on all runners.
+          PREFIX_PATH="${PREFIX}"
+          if [[ -n "${QT_ROOT_DIR:-}" ]]; then
+            PREFIX_PATH="${PREFIX_PATH}${CMAKE_SEP}${QT_ROOT_DIR}"
+          fi
+          if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+            PREFIX_PATH="${PREFIX_PATH}${CMAKE_SEP}${CMAKE_PREFIX_PATH}"
+          fi
+
           {
-            echo "CMAKE_PREFIX_PATH=${PREFIX}${CMAKE_PREFIX_PATH:+${CMAKE_SEP}${CMAKE_PREFIX_PATH}}"
+            echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}"
             echo "PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
             echo "LD_LIBRARY_PATH=${PREFIX}/lib:${PREFIX}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
             echo "DYLD_FALLBACK_LIBRARY_PATH=${PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
@@ -177,9 +187,9 @@ jobs:
       - name: Configure
         run: |
           set -euo pipefail
-          EXTRA=()
+          EXTRA_ARGS=()
           if [[ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]]; then
-            EXTRA+=(
+            EXTRA_ARGS+=(
               "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
               "-DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET:-x64-windows}"
             )
@@ -189,7 +199,7 @@ jobs:
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}" \
             -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" \
-            "${EXTRA[@]}"
+            ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 
       - name: Build
         run: cmake --build build-release --parallel
