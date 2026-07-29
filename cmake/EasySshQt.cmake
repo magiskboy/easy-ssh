@@ -73,9 +73,10 @@ if(NOT EXISTS "${_qt_marker}")
 
     file(MAKE_DIRECTORY "${EASY_SSH_QT_ROOT}")
 
-    set(_aqt_modules qtbase)
+    # Base Qt is installed by default; qtbase/qttools are archives, not --modules.
+    set(_aqt_extra_args)
     if(WIN32)
-        list(APPEND _aqt_modules qttools)
+        list(APPEND _aqt_extra_args --archives qtbase qttools)
     endif()
 
     if(_aqt_launch_mode STREQUAL "exe")
@@ -86,7 +87,7 @@ if(NOT EXISTS "${_qt_marker}")
             ${EASY_SSH_QT_VERSION}
             ${_aqt_arch}
             --outputdir "${EASY_SSH_QT_ROOT}"
-            --modules ${_aqt_modules}
+            ${_aqt_extra_args}
         )
     else()
         set(_aqt_cmd
@@ -96,7 +97,7 @@ if(NOT EXISTS "${_qt_marker}")
             ${EASY_SSH_QT_VERSION}
             ${_aqt_arch}
             --outputdir "${EASY_SSH_QT_ROOT}"
-            --modules ${_aqt_modules}
+            ${_aqt_extra_args}
         )
     endif()
 
