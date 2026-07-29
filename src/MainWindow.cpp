@@ -111,7 +111,8 @@ void MainWindow::setupUi()
                 }
 
                 if (!ok) {
-                    // Private-key auth can proceed without a stored passphrase (agent / unlocked key).
+                    // Private-key auth can proceed without a stored passphrase (agent / unlocked
+                    // key).
                     if (connection->authType == AuthType::PrivateKey) {
                         m_sessionTabs->openSshSession(*connection, QString());
                         AppSettings::instance().recordRecentConnection(connectionId);

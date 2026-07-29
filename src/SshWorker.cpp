@@ -75,8 +75,8 @@ void SshWorker::connectToHost(const Connection &connection,
         const QByteArray alias = connection.configAlias.toUtf8();
         ssh_options_set(m_session, SSH_OPTIONS_HOST, alias.constData());
         if (ssh_options_parse_config(m_session, nullptr) != SSH_OK) {
-            qCWarning(lcSsh) << "ssh_options_parse_config failed for alias" << connection.configAlias
-                             << ":" << sessionError();
+            qCWarning(lcSsh) << "ssh_options_parse_config failed for alias"
+                             << connection.configAlias << ":" << sessionError();
         }
     } else {
         const QByteArray host = connection.host.toUtf8();

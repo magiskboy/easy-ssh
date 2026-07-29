@@ -313,9 +313,8 @@ void ConnectionListWidget::onContextMenu(const QPoint &pos)
         ->setEnabled(isApp);
     menu.addAction(tr("Duplicate"), this, &ConnectionListWidget::duplicateSelectedConnection)
         ->setEnabled(isApp);
-    menu.addAction(tr("Import to Easy SSH…"),
-                   this,
-                   &ConnectionListWidget::importSelectedFromSshConfig)
+    menu.addAction(
+            tr("Import to Easy SSH…"), this, &ConnectionListWidget::importSelectedFromSshConfig)
         ->setEnabled(isConfig);
     menu.addSeparator();
     menu.addAction(tr("Reload SSH Config"), this, &ConnectionListWidget::reloadSshConfig);

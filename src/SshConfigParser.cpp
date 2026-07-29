@@ -102,7 +102,8 @@ QStringList expandIncludePattern(const QString &pattern, const QString &relative
                              ? QDir(relativeToDir).absoluteFilePath(expanded)
                              : expanded);
 
-    if (!info.fileName().contains(QLatin1Char('*')) && !info.fileName().contains(QLatin1Char('?'))) {
+    if (!info.fileName().contains(QLatin1Char('*')) &&
+        !info.fileName().contains(QLatin1Char('?'))) {
         return {info.absoluteFilePath()};
     }
 

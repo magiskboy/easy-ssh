@@ -230,19 +230,23 @@ void ConnectionModel::ensureConfigWatcher()
 {
     if (m_configWatcher == nullptr) {
         m_configWatcher = new QFileSystemWatcher(this);
-        connect(m_configWatcher, &QFileSystemWatcher::fileChanged, this, [this](const QString &path) {
-            // Editors often replace the file atomically; re-watch after change.
-            if (QFileInfo::exists(path) && !m_configWatcher->files().contains(path)) {
-                m_configWatcher->addPath(path);
-            }
-            if (m_reloadDebounce == nullptr) {
-                m_reloadDebounce = new QTimer(this);
-                m_reloadDebounce->setSingleShot(true);
-                m_reloadDebounce->setInterval(300);
-                connect(m_reloadDebounce, &QTimer::timeout, this, &ConnectionModel::reloadSshConfig);
-            }
-            m_reloadDebounce->start();
-        });
+        connect(
+            m_configWatcher, &QFileSystemWatcher::fileChanged, this, [this](const QString &path) {
+                // Editors often replace the file atomically; re-watch after change.
+                if (QFileInfo::exists(path) && !m_configWatcher->files().contains(path)) {
+                    m_configWatcher->addPath(path);
+                }
+                if (m_reloadDebounce == nullptr) {
+                    m_reloadDebounce = new QTimer(this);
+                    m_reloadDebounce->setSingleShot(true);
+                    m_reloadDebounce->setInterval(300);
+                    connect(m_reloadDebounce,
+                            &QTimer::timeout,
+                            this,
+                            &ConnectionModel::reloadSshConfig);
+                }
+                m_reloadDebounce->start();
+            });
     }
 
     const QString path = SshConfigParser::defaultConfigPath();
