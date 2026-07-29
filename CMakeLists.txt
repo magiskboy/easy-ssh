@@ -216,7 +216,10 @@ if(WIN32)
 
     set(_easy_ssh_runtime_dirs_code "")
     foreach(_dir IN LISTS _easy_ssh_runtime_search_dirs)
-        string(APPEND _easy_ssh_runtime_dirs_code "      \"${_dir}\"\n")
+        # install(CODE) embeds paths into cmake_install.cmake; backslashes must be
+        # forward slashes to avoid invalid escapes like \a in D:\a\...
+        string(REPLACE "\\" "/" _dir_fwd "${_dir}")
+        string(APPEND _easy_ssh_runtime_dirs_code "      \"${_dir_fwd}\"\n")
     endforeach()
 
     install(CODE "
