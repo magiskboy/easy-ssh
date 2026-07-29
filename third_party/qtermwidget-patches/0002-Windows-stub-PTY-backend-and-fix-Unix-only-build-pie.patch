@@ -598,8 +598,9 @@ index 0000000..1ddc572
 +{
 +}
 +
-+void KPty::openSlave()
++bool KPty::openSlave()
 +{
++    return false;
 +}
 +
 +void KPty::setCTty()
