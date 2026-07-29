@@ -130,6 +130,14 @@ if(_easy_ssh_need_lxqt_bt)
         GIT_PROGRESS   TRUE
     )
     FetchContent_MakeAvailable(lxqt-build-tools)
+    FetchContent_GetProperties(lxqt-build-tools BINARY_DIR _lxqt_bt_binary_dir)
+    if(NOT _lxqt_bt_binary_dir)
+        message(FATAL_ERROR "FetchContent lxqt-build-tools has no BINARY_DIR")
+    endif()
+    # qtermwidget 2.4.x find_package(lxqt2-build-tools); expose the FetchContent build tree.
+    set(lxqt2-build-tools_DIR "${_lxqt_bt_binary_dir}" CACHE PATH "" FORCE)
+    list(APPEND CMAKE_PREFIX_PATH "${_lxqt_bt_binary_dir}")
+    set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
     message(STATUS "EasySshDeps: lxqt-build-tools from FetchContent (${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG})")
 endif()
 

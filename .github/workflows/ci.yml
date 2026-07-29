@@ -81,15 +81,7 @@ jobs:
         if: matrix.os_family == 'windows'
         shell: bash
         run: |
-          set -euo pipefail
           python -m pip install --user "aqtinstall>=3.1.0"
-          VCPKG_ROOT="${VCPKG_ROOT:-C:/vcpkg}"
-          if [[ ! -x "${VCPKG_ROOT}/vcpkg.exe" ]]; then
-            echo "vcpkg not found at ${VCPKG_ROOT}" >&2
-            exit 1
-          fi
-          "${VCPKG_ROOT}/vcpkg.exe" install zlib:x64-windows --disable-metrics
-          echo "CMAKE_PREFIX_PATH=${VCPKG_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
 
       - name: Install Linux build tools
         if: matrix.os_family == 'linux'
