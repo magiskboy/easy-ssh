@@ -164,6 +164,8 @@ jobs:
       - name: Configure
         run: |
           set -euo pipefail
+          # Do not bake CMAKE_INSTALL_PREFIX here: CPack (especially NSIS) needs
+          # relative install() DESTINATIONs. Staging uses --prefix at install time.
           cmake -S . -B build-release \
             -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
@@ -171,8 +173,7 @@ jobs:
             -DEASY_SSH_FETCH_QT=ON \
             -DEASY_SSH_BUNDLE_RUNTIME=ON \
             -DEASY_SSH_INTEGRATION_TESTS=OFF \
-            -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
-            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/staging"
+            -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}"
 
       - name: Build
         run: cmake --build build-release --parallel
