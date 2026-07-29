@@ -132,6 +132,13 @@ if(NOT _easy_ssh_have_qtkeychain)
     if(NOT TARGET Qt6Keychain::Qt6Keychain)
         message(FATAL_ERROR "FetchContent qtkeychain did not create Qt6Keychain::Qt6Keychain")
     endif()
+    # windeployqt isQtModule() matches /^Qt[major]/i (e.g. qt6keychain.dll) and then
+    # resolves the DLL only under QT_INSTALL_BINS. --ignore-library-errors does not
+    # cover that failure path. Rename so the PE import is not treated as a Qt module.
+    # See: https://lists.qt-project.org/pipermail/development/2025-October/046617.html
+    if(WIN32 AND TARGET qt6keychain)
+        set_target_properties(qt6keychain PROPERTIES OUTPUT_NAME "qtkeychain")
+    endif()
     message(STATUS "EasySshDeps: QtKeychain from FetchContent (${EASY_SSH_QTKEYCHAIN_GIT_TAG})")
 else()
     message(STATUS "EasySshDeps: QtKeychain from system packages")
