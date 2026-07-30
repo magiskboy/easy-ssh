@@ -1,0 +1,48 @@
+version = 1
+
+# Project-authored docs and repo metadata
+[[annotations]]
+path = [
+  "README.md",
+  "CONTRIBUTING.md",
+  "CHANGELOG.md",
+  "SECURITY.md",
+  "NOTICE",
+  ".gitignore",
+  ".editorconfig",
+  ".clang-format",
+  ".clang-tidy",
+  ".clangd",
+  "requirements/**",
+  ".githooks/**",
+  ".github/**",
+  ".vscode/**",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# Application icons and desktop integration assets (generated / authored here)
+[[annotations]]
+path = [
+  "icon.png",
+  "resources/icons/**",
+  "resources/linux/icons/**",
+  "resources/linux/*.desktop",
+  "resources/macos/**",
+  "resources/windows/**",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# AppStream metainfo is dedicated to the public domain (matches metadata_license)
+[[annotations]]
+path = ["resources/linux/*.metainfo.xml"]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "CC0-1.0"
+
+# Local patches applied on top of lxqt/qtermwidget (our modifications)
+[[annotations]]
+path = ["third_party/qtermwidget-patches/**"]
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"

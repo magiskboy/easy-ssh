@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+//
+// SPDX-License-Identifier: GPL-3.0-only
+
 #include "core/fs/SftpTypes.h"
 #include "core/ssh/SshWorker.h"
 #include "core/tunnel/Tunnel.h"

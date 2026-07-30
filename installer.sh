@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 # Install the latest Easy SSH release for the current OS / architecture.
 #
 # Usage:
@@ -6,7 +11,7 @@
 #   bash <(curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh)
 #
 # Optional environment variables:
-#   EASY_SSH_VERSION   Release tag to install (default: latest), e.g. v1.0.0
+#   EASY_SSH_VERSION   Release tag to install (default: latest), e.g. v0.1.0
 #   EASY_SSH_PREFIX    Linux install prefix (default: ~/.local)
 #   EASY_SSH_REPO      GitHub owner/repo (default: magiskboy/easy-ssh)
 set -euo pipefail
@@ -80,7 +85,7 @@ http_get() {
 
 resolve_version() {
   if [[ -n "$VERSION" ]]; then
-    # Accept "1.0.0" or "v1.0.0".
+    # Accept "0.1.0" or "v0.1.0".
     [[ "$VERSION" == v* ]] || VERSION="v${VERSION}"
     echo "$VERSION"
     return

@@ -1,6 +1,6 @@
 # Debian/Ubuntu packages required on Linux CI / release builds.
 # These are system .so / toolchain packages — not available as pip wheels.
-# Install: sudo apt-get install -y --no-install-recommends $(grep -vE '^\s*#|^\s*$' ci/apt-linux.txt)
+# Install: sudo apt-get install -y --no-install-recommends $(grep -vE '^\s*#|^\s*$' .github/scripts/apt-linux.txt)
 #
 # Sources: Qt Linux requirements (xcb QPA), packaging (rpm), build (gcc, pkg-config).
 # See https://doc.qt.io/qt-6/linux-requirements.html

@@ -31,12 +31,69 @@ jobs:
 
       - name: Check formatting
         run: |
-          chmod +x .github/scripts/run-clang-format-check.sh
-          .github/scripts/run-clang-format-check.sh
+          chmod +x .github/scripts/run-clang-format.sh
+          .github/scripts/run-clang-format.sh --check
+
+  reuse:
+    name: reuse lint
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pip toolchains
+        run: |
+          chmod +x .github/scripts/install-pip-toolchains.sh
+          bin="$(.github/scripts/install-pip-toolchains.sh requirements/requirements-dev.txt)"
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: REUSE compliance
+        run: |
+          chmod +x .github/scripts/run-reuse-lint.sh
+          .github/scripts/run-reuse-lint.sh
+
+  # Optional / advisory: does not block merges while the check set stabilizes.
+  tidy:
+    name: clang-tidy
+    continue-on-error: true
+    needs: [format, reuse]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Linux build tools
+        run: |
+          sudo apt-get update
+          mapfile -t pkgs < <(grep -vE '^\s*(#|$)' .github/scripts/apt-linux.txt)
+          sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
+          chmod +x .github/scripts/install-pip-toolchains.sh
+          bin="$(.github/scripts/install-pip-toolchains.sh requirements/requirements-dev.txt)"
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .deps/qt
+            .deps/venv
+            build/_deps
+          key: easy-ssh-tidy-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget-patches/**', '.clang-tidy') }}
+
+      - name: Configure
+        run: cmake --preset debug
+
+      - name: Build
+        run: cmake --build --preset debug --parallel
+
+      - name: Run clang-tidy
+        run: |
+          chmod +x .github/scripts/run-clang-tidy.sh
+          .github/scripts/run-clang-tidy.sh
 
   build:
     name: ${{ matrix.target }}
-    needs: [format]
+    needs: [format, reuse]
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -88,9 +145,9 @@ jobs:
         if: matrix.os_family == 'linux'
         run: |
           sudo apt-get update
-          # System libs / compiler — not available via pip (see ci/apt-linux.txt).
-          # cmake/ninja/patchelf come from requirements.txt via venv.
-          mapfile -t pkgs < <(grep -vE '^\s*(#|$)' ci/apt-linux.txt)
+          # System libs / compiler — not available via pip (see .github/scripts/apt-linux.txt).
+          # cmake/ninja/patchelf come from requirements/ via venv.
+          mapfile -t pkgs < <(grep -vE '^\s*(#|$)' .github/scripts/apt-linux.txt)
           sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
           chmod +x .github/scripts/install-pip-toolchains.sh
           bin="$(.github/scripts/install-pip-toolchains.sh)"
@@ -108,7 +165,7 @@ jobs:
         if: matrix.os_family == 'macos'
         run: |
           brew update
-          # cmake/ninja come from requirements.txt (venv), not brew.
+          # cmake/ninja come from requirements/ (venv), not brew.
           # Use a venv — Homebrew Python is PEP 668 externally-managed.
           brew install pkg-config
           chmod +x .github/scripts/install-pip-toolchains.sh
@@ -123,7 +180,7 @@ jobs:
             .deps/tools
             .deps/venv
             build-release/_deps
-          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements.txt', 'ci/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget-patches/**') }}
+          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget-patches/**') }}
 
       - name: Configure
         run: |

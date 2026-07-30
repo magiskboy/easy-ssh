@@ -1,0 +1,5 @@
+aqtinstall==3.3.0
+clang-format==22.1.8
+cmake==4.4.0
+ninja==1.13.0
+patchelf==0.17.2.4; sys_platform == "linux"

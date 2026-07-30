@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 include_guard(GLOBAL)
 
 set(CPACK_PACKAGE_NAME "easy-ssh")
@@ -58,7 +62,7 @@ else()
     set(CPACK_DEBIAN_PACKAGE_SECTION "net")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/magiskboy/easy-ssh")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
-    set(CPACK_RPM_PACKAGE_LICENSE "Unknown")
+    set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-only")
     set(CPACK_RPM_PACKAGE_AUTOREQ OFF)
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Internet")
     set(CPACK_APPIMAGE_DESKTOP_FILE "io.github.magiskboy.easy-ssh.desktop")

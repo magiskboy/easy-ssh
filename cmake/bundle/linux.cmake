@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 # Install-time Linux bundling. Expects:
 #   EASY_SSH_BUNDLE_LIB_FILES — absolute .so paths
 #   EASY_SSH_QT_PLUGINS_SRC   — Qt plugins root under .deps/qt (may be empty)

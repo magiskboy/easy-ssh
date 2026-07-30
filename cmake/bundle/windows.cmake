@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 # Install-time Windows bundling. Expects (set by generated driver):
 #   EASY_SSH_BUNDLE_LIB_FILES  — absolute paths of app shared libs
 #   EASY_SSH_RUNTIME_SEARCH_DIRS — dirs for narrow OpenSSL GRD
