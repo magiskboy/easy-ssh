@@ -1,9 +1,11 @@
 # Easy SSH
 
 [![CI](https://github.com/magiskboy/easy-ssh/actions/workflows/ci.yml/badge.svg)](https://github.com/magiskboy/easy-ssh/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/magiskboy/easy-ssh?include_prereleases)](https://github.com/magiskboy/easy-ssh/releases)
+[![Status](https://img.shields.io/badge/status-under%20development-yellow)](https://github.com/magiskboy/easy-ssh)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![REUSE status](https://api.reuse.software/badge/github.com/magiskboy/easy-ssh)](https://api.reuse.software/info/github.com/magiskboy/easy-ssh)
+
+> **Under development** — no stable release yet. APIs, packaging, and features may change without notice. Prefer building from source (see below) until the first tagged release.
 
 A lightweight, native SSH client that puts the full SSH protocol to work — shell, file transfer, and every form of forwarding — in one desktop app.
 
@@ -49,7 +51,9 @@ Easy SSH is designed around the SSH protocol itself: each capability maps to a f
 
 ## Install
 
-### On Linux / macOS
+> Installer and GitHub Release packages will be available after the first tagged release. Until then, build from source.
+
+### One-line installer (Linux / macOS) — after release
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
@@ -63,16 +67,16 @@ The script detects OS and CPU (amd64 / arm64), then installs:
 Optional environment variables:
 
 ```bash
-# Pin a release tag
+# Pin a release tag (once releases exist)
 EASY_SSH_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
 
 # Custom Linux prefix (default: ~/.local)
 EASY_SSH_PREFIX=/usr/local curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
 ```
 
-### Packages from GitHub Releases
+### Packages from GitHub Releases — after release
 
-Download the latest build for your platform from the [Releases](https://github.com/magiskboy/easy-ssh/releases) page:
+Download a build for your platform from the [Releases](https://github.com/magiskboy/easy-ssh/releases) page once available:
 
 
 | Platform | Artifacts                              |
