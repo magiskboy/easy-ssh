@@ -114,8 +114,11 @@ Two presets (both use local aqt Qt + FetchContent deps):
 
 | Preset | Purpose |
 |--------|---------|
-| `debug` | Local development (no runtime bundling) |
-| `release` | Fat packages / CI (bundle runtime for CPack) |
+| `debug` | Local development (`CMAKE_BUILD_TYPE=Debug`) |
+| `release` | Packages / CI (`CMAKE_BUILD_TYPE=Release`) |
+
+Both presets always install app-specific runtime (Qt, libssh, QTermWidget, QtKeychain);
+OS commons (`libc`, etc.) are not bundled.
 
 **Local development:**
 
@@ -132,7 +135,7 @@ cmake --build --preset debug
 First configure downloads Qt 6.10.3 into `.deps/qt` and builds FetchContent deps
 (libssh, QTermWidget, QtKeychain).
 
-**Release / fat package build:**
+**Release / package build:**
 
 ```bash
 cmake --preset release
@@ -232,7 +235,7 @@ cpack -C Release -G "DEB;RPM;TGZ;AppImage"   # Linux (needs appimagetool + patch
 # cpack -C Release -G NSIS                   # Windows (requires NSIS)
 ```
 
-CI produces fat packages (bundled Qt, libssh, QTermWidget, QtKeychain):
+CI produces self-contained packages (bundled Qt, libssh, QTermWidget, QtKeychain):
 
 - **Linux:** `.deb`, `.rpm`, `.AppImage`, `.tar.gz`
 - **macOS:** `.dmg`

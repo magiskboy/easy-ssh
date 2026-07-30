@@ -12,18 +12,16 @@
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "EASY_SSH_BUNDLE_RUNTIME": "OFF"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
       "name": "release",
-      "displayName": "Release (fat packages / CI)",
+      "displayName": "Release (packages / CI)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "EASY_SSH_BUNDLE_RUNTIME": "ON"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ],

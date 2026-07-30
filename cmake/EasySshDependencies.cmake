@@ -177,8 +177,18 @@ function(_easy_ssh_ensure_zlib)
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     # zlib v1.3.1 uses SKIP_INSTALL_*; ZLIB_INSTALL exists only on develop.
     set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+    # libssh is a shared library; static zlib must be PIC.
+    set(_easy_ssh_pic_prev "${CMAKE_POSITION_INDEPENDENT_CODE}")
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     FetchContent_MakeAvailable(zlib)
+    set(CMAKE_POSITION_INDEPENDENT_CODE "${_easy_ssh_pic_prev}")
     FetchContent_GetProperties(zlib SOURCE_DIR _zlib_src BINARY_DIR _zlib_bin)
+    if(TARGET zlibstatic)
+        set_property(TARGET zlibstatic PROPERTY POSITION_INDEPENDENT_CODE ON)
+    endif()
+    if(TARGET zlib)
+        set_property(TARGET zlib PROPERTY POSITION_INDEPENDENT_CODE ON)
+    endif()
 
     # zlib renames src/zconf.h → zconf.h.included and writes build/zconf.h.
     # Consumers that only pass ZLIB_INCLUDE_DIR (e.g. libssh) need zconf.h in source.
