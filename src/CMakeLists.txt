@@ -1,7 +1,10 @@
 # Layering:
-#   core/  — no gui/ includes, no Qt Widgets / QTermWidget
-#   gui/   — may depend on core/
-#   app/   — main.cpp (+ platform resources on the executable only)
+#   core/ssh/    — SSH common (session, auth, known hosts, SshWorker facade)
+#   core/shell/  — interactive shell channel
+#   core/fs/     — remote filesystem (FsRemote / FsEngine)
+#   core/tunnel/ — port forwards + tunnel store
+#   gui/         — may depend on core/
+#   app/         — main.cpp (+ platform resources on the executable only)
 
 set(EASY_SSH_CORE_SOURCES
     core/util/Logging.cpp
@@ -17,20 +20,35 @@ set(EASY_SSH_CORE_SOURCES
     core/connection/SshConfigParser.h
     core/ssh/SshWorker.cpp
     core/ssh/SshWorker.h
-    core/ssh/SftpClient.cpp
-    core/ssh/SftpClient.h
-    core/ssh/SshTunnelManager.cpp
-    core/ssh/SshTunnelManager.h
     core/ssh/SshKnownHosts.cpp
     core/ssh/SshKnownHosts.h
     core/ssh/SshAuth.cpp
     core/ssh/SshAuth.h
     core/ssh/SshSession.cpp
     core/ssh/SshSession.h
-    core/ssh/SftpTypes.h
+    core/shell/SshShell.cpp
+    core/shell/SshShell.h
+    core/fs/FsEngine.h
+    core/fs/FsRemote.cpp
+    core/fs/FsRemote.h
+    core/fs/SftpEngine.cpp
+    core/fs/SftpEngine.h
+    core/fs/ScpEngine.cpp
+    core/fs/ScpEngine.h
+    core/fs/SftpTypes.h
     core/tunnel/Tunnel.h
     core/tunnel/TunnelStore.cpp
     core/tunnel/TunnelStore.h
+    core/tunnel/ITunnelSession.h
+    core/tunnel/TunnelBridge.cpp
+    core/tunnel/TunnelBridge.h
+    core/tunnel/LocalTunnelSession.cpp
+    core/tunnel/LocalTunnelSession.h
+    core/tunnel/RemoteTunnelSession.cpp
+    core/tunnel/RemoteTunnelSession.h
+    core/tunnel/DynamicTunnelSession.cpp
+    core/tunnel/DynamicTunnelSession.h
+    core/tunnel/TunnelSessionFactory.cpp
 )
 
 set(EASY_SSH_GUI_SOURCES

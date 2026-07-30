@@ -1,13 +1,15 @@
 #pragma once
 
 #include "core/connection/Connection.h"
-#include "SftpClient.h"
-#include "SshKnownHosts.h"
-#include "SshSession.h"
-#include "SshTunnelManager.h"
-#include "SftpTypes.h"
+#include "core/fs/FsRemote.h"
+#include "core/fs/SftpTypes.h"
+#include "core/shell/SshShell.h"
+#include "core/ssh/SshKnownHosts.h"
+#include "core/ssh/SshSession.h"
+#include "core/tunnel/ITunnelSession.h"
 #include "core/tunnel/Tunnel.h"
 
+#include <QHash>
 #include <QMutex>
 #include <QObject>
 #include <QString>
@@ -89,10 +91,13 @@ private:
                              const QString &contextLabel);
     bool verifyKnownHostForSession(ssh_session session, const QString &contextLabel);
     void cleanup();
+    void pollTunnels();
+    void wireTunnelSession(ITunnelSession *session);
 
     SshSession m_session;
-    SftpClient m_sftp;
-    SshTunnelManager *m_tunnels = nullptr;
+    SshShell m_shell;
+    FsRemote m_fs;
+    QHash<QUuid, ITunnelSession *> m_tunnelSessions;
     class QTimer *m_ioTimer = nullptr;
     bool m_running = false;
 

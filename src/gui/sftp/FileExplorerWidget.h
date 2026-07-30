@@ -1,7 +1,7 @@
 #pragma once
 
 #include "gui/ErrorNotifier.h"
-#include "core/ssh/SftpTypes.h"
+#include "core/fs/SftpTypes.h"
 
 #include <QList>
 #include <QModelIndex>

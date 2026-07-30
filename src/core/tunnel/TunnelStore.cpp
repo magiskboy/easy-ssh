@@ -10,16 +10,21 @@ QString tunnelTypeToString(TunnelType type)
     switch (type) {
     case TunnelType::Remote:
         return QStringLiteral("remote");
+    case TunnelType::Dynamic:
+        return QStringLiteral("dynamic");
     case TunnelType::Local:
-    default:
         return QStringLiteral("local");
     }
+    return QStringLiteral("local");
 }
 
 TunnelType tunnelTypeFromString(const QString &value)
 {
     if (value == QLatin1String("remote")) {
         return TunnelType::Remote;
+    }
+    if (value == QLatin1String("dynamic")) {
+        return TunnelType::Dynamic;
     }
     return TunnelType::Local;
 }

@@ -4,7 +4,7 @@
 #include "gui/ErrorNotifier.h"
 #include "gui/models/OpenFileTracker.h"
 #include "gui/models/RemoteFileModel.h"
-#include "core/ssh/SftpTypes.h"
+#include "core/fs/SftpTypes.h"
 #include "gui/session/TerminalSessionWidget.h"
 
 #include <QAbstractItemView>

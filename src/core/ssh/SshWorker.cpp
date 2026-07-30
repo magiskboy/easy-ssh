@@ -1,20 +1,16 @@
 #include "SshWorker.h"
 
+#include "core/tunnel/RemoteTunnelSession.h"
 #include "core/util/Logging.h"
 
-#include <QDateTime>
 #include <QFileInfo>
 #include <QTimer>
 
 SshWorker::SshWorker(QObject *parent) : QObject(parent)
 {
-    m_sftp.setProgressCallback([this](qint64 done, qint64 total, const QString &name) {
+    m_fs.setProgressCallback([this](qint64 done, qint64 total, const QString &name) {
         emit sftpProgress(done, total, name);
     });
-
-    m_tunnels = new SshTunnelManager(this);
-    connect(m_tunnels, &SshTunnelManager::tunnelStatusChanged, this, &SshWorker::tunnelStatusChanged);
-    connect(m_tunnels, &SshTunnelManager::tunnelError, this, &SshWorker::tunnelError);
 
     m_session.setHostKeyVerifier(
         [this](ssh_session session, const QString &contextLabel) {
@@ -40,18 +36,25 @@ void SshWorker::connectToHost(const Connection &connection,
     cleanup();
 
     QString error;
-    if (!m_session.establish(connection, credentials, cols, rows, &error)) {
+    if (!m_session.establish(connection, credentials, &error)) {
         if (!error.isEmpty()) {
             emit errorOccurred(error);
         }
         return;
     }
 
+    if (!m_shell.open(m_session.handle(), cols, rows, &error)) {
+        if (!error.isEmpty()) {
+            emit errorOccurred(error);
+        }
+        m_session.cleanup();
+        return;
+    }
+
     QString sftpFailure;
-    const bool sftpReady = m_sftp.open(m_session.handle(), &sftpFailure);
+    const bool sftpReady = m_fs.open(m_session.handle(), &sftpFailure);
 
     m_running = true;
-    m_tunnels->setSession(m_session.handle());
     qCWarning(lcSsh) << "Connected to" << connection.host << "sftp:" << (sftpReady ? "yes" : "no");
     emit connected();
 
@@ -75,7 +78,7 @@ void SshWorker::writeToChannel(const QByteArray &data)
     }
 
     QString error;
-    if (!m_session.writeToChannel(data, &error)) {
+    if (!m_shell.write(data, &error)) {
         if (!error.isEmpty()) {
             emit errorOccurred(error);
         }
@@ -88,7 +91,7 @@ void SshWorker::changePtySize(int cols, int rows)
     if (!m_running) {
         return;
     }
-    m_session.changePtySize(cols, rows);
+    m_shell.changePtySize(cols, rows);
 }
 
 void SshWorker::disconnectSession()
@@ -116,14 +119,14 @@ void SshWorker::respondHostKeyTrust(bool accept)
 
 void SshWorker::listDirectory(const QString &path)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QVector<RemoteEntry> entries;
     QString error;
-    if (!m_sftp.listDirectoryEntries(path, &entries, &error)) {
+    if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
         emit sftpError(error);
         return;
     }
@@ -133,13 +136,13 @@ void SshWorker::listDirectory(const QString &path)
 
 void SshWorker::createDirectory(const QString &path)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QString error;
-    if (!m_sftp.createDirectory(path, &error)) {
+    if (!m_fs.createDirectory(path, &error)) {
         emit sftpError(error);
         return;
     }
@@ -149,13 +152,13 @@ void SshWorker::createDirectory(const QString &path)
 
 void SshWorker::renamePath(const QString &from, const QString &to)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QString error;
-    if (!m_sftp.renamePath(from, to, &error)) {
+    if (!m_fs.renamePath(from, to, &error)) {
         emit sftpError(error);
         return;
     }
@@ -165,13 +168,13 @@ void SshWorker::renamePath(const QString &from, const QString &to)
 
 void SshWorker::removePath(const QString &path, bool recursive)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QString error;
-    if (!m_sftp.removePath(path, recursive, &error)) {
+    if (!m_fs.removePath(path, recursive, &error)) {
         emit sftpError(error);
         return;
     }
@@ -181,14 +184,14 @@ void SshWorker::removePath(const QString &path, bool recursive)
 
 void SshWorker::uploadFiles(const QStringList &localPaths, const QString &remoteDir)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QString error;
-    if (!m_sftp.uploadFiles(localPaths, remoteDir, &error)) {
-        if (m_sftp.wasCanceled()) {
+    if (!m_fs.uploadFiles(localPaths, remoteDir, &error)) {
+        if (m_fs.wasCanceled()) {
             emit sftpCanceled(error);
         } else {
             emit sftpError(error);
@@ -201,14 +204,14 @@ void SshWorker::uploadFiles(const QStringList &localPaths, const QString &remote
 
 void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QString error;
-    if (!m_sftp.uploadFileTo(localPath, remotePath, &error)) {
-        if (m_sftp.wasCanceled()) {
+    if (!m_fs.uploadFileTo(localPath, remotePath, &error)) {
+        if (m_fs.wasCanceled()) {
             emit sftpCanceled(error);
         } else {
             emit sftpError(error);
@@ -221,14 +224,14 @@ void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath
 
 void SshWorker::downloadPaths(const QStringList &remotePaths, const QString &localDir)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QString error;
-    if (!m_sftp.downloadPaths(remotePaths, localDir, &error)) {
-        if (m_sftp.wasCanceled()) {
+    if (!m_fs.downloadPaths(remotePaths, localDir, &error)) {
+        if (m_fs.wasCanceled()) {
             emit sftpCanceled(error);
         } else {
             emit sftpError(error);
@@ -241,12 +244,12 @@ void SshWorker::downloadPaths(const QStringList &remotePaths, const QString &loc
 
 void SshWorker::cancelTransfer()
 {
-    m_sftp.requestCancel();
+    m_fs.requestCancel();
 }
 
 void SshWorker::canonicalizePath(const QString &path)
 {
-    if (!m_running || !m_sftp.isOpen()) {
+    if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
@@ -254,7 +257,7 @@ void SshWorker::canonicalizePath(const QString &path)
     const QString requested = path.isEmpty() ? QStringLiteral(".") : path;
     QString canonical;
     QString error;
-    if (!m_sftp.canonicalizePath(requested, &canonical, &error)) {
+    if (!m_fs.canonicalizePath(requested, &canonical, &error)) {
         emit sftpError(error);
         return;
     }
@@ -268,13 +271,13 @@ void SshWorker::pollChannel()
         return;
     }
 
-    m_tunnels->poll();
+    pollTunnels();
 
     QByteArray data;
     QString error;
-    const SshSession::ShellPollStatus status = m_session.pollShell(&data, &error);
+    const SshShell::PollStatus status = m_shell.poll(&data, &error);
     switch (status) {
-    case SshSession::ShellPollStatus::Data:
+    case SshShell::PollStatus::Data:
         if (!data.isEmpty()) {
             emit dataReceived(data);
         }
@@ -283,20 +286,43 @@ void SshWorker::pollChannel()
             disconnectSession();
         }
         break;
-    case SshSession::ShellPollStatus::Idle:
+    case SshShell::PollStatus::Idle:
         if (!m_session.pollKeepAlive(false, &error)) {
             emit errorOccurred(error);
             disconnectSession();
         }
         break;
-    case SshSession::ShellPollStatus::Error:
+    case SshShell::PollStatus::Error:
         emit errorOccurred(error);
         disconnectSession();
         break;
-    case SshSession::ShellPollStatus::Disconnected:
+    case SshShell::PollStatus::Disconnected:
         disconnectSession();
         break;
     }
+}
+
+void SshWorker::pollTunnels()
+{
+    QList<RemoteTunnelSession *> remotes;
+    for (ITunnelSession *session : m_tunnelSessions) {
+        if (auto *remote = qobject_cast<RemoteTunnelSession *>(session)) {
+            remotes.append(remote);
+        }
+    }
+    acceptRemoteForwards(m_session.handle(), remotes);
+
+    for (ITunnelSession *session : m_tunnelSessions) {
+        if (session) {
+            session->poll();
+        }
+    }
+}
+
+void SshWorker::wireTunnelSession(ITunnelSession *session)
+{
+    connect(session, &ITunnelSession::statusChanged, this, &SshWorker::tunnelStatusChanged);
+    connect(session, &ITunnelSession::errorOccurred, this, &SshWorker::tunnelError);
 }
 
 bool SshWorker::waitForHostKeyTrust(HostKeyPrompt reason,
@@ -351,10 +377,9 @@ void SshWorker::cleanup()
         m_ioTimer->stop();
     }
 
-    m_tunnels->stopAll();
-    m_tunnels->setSession(nullptr);
-
-    m_sftp.close();
+    stopAllTunnels();
+    m_fs.close();
+    m_shell.cleanup();
     m_session.cleanup();
 }
 
@@ -366,15 +391,58 @@ void SshWorker::startTunnel(const TunnelDefinition &def)
             def.id, QStringLiteral("Error"), tr("SSH session is not connected"));
         return;
     }
-    m_tunnels->startTunnel(def);
+
+    if (def.id.isNull() ||
+        (def.type != TunnelType::Dynamic && (def.localPort == 0 || def.remotePort == 0))) {
+        emit tunnelError(def.id, tr("Invalid tunnel definition"));
+        emit tunnelStatusChanged(def.id, QStringLiteral("Error"), tr("Invalid tunnel definition"));
+        return;
+    }
+
+    if (m_tunnelSessions.contains(def.id)) {
+        stopTunnel(def.id);
+    }
+
+    emit tunnelStatusChanged(def.id, QStringLiteral("Starting"), QString());
+
+    ITunnelSession *session = createTunnelSession(def, m_session.handle(), this);
+    if (session == nullptr) {
+        const QString message = tr("Unsupported tunnel type");
+        emit tunnelError(def.id, message);
+        emit tunnelStatusChanged(def.id, QStringLiteral("Error"), message);
+        return;
+    }
+
+    wireTunnelSession(session);
+    if (!session->start()) {
+        session->deleteLater();
+        return;
+    }
+
+    m_tunnelSessions.insert(def.id, session);
+    emit tunnelStatusChanged(def.id, QStringLiteral("Listening"), QString());
 }
 
 void SshWorker::stopTunnel(const QUuid &tunnelId)
 {
-    m_tunnels->stopTunnel(tunnelId);
+    ITunnelSession *session = m_tunnelSessions.take(tunnelId);
+    if (session == nullptr) {
+        emit tunnelStatusChanged(tunnelId, QStringLiteral("Off"), QString());
+        return;
+    }
+
+    session->stop(true);
+    session->deleteLater();
 }
 
 void SshWorker::stopAllTunnels()
 {
-    m_tunnels->stopAll();
+    const QList<QUuid> ids = m_tunnelSessions.keys();
+    for (const QUuid &id : ids) {
+        ITunnelSession *session = m_tunnelSessions.take(id);
+        if (session) {
+            session->stop(true);
+            session->deleteLater();
+        }
+    }
 }

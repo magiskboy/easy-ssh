@@ -8,6 +8,8 @@ enum class TunnelType
 {
     Local = 0,
     Remote = 1,
+    /// Not implement yet (SOCKS / dynamic forward).
+    Dynamic = 2,
 };
 
 struct TunnelDefinition

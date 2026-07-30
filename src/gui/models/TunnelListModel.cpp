@@ -32,8 +32,15 @@ QVariant TunnelListModel::data(const QModelIndex &index, int role) const
         case NameColumn:
             return tunnel.name;
         case TypeColumn:
-            return tunnel.type == TunnelType::Remote ? QStringLiteral("Remote")
-                                                     : QStringLiteral("Local");
+            switch (tunnel.type) {
+            case TunnelType::Remote:
+                return QStringLiteral("Remote");
+            case TunnelType::Dynamic:
+                return QStringLiteral("Dynamic");
+            case TunnelType::Local:
+                return QStringLiteral("Local");
+            }
+            return QStringLiteral("Local");
         case LocalColumn:
             return tunnel.localAddress();
         case RemoteColumn:

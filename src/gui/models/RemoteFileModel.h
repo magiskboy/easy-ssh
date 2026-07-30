@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/ssh/SftpTypes.h"
+#include "core/fs/SftpTypes.h"
 
 #include <QAbstractItemModel>
 #include <QString>

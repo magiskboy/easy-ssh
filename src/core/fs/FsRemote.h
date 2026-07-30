@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FsEngine.h"
 #include "SftpTypes.h"
 
 #include <QString>
@@ -8,33 +9,36 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 
 #include <libssh/libssh.h>
-#include <libssh/sftp.h>
 
 /**
- * Owns an sftp_session and implements remote filesystem / transfer operations.
- * Not a QObject — progress and errors are reported via callbacks / out-params;
- * SshWorker remains the sole signal emitter for the GUI.
+ * High-level remote FS entity: recursive transfer, progress, cancel.
+ * Depends on FsEngine (SftpEngine today; ScpEngine later).
  */
-class SftpClient
+class FsRemote
 {
 public:
     using ProgressCallback =
         std::function<void(qint64 bytesDone, qint64 bytesTotal, const QString &currentName)>;
 
-    SftpClient() = default;
-    ~SftpClient();
+    FsRemote() = default;
+    ~FsRemote();
 
-    SftpClient(const SftpClient &) = delete;
-    SftpClient &operator=(const SftpClient &) = delete;
+    FsRemote(const FsRemote &) = delete;
+    FsRemote &operator=(const FsRemote &) = delete;
+
+    void setEngine(std::unique_ptr<FsEngine> engine);
+    FsEngine *engine() const { return m_engine.get(); }
 
     bool open(ssh_session session, QString *failureMessage = nullptr);
     void close();
-    bool isOpen() const { return m_sftp != nullptr; }
+    bool isOpen() const;
 
     void requestCancel();
     void setProgressCallback(ProgressCallback callback);
+    bool wasCanceled() const;
 
     bool listDirectoryEntries(const QString &path,
                               QVector<RemoteEntry> *outEntries,
@@ -44,20 +48,11 @@ public:
     bool removePath(const QString &path, bool recursive, QString *error);
     bool canonicalizePath(const QString &path, QString *canonicalOut, QString *error);
 
-    /// Upload local paths into remoteDir. On cancel/error fills *error; returns false.
     bool uploadFiles(const QStringList &localPaths, const QString &remoteDir, QString *error);
     bool uploadFileTo(const QString &localPath, const QString &remotePath, QString *error);
     bool downloadPaths(const QStringList &remotePaths, const QString &localDir, QString *error);
 
-    bool wasCanceled() const;
-
 private:
-    bool openSftpSession(ssh_session session, QString *failureMessage);
-    QString sessionErrorOf(ssh_session session) const;
-    QString sftpErrorMessage() const;
-    static QString localIoErrorMessage(const QString &qtErrorString);
-    static QString formatPermissions(uint32_t permissions, uint8_t type);
-
     void beginTransfer(qint64 bytesTotal);
     void endTransfer();
     bool transferCanceled(QString *error) const;
@@ -74,13 +69,10 @@ private:
                                const QString &localPath,
                                bool isDir,
                                QString *error);
-    bool uploadFile(const QString &localPath, const QString &remotePath, QString *error);
-    bool downloadFile(const QString &remotePath, const QString &localPath, QString *error);
-    bool isRemoteDirectory(const QString &path, bool *isDir, QString *error);
 
-    sftp_session m_sftp = nullptr;
-    ssh_session m_session = nullptr;
+    static QString joinRemotePath(const QString &dir, const QString &name);
 
+    std::unique_ptr<FsEngine> m_engine;
     ProgressCallback m_progressCallback;
     std::atomic_bool m_transferCancel{false};
     qint64 m_progressBytesDone = 0;

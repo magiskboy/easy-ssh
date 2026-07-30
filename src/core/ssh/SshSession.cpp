@@ -75,15 +75,6 @@ void SshSession::resetKeepAliveClock()
 
 void SshSession::cleanup()
 {
-    if (m_channel) {
-        if (ssh_channel_is_open(m_channel)) {
-            ssh_channel_send_eof(m_channel);
-            ssh_channel_close(m_channel);
-        }
-        ssh_channel_free(m_channel);
-        m_channel = nullptr;
-    }
-
     if (m_session) {
         if (ssh_is_connected(m_session)) {
             ssh_disconnect(m_session);
@@ -98,8 +89,6 @@ void SshSession::cleanup()
 
 bool SshSession::establish(const Connection &connection,
                            const SessionCredentials &credentials,
-                           int cols,
-                           int rows,
                            QString *errorOut)
 {
     cleanup();
@@ -158,11 +147,6 @@ bool SshSession::establish(const Connection &connection,
         return false;
     }
     mutableSecret.fill(QChar(u'\0'));
-
-    if (!openShell(cols, rows, errorOut)) {
-        cleanup();
-        return false;
-    }
 
     resetKeepAliveClock();
     return true;
@@ -454,41 +438,6 @@ int SshSession::handleJumpAuthenticate(ssh_session session, int hopIndex)
 }
 
 
-bool SshSession::openShell(int cols, int rows, QString *errorOut)
-{
-    m_channel = ssh_channel_new(m_session);
-    if (m_channel == nullptr) {
-        if (errorOut) {
-            *errorOut = trSession("Failed to create channel: %1").arg(sessionError());
-        }
-        return false;
-    }
-
-    if (ssh_channel_open_session(m_channel) != SSH_OK) {
-        if (errorOut) {
-            *errorOut = trSession("Failed to open channel: %1").arg(sessionError());
-        }
-        return false;
-    }
-
-    if (ssh_channel_request_pty_size(m_channel, "xterm-256color", cols, rows) != SSH_OK) {
-        if (errorOut) {
-            *errorOut = trSession("Failed to request PTY: %1").arg(sessionError());
-        }
-        return false;
-    }
-
-    if (ssh_channel_request_shell(m_channel) != SSH_OK) {
-        if (errorOut) {
-            *errorOut = trSession("Failed to request shell: %1").arg(sessionError());
-        }
-        return false;
-    }
-
-    return true;
-}
-
-
 bool SshSession::pollKeepAlive(bool hadChannelActivity, QString *errorOut)
 {
     if (m_keepAliveIntervalSec <= 0 || m_session == nullptr) {
@@ -522,112 +471,4 @@ bool SshSession::pollKeepAlive(bool hadChannelActivity, QString *errorOut)
         m_keepAliveMissed = 0;
     }
     return true;
-}
-
-
-bool SshSession::writeToChannel(const QByteArray &data, QString *errorOut)
-{
-    if (m_channel == nullptr || data.isEmpty()) {
-        return true;
-    }
-
-    const char *ptr = data.constData();
-    int remaining = data.size();
-    while (remaining > 0) {
-        const int written = ssh_channel_write(m_channel, ptr, static_cast<uint32_t>(remaining));
-        if (written == SSH_ERROR || written < 0) {
-            if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
-                (m_session && !ssh_is_connected(m_session))) {
-                return false;
-            }
-            if (errorOut) {
-                *errorOut = trSession("Failed to write to channel: %1").arg(sessionError());
-            }
-            return false;
-        }
-        if (written == 0) {
-            break;
-        }
-        ptr += written;
-        remaining -= written;
-    }
-    return true;
-}
-
-bool SshSession::changePtySize(int cols, int rows, QString *errorOut)
-{
-    Q_UNUSED(errorOut);
-    if (m_channel == nullptr) {
-        return true;
-    }
-    if (cols < 2 || rows < 2 || cols > 1000 || rows > 500) {
-        return true;
-    }
-    if (ssh_channel_change_pty_size(m_channel, cols, rows) != SSH_OK) {
-        return true;
-    }
-    return true;
-}
-
-SshSession::ShellPollStatus SshSession::pollShell(QByteArray *outData, QString *errorOut)
-{
-    if (m_session == nullptr) {
-        return ShellPollStatus::Disconnected;
-    }
-    if (m_channel == nullptr) {
-        return ShellPollStatus::Idle;
-    }
-    if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel)) {
-        return ShellPollStatus::Disconnected;
-    }
-
-    constexpr int kMaxBytesPerTick = 64 * 1024;
-    int totalRead = 0;
-    char buffer[4096];
-    bool hadData = false;
-
-    auto readStream = [&](int isStderr) -> ShellPollStatus {
-        while (totalRead < kMaxBytesPerTick) {
-            const int nbytes =
-                ssh_channel_read_nonblocking(m_channel, buffer, sizeof(buffer), isStderr);
-            if (nbytes == SSH_EOF) {
-                return ShellPollStatus::Disconnected;
-            }
-            if (nbytes < 0) {
-                if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
-                    !ssh_is_connected(m_session)) {
-                    return ShellPollStatus::Disconnected;
-                }
-                if (errorOut) {
-                    *errorOut = trSession("Read error: %1").arg(sessionError());
-                }
-                return ShellPollStatus::Error;
-            }
-            if (nbytes == 0) {
-                break;
-            }
-            totalRead += nbytes;
-            hadData = true;
-            if (outData) {
-                outData->append(buffer, nbytes);
-            }
-        }
-        return ShellPollStatus::Idle;
-    };
-
-    ShellPollStatus st = readStream(0);
-    if (st != ShellPollStatus::Idle) {
-        return st;
-    }
-    st = readStream(1);
-    if (st != ShellPollStatus::Idle) {
-        return st;
-    }
-
-    if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
-        !ssh_is_connected(m_session)) {
-        return ShellPollStatus::Disconnected;
-    }
-
-    return hadData ? ShellPollStatus::Data : ShellPollStatus::Idle;
 }
