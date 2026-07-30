@@ -20,9 +20,14 @@ function(_easy_ssh_ensure_zlib)
         GIT_REPOSITORY https://github.com/madler/zlib.git
         GIT_TAG        v1.3.1
         GIT_SHALLOW    TRUE
+        # Keep zlib out of default install/CPack. zlib v1.3.1 bakes
+        # CMAKE_INSTALL_PREFIX into absolute INSTALL_*_DIR destinations, which
+        # NSIS rejects ("ABSOLUTE path INSTALL DESTINATION forbidden").
+        EXCLUDE_FROM_ALL
     )
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(ZLIB_INSTALL OFF CACHE BOOL "" FORCE)
+    # zlib v1.3.1 uses SKIP_INSTALL_*; ZLIB_INSTALL exists only on develop.
+    set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(zlib)
     FetchContent_GetProperties(zlib SOURCE_DIR _zlib_src BINARY_DIR _zlib_bin)
 
