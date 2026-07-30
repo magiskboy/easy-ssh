@@ -9,7 +9,8 @@
 #   python3 -m pip install -r requirements-dev.txt
 # Ensure the install bin dir is on PATH (venv/bin, or ~/.local/bin with --user).
 
-# Qt CLI installer — downloads Qt when EASY_SSH_FETCH_QT=ON (release preset / CI).
+# Qt CLI installer — downloads pinned Qt (see cmake/EasySshVersions.cmake) into
+# .deps/qt for both debug and release presets (EASY_SSH_FETCH_QT=ON).
 # Also can install MinGW / vcredist via `aqt install-tool` (not the MSVC compiler).
 aqtinstall==3.3.0
 
@@ -17,8 +18,7 @@ aqtinstall==3.3.0
 clang-format==22.1.8
 
 # Build system — single source for CI (prefer over apt/brew cmake/ninja).
-# Project requires CMake >= 3.28; pin stays on 3.x.
-cmake==3.31.10
+cmake==4.4.0
 ninja==1.13.0
 
 # ELF RPATH helper (Linux only — no Windows/macOS wheels on PyPI).

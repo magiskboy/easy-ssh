@@ -1,8 +1,8 @@
 {
   "version": 6,
   "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 28,
+    "major": 4,
+    "minor": 2,
     "patch": 0
   },
   "configurePresets": [
@@ -13,8 +13,8 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "EASY_SSH_USE_SYSTEM_PACKAGES": "ON",
-        "EASY_SSH_FETCH_QT": "OFF",
+        "EASY_SSH_USE_SYSTEM_PACKAGES": "OFF",
+        "EASY_SSH_FETCH_QT": "ON",
         "EASY_SSH_BUNDLE_RUNTIME": "OFF"
       }
     },

@@ -101,6 +101,43 @@ qt_generate_deploy_app_script(
 )
 install(SCRIPT ${easy_ssh_deploy_script})
 
+# Linux fat packages: ensure QPA plugins land under prefix/plugins (same layout
+# as qt_generate_deploy_app_script / CPack AppImage). Plugin RPATH is typically
+# $ORIGIN/../../lib → prefix/lib. Putting them under lib/qt6/plugins breaks that
+# and the loader falls back to system libQt6XcbQpa (Qt_6_*_PRIVATE_API mismatch);
+# Qt then prints a misleading "need libxcb-cursor0" message.
+# GRD skips plugins when Qt lives in system lib dirs (Fedora /usr/lib64); we
+# always copy as a safety net so AppImage/DEB have libqxcb.
+set(_easy_ssh_qt_plugins_src "")
+set(_easy_ssh_patchelf "")
+if(UNIX AND NOT APPLE AND EASY_SSH_BUNDLE_RUNTIME)
+    foreach(_easy_ssh_plug_cand IN ITEMS
+        "${Qt6_DIR}/../../../plugins"
+        "${Qt6_DIR}/../../../qt6/plugins"
+    )
+        get_filename_component(_easy_ssh_plug_abs "${_easy_ssh_plug_cand}" ABSOLUTE)
+        if(EXISTS "${_easy_ssh_plug_abs}/platforms")
+            set(_easy_ssh_qt_plugins_src "${_easy_ssh_plug_abs}")
+            break()
+        endif()
+    endforeach()
+    if(NOT _easy_ssh_qt_plugins_src AND EXISTS "/usr/lib64/qt6/plugins/platforms")
+        set(_easy_ssh_qt_plugins_src "/usr/lib64/qt6/plugins")
+    endif()
+    if(_easy_ssh_qt_plugins_src)
+        message(STATUS "EasySshInstall: Qt plugins from ${_easy_ssh_qt_plugins_src}")
+    else()
+        message(WARNING "EasySshInstall: Qt plugins directory not found (AppImage may fail to start)")
+    endif()
+    find_program(EASY_SSH_PATCHELF NAMES patchelf)
+    if(EASY_SSH_PATCHELF)
+        set(_easy_ssh_patchelf "${EASY_SSH_PATCHELF}")
+        message(STATUS "EasySshInstall: patchelf at ${EASY_SSH_PATCHELF}")
+    else()
+        message(WARNING "EasySshInstall: patchelf not found; CPack AppImage may break bundled libs")
+    endif()
+endif()
+
 if(EASY_SSH_BUNDLE_RUNTIME)
     # Collect extra search paths for FetchContent build-tree libs / prefix installs.
     # Always include CMAKE_BINARY_DIR/{bin,lib,lib64}: EXISTS at configure time is
@@ -334,25 +371,92 @@ ${_easy_ssh_runtime_dirs_code}    POST_EXCLUDE_REGEXES
       \"libresolv\\\\.so\"
       \"libstdc\\\\+\\\\+\"
       \"libgcc_s\\\\.so\"
+      \"^/usr/\"
+      \"^/lib64/\"
+      \"^/lib/\"
   )
   foreach(_dep IN LISTS _resolved_deps)
     get_filename_component(_base \"\${_dep}\" NAME)
-    if(NOT EXISTS \"\${_libdir}/\${_base}\")
-      file(INSTALL \"\${_dep}\" DESTINATION \"\${_libdir}\")
-      execute_process(COMMAND \"\${CMAKE_COMMAND}\" -E create_symlink
-        \"\${_base}\" \"\${_libdir}/\${_base}\"
-        ERROR_QUIET)
+    # Prefer the real file (follow soname symlinks); then add the soname link.
+    file(REAL_PATH \"\${_dep}\" _real)
+    get_filename_component(_real_base \"\${_real}\" NAME)
+    if(NOT EXISTS \"\${_libdir}/\${_real_base}\")
+      file(INSTALL \"\${_real}\" DESTINATION \"\${_libdir}\")
+    endif()
+    if(NOT _base STREQUAL _real_base AND NOT EXISTS \"\${_libdir}/\${_base}\")
+      file(CREATE_LINK \"\${_real_base}\" \"\${_libdir}/\${_base}\" SYMBOLIC)
     endif()
   endforeach()
+  # Bundle QPA / image / TLS plugins under prefix/plugins (matches GRD + CPack
+  # AppImage RPATH $ORIGIN/../../lib → prefix/lib). See comment above.
+  set(_plugins_src \"${_easy_ssh_qt_plugins_src}\")
+  set(_plugins_dst \"\${CMAKE_INSTALL_PREFIX}/plugins\")
+  set(_patchelf \"${_easy_ssh_patchelf}\")
+  if(_plugins_src AND EXISTS \"\${_plugins_src}/platforms\")
+    foreach(_ptype IN ITEMS
+        platforms xcbglintegrations imageformats iconengines
+        platforminputcontexts styles tls platformthemes generic
+    )
+      if(EXISTS \"\${_plugins_src}/\${_ptype}\")
+        file(MAKE_DIRECTORY \"\${_plugins_dst}/\${_ptype}\")
+        file(GLOB _ptype_sos \"\${_plugins_src}/\${_ptype}/*.so\")
+        foreach(_pso IN LISTS _ptype_sos)
+          get_filename_component(_pbase \"\${_pso}\" NAME)
+          # Skip designer-/kde-heavy extras; keep libq* Qt plugins.
+          if(_pbase MATCHES \"^libq\" OR _ptype STREQUAL \"tls\" OR _ptype STREQUAL \"styles\")
+            file(INSTALL \"\${_pso}\" DESTINATION \"\${_plugins_dst}/\${_ptype}\")
+            if(_patchelf)
+              execute_process(
+                COMMAND \"\${_patchelf}\" --set-rpath \"\$ORIGIN/../../lib\"
+                        \"\${_plugins_dst}/\${_ptype}/\${_pbase}\"
+                ERROR_QUIET)
+            endif()
+          endif()
+        endforeach()
+      endif()
+    endforeach()
+    file(GLOB_RECURSE _plugin_sos \"\${_plugins_dst}/*.so\")
+    if(_plugin_sos)
+      file(GET_RUNTIME_DEPENDENCIES
+        MODULES \${_plugin_sos}
+        RESOLVED_DEPENDENCIES_VAR _plugin_deps
+        UNRESOLVED_DEPENDENCIES_VAR _plugin_unresolved
+        DIRECTORIES
+${_easy_ssh_runtime_dirs_code}        POST_EXCLUDE_REGEXES
+          \"ld-linux\"
+          \"libc\\\\.so\"
+          \"libm\\\\.so\"
+          \"libdl\\\\.so\"
+          \"libpthread\\\\.so\"
+          \"librt\\\\.so\"
+          \"libresolv\\\\.so\"
+          \"libstdc\\\\+\\\\+\"
+          \"libgcc_s\\\\.so\"
+          \"^/usr/\"
+          \"^/lib64/\"
+          \"^/lib/\"
+      )
+      foreach(_dep IN LISTS _plugin_deps)
+        get_filename_component(_base \"\${_dep}\" NAME)
+        file(REAL_PATH \"\${_dep}\" _real)
+        get_filename_component(_real_base \"\${_real}\" NAME)
+        if(NOT EXISTS \"\${_libdir}/\${_real_base}\")
+          file(INSTALL \"\${_real}\" DESTINATION \"\${_libdir}\")
+        endif()
+        if(NOT _base STREQUAL _real_base AND NOT EXISTS \"\${_libdir}/\${_base}\")
+          file(CREATE_LINK \"\${_real_base}\" \"\${_libdir}/\${_base}\" SYMBOLIC)
+        endif()
+      endforeach()
+    endif()
+  endif()
   set(_conf \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/qt.conf\")
-  if(NOT EXISTS \"\${_conf}\")
-    file(WRITE \"\${_conf}\"
+  # Plugins = plugins matches GRD/CPack layout and plugin RPATH $ORIGIN/../../lib.
+  file(WRITE \"\${_conf}\"
 \"[Paths]
 Prefix = ..
 Libraries = ${CMAKE_INSTALL_LIBDIR}
-Plugins = ${CMAKE_INSTALL_LIBDIR}/qt6/plugins
+Plugins = plugins
 \")
-  endif()
   if(_unresolved_deps)
     message(WARNING \"Unresolved Linux runtime dependencies: \${_unresolved_deps}\")
   endif()

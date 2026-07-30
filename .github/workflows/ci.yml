@@ -144,7 +144,9 @@ jobs:
           cd build-release
           case "${{ matrix.os_family }}" in
             linux)
-              cpack -C Release -G "DEB;RPM;TGZ"
+              # appimagetool is itself an AppImage; extract without FUSE on runners.
+              export APPIMAGE_EXTRACT_AND_RUN=1
+              cpack -C Release -G "DEB;RPM;TGZ;AppImage"
               ;;
             macos)
               # DragNDrop + hdiutil detach can flake on hosted runners; retry.
@@ -179,23 +181,8 @@ jobs:
           esac
           shopt -s nullglob
           mv easy-ssh-* ../dist/ 2>/dev/null || true
-          mv *.deb *.rpm *.tar.gz *.dmg *.exe ../dist/ 2>/dev/null || true
+          mv *.deb *.rpm *.tar.gz *.AppImage *.dmg *.exe ../dist/ 2>/dev/null || true
           shopt -u nullglob
-
-          if [[ "${{ matrix.os_family }}" == "linux" ]]; then
-            arch="$(uname -m)"
-            case "$arch" in
-              x86_64|amd64) aqt_arch="x86_64" ;;
-              aarch64|arm64) aqt_arch="aarch64" ;;
-              *) echo "unsupported arch: $arch" >&2; exit 1 ;;
-            esac
-            chmod +x "${{ github.workspace }}/.github/scripts/build-appimage.sh"
-            "${{ github.workspace }}/.github/scripts/build-appimage.sh" \
-              "$staging" \
-              "${{ github.workspace }}/dist/easy-ssh-${{ matrix.target }}.AppImage" \
-              "${{ github.workspace }}/.deps/tools/appimagetool-${aqt_arch}.AppImage" \
-              "${{ github.workspace }}/AppDirBuild"
-          fi
 
           ls -lah "${{ github.workspace }}/dist"
 

@@ -3,21 +3,19 @@ include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/EasySshVersions.cmake)
 
 if(NOT EASY_SSH_FETCH_QT)
-    return()
+    message(FATAL_ERROR
+        "EasySshQt: EASY_SSH_FETCH_QT is OFF, but this project requires Qt "
+        "${EASY_SSH_QT_VERSION} from .deps/qt via aqtinstall.\n"
+        "Enable EASY_SSH_FETCH_QT (default for debug/release presets).")
 endif()
 
-# Reuse an existing Qt only if it can build FetchContent deps (qtermwidget still
-# find_packages Qt6LinguistTools even when BUILD_TRANSLATIONS=OFF).
-find_package(Qt6 ${EASY_SSH_QT_VERSION} QUIET COMPONENTS Core LinguistTools)
-if(Qt6_FOUND AND Qt6LinguistTools_FOUND)
-    message(STATUS "EasySshQt: using existing Qt ${Qt6_VERSION}")
-    return()
-endif()
-if(Qt6_FOUND)
-    message(STATUS
-        "EasySshQt: existing Qt ${Qt6_VERSION} lacks LinguistTools; "
-        "fetching ${EASY_SSH_QT_VERSION} via aqt")
-endif()
+# Drop any previously cached system Qt paths so find_package cannot stick on /usr.
+foreach(_easy_ssh_qt_pkg IN ITEMS
+    Qt6 Qt6Core Qt6Gui Qt6Widgets Qt6Network Qt6Concurrent Qt6DBus
+    Qt6LinguistTools Qt6CoreTools Qt6GuiTools Qt6WidgetsTools Qt6DBusTools
+)
+    unset(${_easy_ssh_qt_pkg}_DIR CACHE)
+endforeach()
 
 set(EASY_SSH_QT_ROOT "${CMAKE_SOURCE_DIR}/.deps/qt/${EASY_SSH_QT_VERSION}")
 
@@ -28,13 +26,8 @@ if(WIN32)
     set(_aqt_path_suffix "${EASY_SSH_QT_VERSION}/msvc2022_64")
 elseif(APPLE)
     set(_aqt_host "mac")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-        set(_aqt_arch "clang_64")
-        set(_aqt_path_suffix "${EASY_SSH_QT_VERSION}/macos")
-    else()
-        set(_aqt_arch "clang_64")
-        set(_aqt_path_suffix "${EASY_SSH_QT_VERSION}/macos")
-    endif()
+    set(_aqt_arch "clang_64")
+    set(_aqt_path_suffix "${EASY_SSH_QT_VERSION}/macos")
 elseif(UNIX)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
         set(_aqt_host "linux_arm64")

@@ -28,4 +28,8 @@ if [[ ! -x "$tool" ]]; then
   chmod +x "$tool"
 fi
 
+# CPack looks for "appimagetool" on PATH by default.
+link="${out_dir}/appimagetool"
+ln -sfn "$(basename "$tool")" "$link"
+
 printf '%s\n' "$tool"

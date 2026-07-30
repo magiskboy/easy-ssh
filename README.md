@@ -88,49 +88,49 @@ EASY_SSH_PREFIX=/usr/local curl -fsSL https://raw.githubusercontent.com/magiskbo
 
 ### Prerequisites
 
-- CMake 3.28+
+- CMake 4.2+ (CPack AppImage; prefer the pip pin in `requirements.txt`)
 - A C++20 compiler
-- Qt 6.6+ (Widgets)
-- [libssh](https://www.libssh.org/) (>= 0.11, required for ProxyJump)
-- [QTermWidget](https://github.com/lxqt/qtermwidget)
-- [QtKeychain](https://github.com/frankosterfeld/qtkeychain)
+- Python 3 + pip (aqtinstall pulls Qt **6.10.3** into `.deps/qt`; see `requirements.txt`)
+- OS packages for the toolchain / Qt runtime glue only (compiler, xcb, OpenGL, OpenSSL) — **not** distro Qt / libssh / QTermWidget / QtKeychain
 
-Version pins for CI and FetchContent builds live in
+Version pins for aqt Qt and FetchContent libs live in
 [`cmake/EasySshVersions.cmake`](cmake/EasySshVersions.cmake).
 
-#### Fedora
+#### Fedora (toolchain + OS runtime only)
 
 ```bash
 sudo dnf install -y --setopt=install_weak_deps=False \
-  cmake \
   gcc-c++ \
   pkgconf-pkg-config \
-  qt6-qtbase-devel \
-  libssh-devel \
-  qtermwidget-devel \
-  qtkeychain-qt6-devel
+  openssl-devel \
+  zlib-devel
 ```
+
+Qt, libssh, QTermWidget, and QtKeychain are installed by the project (aqt + FetchContent), not via `dnf`.
 
 ### Build
 
-Two presets:
+Two presets (both use local aqt Qt + FetchContent deps):
 
 | Preset | Purpose |
 |--------|---------|
-| `debug` | Local development (system Qt/libs; no runtime bundling) |
-| `release` | Fat packages / CI (aqt Qt + FetchContent deps + bundle runtime) |
+| `debug` | Local development (no runtime bundling) |
+| `release` | Fat packages / CI (bundle runtime for CPack) |
 
 **Local development:**
 
 ```bash
+# Once: pip toolchains on PATH (cmake, ninja, aqt, …)
+.github/scripts/install-pip-toolchains.sh
+export PATH="$(pwd)/.deps/venv/bin:$PATH"
+
 cmake --preset debug
 cmake --build --preset debug
 ./build/bin/easy-ssh
 ```
 
-On Windows, if libssh / QTermWidget / QtKeychain are not installed, the `debug`
-preset still allows FetchContent for those libraries. Install Qt 6 locally (or set
-`CMAKE_PREFIX_PATH`); `EASY_SSH_FETCH_QT` stays off for debug.
+First configure downloads Qt 6.10.3 into `.deps/qt` and builds FetchContent deps
+(libssh, QTermWidget, QtKeychain).
 
 **Release / fat package build:**
 
@@ -140,8 +140,8 @@ cmake --build --preset release
 ./build-release/bin/easy-ssh
 ```
 
-Requires Python 3 + pip when `EASY_SSH_FETCH_QT=ON` (`aqtinstall` downloads Qt).
-First configure may take several minutes while Qt and FetchContent deps download.
+Requires Python 3 + pip (`aqtinstall` downloads Qt). First configure may take several
+minutes while Qt and FetchContent deps download.
 
 Install pip-managed toolchains so local and CI match. Core set (aqtinstall,
 clang-format, cmake, ninja, patchelf) is what CI uses:
@@ -227,8 +227,7 @@ cmake --preset release
 cmake --build --preset release
 cmake --install build-release --prefix staging
 cd build-release
-cpack -C Release -G "DEB;RPM;TGZ"   # Linux
-# AppImage: use .github/scripts/build-appimage.sh with appimagetool (not CPack)
+cpack -C Release -G "DEB;RPM;TGZ;AppImage"   # Linux (needs appimagetool + patchelf on PATH)
 # cpack -C Release -G DragNDrop              # macOS
 # cpack -C Release -G NSIS                   # Windows (requires NSIS)
 ```

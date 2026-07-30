@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 4.2)
 
 if(NOT DEFINED EASY_SSH_REPO_ROOT)
     message(FATAL_ERROR "patch-qtermwidget: EASY_SSH_REPO_ROOT is not set")
