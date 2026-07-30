@@ -1,0 +1,25 @@
+# CI / local core toolchains for easy-ssh (pip).
+# Does not replace a system C++20 compiler (GCC/Clang/MSVC) or OS packages
+# listed in ci/apt-linux.txt (Qt xcb/OpenGL runtime, rpm, …).
+# appimagetool is fetched by .github/scripts/fetch-appimagetool.sh (not on PyPI).
+#
+# Install:
+#   python3 -m pip install -r requirements.txt
+# Full local tooling (tidy, icons, …):
+#   python3 -m pip install -r requirements-dev.txt
+# Ensure the install bin dir is on PATH (venv/bin, or ~/.local/bin with --user).
+
+# Qt CLI installer — downloads Qt when EASY_SSH_FETCH_QT=ON (release preset / CI).
+# Also can install MinGW / vcredist via `aqt install-tool` (not the MSVC compiler).
+aqtinstall==3.3.0
+
+# Same version as the CI clang-format job.
+clang-format==22.1.8
+
+# Build system — single source for CI (prefer over apt/brew cmake/ninja).
+# Project requires CMake >= 3.28; pin stays on 3.x.
+cmake==3.31.10
+ninja==1.13.0
+
+# ELF RPATH helper used when packaging Linux binaries (replaces apt patchelf).
+patchelf==0.17.2.4

@@ -23,9 +23,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install clang-format
+      - name: Install pip toolchains
         run: |
-          python3 -m pip install --user "clang-format==22.1.8"
+          python3 -m pip install --user -r requirements.txt
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Check formatting
@@ -79,76 +79,36 @@ jobs:
         if: matrix.os_family == 'windows'
         shell: bash
         run: |
-          python -m pip install --user "aqtinstall>=3.1.0"
+          python -m pip install --user -r requirements.txt
+          # Prefer pip-installed aqt/cmake/ninja over any preinstalled copies.
+          python -c "import pathlib, site; print(pathlib.Path(site.USER_BASE) / 'Scripts')" >> "$GITHUB_PATH"
 
       - name: Install Linux build tools
         if: matrix.os_family == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            cmake \
-            ninja-build \
-            pkg-config \
-            git \
-            python3-pip \
-            patchelf \
-            rpm \
-            libssl-dev \
-            zlib1g-dev \
-            libsecret-1-dev \
-            libglib2.0-dev \
-            libgl1-mesa-dev \
-            libgstreamer-gl1.0-0 \
-            libpulse-dev \
-            libxcb-glx0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-randr0 \
-            libxcb-render-util0 \
-            libxcb-render0 \
-            libxcb-shape0 \
-            libxcb-shm0 \
-            libxcb-sync1 \
-            libxcb-util1 \
-            libxcb-xfixes0 \
-            libxcb-xinerama0 \
-            libxcb1 \
-            libxkbcommon-dev \
-            libxkbcommon-x11-0 \
-            libxcb-xkb-dev \
-            libxcb-cursor0
-          python3 -m pip install --user "aqtinstall>=3.1.0"
+          # System libs / compiler — not available via pip (see ci/apt-linux.txt).
+          # cmake/ninja/patchelf come from requirements.txt.
+          mapfile -t pkgs < <(grep -vE '^\s*(#|$)' ci/apt-linux.txt)
+          sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
+          python3 -m pip install --user -r requirements.txt
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install Linux AppImage tool
         if: matrix.os_family == 'linux'
         run: |
           set -euo pipefail
-          tools_dir="${GITHUB_WORKSPACE}/.deps/tools"
-          mkdir -p "$tools_dir"
-          arch="$(uname -m)"
-          case "$arch" in
-            x86_64|amd64) aqt_arch="x86_64" ;;
-            aarch64|arm64) aqt_arch="aarch64" ;;
-            *) echo "unsupported arch: $arch" >&2; exit 1 ;;
-          esac
-          tool="$tools_dir/appimagetool-${aqt_arch}.AppImage"
-          if [[ ! -x "$tool" ]]; then
-            curl -fsSL \
-              "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${aqt_arch}.AppImage" \
-              -o "$tool"
-            chmod +x "$tool"
-          fi
-          echo "${tools_dir}" >> "$GITHUB_PATH"
+          chmod +x .github/scripts/fetch-appimagetool.sh
+          tool="$(.github/scripts/fetch-appimagetool.sh "${GITHUB_WORKSPACE}/.deps/tools")"
+          echo "$(dirname "$tool")" >> "$GITHUB_PATH"
 
       - name: Install macOS build tools
         if: matrix.os_family == 'macos'
         run: |
           brew update
-          brew install cmake ninja pkg-config pipx
-          pipx install aqtinstall
+          # cmake/ninja come from requirements.txt (pip), not brew.
+          brew install pkg-config
+          python3 -m pip install --user -r requirements.txt
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Cache dependencies
@@ -156,8 +116,9 @@ jobs:
         with:
           path: |
             .deps/qt
+            .deps/tools
             build-release/_deps
-          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'third_party/qtermwidget-patches/**') }}
+          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements.txt', 'ci/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', 'third_party/qtermwidget-patches/**') }}
 
       - name: Configure
         run: |

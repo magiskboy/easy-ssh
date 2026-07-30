@@ -1,0 +1,37 @@
+# Debian/Ubuntu packages required on Linux CI / release builds.
+# These are system .so / toolchain packages — not available as pip wheels.
+# Install: sudo apt-get install -y --no-install-recommends $(grep -vE '^\s*#|^\s*$' ci/apt-linux.txt)
+#
+# Sources: Qt Linux requirements (xcb QPA), packaging (rpm), build (gcc, pkg-config).
+# See https://doc.qt.io/qt-6/linux-requirements.html
+
+build-essential
+pkg-config
+git
+python3-pip
+rpm
+libssl-dev
+zlib1g-dev
+libsecret-1-dev
+libglib2.0-dev
+libgl1-mesa-dev
+libgstreamer-gl1.0-0
+libpulse-dev
+libxcb-glx0
+libxcb-icccm4
+libxcb-image0
+libxcb-keysyms1
+libxcb-randr0
+libxcb-render-util0
+libxcb-render0
+libxcb-shape0
+libxcb-shm0
+libxcb-sync1
+libxcb-util1
+libxcb-xfixes0
+libxcb-xinerama0
+libxcb1
+libxkbcommon-dev
+libxkbcommon-x11-0
+libxcb-xkb-dev
+libxcb-cursor0

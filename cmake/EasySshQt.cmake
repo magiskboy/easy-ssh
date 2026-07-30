@@ -73,7 +73,7 @@ if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
             message(
                 FATAL_ERROR
                 "EasySshQt: aqtinstall not found. Install it first, e.g.:\n"
-                "  pip install aqtinstall   or   pipx install aqtinstall   or   brew install pipx && pipx install aqtinstall"
+                "  python3 -m pip install -r requirements.txt"
             )
         endif()
         set(_aqt_launch_mode "module")
