@@ -64,7 +64,7 @@ Optional environment variables:
 
 ```bash
 # Pin a release tag
-EASY_SSH_VERSION=v1.0.0 curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
+EASY_SSH_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash
 
 # Custom Linux prefix (default: ~/.local)
 EASY_SSH_PREFIX=/usr/local curl -fsSL https://raw.githubusercontent.com/magiskboy/easy-ssh/main/installer.sh | bash

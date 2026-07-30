@@ -39,6 +39,21 @@ remain in effect and are independent of the Easy SSH license.
 - License: BSD 3-Clause License (project files; check upstream tree)
 - Used as a build dependency for QTermWidget (`EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG`)
 
+## zlib
+
+- Project: https://zlib.net/
+- Source: https://github.com/madler/zlib
+- License: zlib License
+- Fetched at configure time (tag `v1.3.1` in `cmake/EasySshDependencies.cmake`)
+  as a static dependency of libssh; not installed into the application prefix
+
+## OpenSSL
+
+- Project: https://www.openssl.org/
+- License: Apache License 2.0 (OpenSSL 3.x)
+- Linked at runtime via the platform OpenSSL (system packages / OS install).
+  Not FetchContent-vendored by Easy SSH; required by libssh for crypto
+
 ---
 
 For the authoritative license text of each dependency, refer to the upstream
