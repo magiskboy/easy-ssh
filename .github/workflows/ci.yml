@@ -147,7 +147,20 @@ jobs:
               cpack -C Release -G "DEB;RPM;TGZ"
               ;;
             macos)
-              cpack -C Release -G DragNDrop
+              # DragNDrop + hdiutil detach can flake on hosted runners; retry.
+              ok=0
+              for attempt in 1 2 3; do
+                if cpack -C Release -G DragNDrop; then
+                  ok=1
+                  break
+                fi
+                echo "cpack DragNDrop failed (attempt ${attempt}); retrying…" >&2
+                sleep 5
+                # Best-effort cleanup of leftover volume mounts.
+                hdiutil info 2>/dev/null | awk -F': ' '/\/Volumes\/EasySSH/ {print $NF}' \
+                  | while read -r mp; do hdiutil detach "$mp" -force 2>/dev/null || true; done
+              done
+              [[ "$ok" -eq 1 ]] || exit 1
               ;;
             windows)
               if ! cpack -C Release -G NSIS; then

@@ -29,4 +29,9 @@ fi
 "$PIP_PY" -m pip install --upgrade pip >&2
 "$PIP_PY" -m pip install -r "$REQ" >&2
 
+# GITHUB_PATH / native Windows tools need a Windows path, not Git Bash /d/...
+if command -v cygpath >/dev/null 2>&1; then
+  BIN="$(cygpath -w "$BIN")"
+fi
+
 printf '%s\n' "$BIN"

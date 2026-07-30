@@ -41,9 +41,11 @@ if(WIN32)
     set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
 elseif(APPLE)
     set(CPACK_GENERATOR "DragNDrop")
-    set(CPACK_DMG_VOLUME_NAME "Easy SSH ${PROJECT_VERSION}")
+    # Avoid spaces in the volume name — hdiutil detach is flaky with them on
+    # some GitHub-hosted Intel macOS runners.
+    set(CPACK_DMG_VOLUME_NAME "EasySSH-${PROJECT_VERSION}")
     set(CPACK_DMG_FORMAT "UDZO")
-    set(CPACK_DMG_DISABLE_APPLICATIONS_SYMLINK OFF)
+    set(CPACK_DMG_DISABLE_APPLICATIONS_SYMLINK ON)
     set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
 else()
     # AppImage is built with external appimagetool (needs CMake 4.2+ for CPack).
