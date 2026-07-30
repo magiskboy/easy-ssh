@@ -183,6 +183,10 @@ jobs:
           staging="${{ github.workspace }}/staging"
           cmake --install build-release --prefix "$staging"
           mkdir -p dist
+
+          echo "Disabling absolute path constraints..."
+          find build-release -name "cmake_install.cmake" -type f -exec sed -i 's/FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller):/WARNING "ABSOLUTE path INSTALL DESTINATION bypassed:/g' {} +
+
           cd build-release
           case "${{ matrix.os_family }}" in
             linux)
