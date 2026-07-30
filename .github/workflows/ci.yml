@@ -14,9 +14,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  BUILD_TYPE: Release
-
 jobs:
   format:
     name: clang-format
@@ -164,18 +161,12 @@ jobs:
       - name: Configure
         run: |
           set -euo pipefail
-          cmake -S . -B build-release \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
-            -DEASY_SSH_USE_SYSTEM_PACKAGES=OFF \
-            -DEASY_SSH_FETCH_QT=ON \
-            -DEASY_SSH_BUNDLE_RUNTIME=ON \
-            -DEASY_SSH_INTEGRATION_TESTS=OFF \
+          cmake --preset release \
             -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
             -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/staging"
 
       - name: Build
-        run: cmake --build build-release --parallel
+        run: cmake --build --preset release --parallel
 
       - name: Install and package
         run: |

@@ -113,24 +113,43 @@ sudo dnf install -y --setopt=install_weak_deps=False \
 
 ### Build
 
-**Local development (Fedora system packages):**
+Two presets:
+
+| Preset | Purpose |
+|--------|---------|
+| `debug` | Local development (system Qt/libs; no runtime bundling) |
+| `release` | Fat packages / CI (aqt Qt + FetchContent deps + bundle runtime) |
+
+**Local development:**
 
 ```bash
-cmake --preset dev-system
-cmake --build --preset dev-system
-./build/src/easy-ssh
+cmake --preset debug
+cmake --build --preset debug
+./build/bin/easy-ssh
 ```
 
-**Release-style build (download Qt + build deps from source via CMake):**
+On Windows, if libssh / QTermWidget / QtKeychain are not installed, the `debug`
+preset still allows FetchContent for those libraries. Install Qt 6 locally (or set
+`CMAKE_PREFIX_PATH`); `EASY_SSH_FETCH_QT` stays off for debug.
+
+**Release / fat package build:**
 
 ```bash
-cmake --preset ci-release
-cmake --build --preset ci-release
-./build-release/src/easy-ssh
+cmake --preset release
+cmake --build --preset release
+./build-release/bin/easy-ssh
 ```
 
 Requires Python 3 + pip for `aqtinstall` when `EASY_SSH_FETCH_QT=ON`.
 First configure may take several minutes while Qt and FetchContent deps download.
+
+**Integration tests (local Linux only, not CI):**
+
+```bash
+tests/integration/scripts/up.sh
+tests/integration/scripts/run-tests.sh
+tests/integration/scripts/down.sh
+```
 
 Enable local git hooks (clang-format pre-commit, same check as CI):
 
@@ -143,14 +162,6 @@ Format all C++ sources:
 ```bash
 .github/scripts/run-clang-format.sh
 .github/scripts/run-clang-format-check.sh
-```
-
-Release builds (system packages):
-
-```bash
-cmake --preset release
-cmake --build --preset release
-./build-release/src/easy-ssh
 ```
 
 ### Icons
@@ -181,8 +192,8 @@ On Linux this installs:
 **Self-contained packages (CPack):**
 
 ```bash
-cmake --preset ci-release
-cmake --build --preset ci-release
+cmake --preset release
+cmake --build --preset release
 cmake --install build-release --prefix staging
 cd build-release
 cpack -C Release -G "DEB;RPM;TGZ"   # Linux
@@ -199,11 +210,11 @@ CI produces fat packages (bundled Qt, libssh, QTermWidget, QtKeychain):
 
 #### Windows (local)
 
-Use the `ci-release` preset with MSVC and NSIS installed:
+Use the `release` preset with MSVC and NSIS installed:
 
 ```bash
-cmake --preset ci-release
-cmake --build --preset ci-release
+cmake --preset release
+cmake --build --preset release
 cmake --install build-release --prefix staging
 cpack -G NSIS --config build-release/CPackConfig.cmake
 ```

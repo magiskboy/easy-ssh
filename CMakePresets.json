@@ -7,8 +7,8 @@
   },
   "configurePresets": [
     {
-      "name": "dev-system",
-      "displayName": "Debug (system packages)",
+      "name": "debug",
+      "displayName": "Debug (local development)",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
@@ -21,20 +21,7 @@
     },
     {
       "name": "release",
-      "displayName": "Release (system packages)",
-      "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build-release",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "EASY_SSH_USE_SYSTEM_PACKAGES": "ON",
-        "EASY_SSH_FETCH_QT": "OFF",
-        "EASY_SSH_BUNDLE_RUNTIME": "OFF",
-        "EASY_SSH_INTEGRATION_TESTS": "OFF"
-      }
-    },
-    {
-      "name": "ci-release",
-      "displayName": "Release (FetchContent + aqt Qt)",
+      "displayName": "Release (fat packages / CI)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
@@ -44,37 +31,16 @@
         "EASY_SSH_BUNDLE_RUNTIME": "ON",
         "EASY_SSH_INTEGRATION_TESTS": "OFF"
       }
-    },
-    {
-      "name": "integration",
-      "displayName": "Debug + integration tests",
-      "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build-integration",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "EASY_SSH_USE_SYSTEM_PACKAGES": "ON",
-        "EASY_SSH_FETCH_QT": "OFF",
-        "EASY_SSH_BUNDLE_RUNTIME": "OFF",
-        "EASY_SSH_INTEGRATION_TESTS": "ON"
-      }
     }
   ],
   "buildPresets": [
     {
-      "name": "dev-system",
-      "configurePreset": "dev-system"
+      "name": "debug",
+      "configurePreset": "debug"
     },
     {
       "name": "release",
       "configurePreset": "release"
-    },
-    {
-      "name": "ci-release",
-      "configurePreset": "ci-release"
-    },
-    {
-      "name": "integration",
-      "configurePreset": "integration"
     }
   ]
 }

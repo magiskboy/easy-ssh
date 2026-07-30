@@ -74,6 +74,7 @@ if(NOT _easy_ssh_have_libssh)
         GIT_TAG        ${EASY_SSH_LIBSSH_GIT_TAG}
         GIT_SHALLOW    TRUE
         GIT_PROGRESS   TRUE
+        EXCLUDE_FROM_ALL
     )
     set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
     set(WITH_SERVER ON CACHE BOOL "" FORCE)
@@ -106,6 +107,7 @@ if(NOT _easy_ssh_have_qtkeychain)
         GIT_TAG        ${EASY_SSH_QTKEYCHAIN_GIT_TAG}
         GIT_SHALLOW    TRUE
         GIT_PROGRESS   TRUE
+        EXCLUDE_FROM_ALL
     )
     set(BUILD_WITH_QT6 ON CACHE BOOL "" FORCE)
     set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
@@ -165,6 +167,7 @@ if(_easy_ssh_need_lxqt_bt)
         GIT_TAG        ${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG}
         GIT_SHALLOW    TRUE
         GIT_PROGRESS   TRUE
+        EXCLUDE_FROM_ALL
     )
     FetchContent_MakeAvailable(lxqt-build-tools)
     FetchContent_GetProperties(lxqt-build-tools BINARY_DIR _lxqt_bt_binary_dir)
@@ -211,6 +214,7 @@ if(NOT _easy_ssh_have_qtermwidget)
         GIT_TAG        ${EASY_SSH_QTERMWIDGET_GIT_TAG}
         GIT_SHALLOW    TRUE
         GIT_PROGRESS   TRUE
+        EXCLUDE_FROM_ALL
         PATCH_COMMAND
             ${CMAKE_COMMAND}
                 -DEASY_SSH_REPO_ROOT=${CMAKE_SOURCE_DIR}
@@ -229,12 +233,41 @@ else()
 endif()
 
 # Strict checks when using system packages (dev workflow).
+# Skip packages already provided via FetchContent fallback (e.g. Windows debug).
 if(EASY_SSH_USE_SYSTEM_PACKAGES)
-    find_package(libssh ${EASY_SSH_LIBSSH_MIN_VERSION} REQUIRED)
-    find_package(qtermwidget6 REQUIRED)
-    find_package(Qt6Keychain REQUIRED)
+    if(NOT TARGET ssh)
+        find_package(libssh ${EASY_SSH_LIBSSH_MIN_VERSION} REQUIRED)
+    endif()
+    if(NOT TARGET qtermwidget6)
+        find_package(qtermwidget6 REQUIRED)
+    endif()
+    if(NOT TARGET Qt6Keychain::Qt6Keychain)
+        find_package(Qt6Keychain REQUIRED)
+    endif()
 endif()
 
 if(_easy_ssh_using_fetch)
     message(STATUS "EasySshDeps: third-party libraries built from source (FetchContent)")
+endif()
+
+# FetchContent shared libs: use @rpath so the build-tree app finds them under
+# ${CMAKE_BINARY_DIR}/lib (see CMAKE_BUILD_RPATH in EasySshDefaults). Skip IMPORTED.
+if(APPLE)
+    foreach(_easy_ssh_dep IN ITEMS ssh qt6keychain qtermwidget6)
+        if(NOT TARGET ${_easy_ssh_dep})
+            continue()
+        endif()
+        get_target_property(_easy_ssh_dep_imported ${_easy_ssh_dep} IMPORTED)
+        if(_easy_ssh_dep_imported)
+            continue()
+        endif()
+        get_target_property(_easy_ssh_dep_type ${_easy_ssh_dep} TYPE)
+        if(NOT _easy_ssh_dep_type STREQUAL "SHARED_LIBRARY")
+            continue()
+        endif()
+        set_target_properties(${_easy_ssh_dep} PROPERTIES
+            INSTALL_NAME_DIR "@rpath"
+            BUILD_WITH_INSTALL_NAME_DIR TRUE
+        )
+    endforeach()
 endif()

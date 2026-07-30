@@ -46,13 +46,18 @@ Bastion1 defines two users for credential scenarios:
 ## Manual CMake
 
 ```bash
-cmake --preset integration
-cmake --build --preset integration --target easy-ssh-integration-tests
+cmake -S . -B build-integration \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DEASY_SSH_USE_SYSTEM_PACKAGES=ON \
+  -DEASY_SSH_FETCH_QT=OFF \
+  -DEASY_SSH_BUNDLE_RUNTIME=OFF \
+  -DEASY_SSH_INTEGRATION_TESTS=ON
+cmake --build build-integration --target easy-ssh-integration-tests
 source tests/integration/fixtures/endpoints.env
 ./build-integration/tests/integration/easy-ssh-integration-tests
 ```
 
-Tests auto-skip if the stack is not reachable.
+Prefer `tests/integration/scripts/run-tests.sh` (local only; not run in CI).
 
 ## Test cases
 

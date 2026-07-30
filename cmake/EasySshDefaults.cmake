@@ -29,6 +29,10 @@ if(NOT APPLE AND NOT WIN32)
     )
     set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
     set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+elseif(APPLE)
+    # FetchContent shared libs land in ${CMAKE_BINARY_DIR}/lib; resolve via @rpath
+    # (QTermWidget otherwise hardcodes INSTALL_NAME_DIR=/usr/local/lib).
+    list(APPEND CMAKE_BUILD_RPATH "${CMAKE_BINARY_DIR}/lib")
 endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/EasySshQt.cmake)
