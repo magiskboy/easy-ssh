@@ -5,20 +5,9 @@ install(TARGETS easy-ssh
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-# Ship FetchContent shared libs with the app (before Qt deploy / windeployqt).
-set(_easy_ssh_dep_runtime_targets "")
-foreach(_easy_ssh_dep IN ITEMS ssh qt6keychain qtermwidget6)
-    if(TARGET ${_easy_ssh_dep})
-        list(APPEND _easy_ssh_dep_runtime_targets ${_easy_ssh_dep})
-    endif()
-endforeach()
-if(_easy_ssh_dep_runtime_targets)
-    install(TARGETS ${_easy_ssh_dep_runtime_targets}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    )
-endif()
+# Fat packages ship non-Qt deps via EASY_SSH_BUNDLE_RUNTIME (GET_RUNTIME_DEPENDENCIES)
+# and Qt via qt_generate_deploy_app_script — not install(TARGETS) on dependency targets
+# (IMPORTED system targets cannot be installed that way).
 
 install(FILES
     ${CMAKE_SOURCE_DIR}/resources/linux/io.github.magiskboy.easy-ssh.desktop
@@ -40,6 +29,10 @@ endforeach()
 set(_easy_ssh_deploy_tool_options "")
 if(WIN32)
     set(_easy_ssh_deploy_tool_options --ignore-library-errors)
+elseif(APPLE)
+    # Ad-hoc sign so Gatekeeper accepts the DMG app; we re-sign again after
+    # install_name_tool in EASY_SSH_BUNDLE_RUNTIME.
+    set(_easy_ssh_deploy_tool_options -codesign=-)
 endif()
 
 qt_generate_deploy_app_script(
@@ -52,8 +45,13 @@ qt_generate_deploy_app_script(
 install(SCRIPT ${easy_ssh_deploy_script})
 
 if(EASY_SSH_BUNDLE_RUNTIME)
-    # Collect extra search paths for FetchContent / prefix installs.
+    # Collect extra search paths for FetchContent build-tree libs / prefix installs.
     set(_easy_ssh_runtime_search_dirs "")
+    foreach(_build_subdir IN ITEMS bin lib lib64)
+        if(EXISTS "${CMAKE_BINARY_DIR}/${_build_subdir}")
+            list(APPEND _easy_ssh_runtime_search_dirs "${CMAKE_BINARY_DIR}/${_build_subdir}")
+        endif()
+    endforeach()
     if(CMAKE_PREFIX_PATH)
         foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
             if(EXISTS "${_prefix}/bin")
@@ -72,6 +70,13 @@ if(EASY_SSH_BUNDLE_RUNTIME)
         if(EXISTS "${_vcpkg_bin}")
             list(APPEND _easy_ssh_runtime_search_dirs "${_vcpkg_bin}")
         endif()
+    endif()
+    if(APPLE)
+        foreach(_brew_lib IN ITEMS /opt/homebrew/lib /usr/local/lib)
+            if(EXISTS "${_brew_lib}")
+                list(APPEND _easy_ssh_runtime_search_dirs "${_brew_lib}")
+            endif()
+        endforeach()
     endif()
 
     set(_easy_ssh_runtime_dirs_code "")
@@ -150,10 +155,44 @@ ${_easy_ssh_runtime_dirs_code}      POST_EXCLUDE_REGEXES
         if(NOT EXISTS \"\${_fw}/\${_base}\")
           file(INSTALL \"\${_dep}\" DESTINATION \"\${_fw}\")
         endif()
+        set(_bundled \"\${_fw}/\${_base}\")
+        if(EXISTS \"\${_bundled}\")
+          execute_process(COMMAND install_name_tool
+            -id \"@executable_path/../Frameworks/\${_base}\" \"\${_bundled}\"
+            ERROR_QUIET)
+          execute_process(COMMAND install_name_tool
+            -change \"\${_dep}\" \"@executable_path/../Frameworks/\${_base}\" \"\${_exe}\"
+            ERROR_QUIET)
+          execute_process(COMMAND install_name_tool
+            -change \"@rpath/\${_base}\" \"@executable_path/../Frameworks/\${_base}\" \"\${_exe}\"
+            ERROR_QUIET)
+          execute_process(COMMAND install_name_tool
+            -change \"/usr/local/lib/\${_base}\" \"@executable_path/../Frameworks/\${_base}\" \"\${_exe}\"
+            ERROR_QUIET)
+        endif()
       endif()
     endforeach()
-    if(_unresolved_deps)
-      message(WARNING \"Unresolved macOS runtime dependencies: \${_unresolved_deps}\")
+    # GET_RUNTIME_DEPENDENCIES often reports @rpath/* as unresolved even when
+    # macdeployqt already copied them into Frameworks — only warn if missing.
+    set(_easy_ssh_missing_unresolved \"\")
+    foreach(_u IN LISTS _unresolved_deps)
+      string(REGEX REPLACE \"^.*/\" \"\" _ubase \"\${_u}\")
+      if(NOT EXISTS \"\${_fw}/\${_ubase}\")
+        list(APPEND _easy_ssh_missing_unresolved \"\${_u}\")
+      endif()
+    endforeach()
+    if(_easy_ssh_missing_unresolved)
+      message(WARNING \"Unresolved macOS runtime dependencies: \${_easy_ssh_missing_unresolved}\")
+    endif()
+    # install_name_tool invalidates signatures; re-sign ad-hoc for DMG/Gatekeeper.
+    execute_process(
+      COMMAND codesign --force --deep --sign - \"\${_app}\"
+      RESULT_VARIABLE _easy_ssh_codesign_rc
+      ERROR_VARIABLE _easy_ssh_codesign_err
+      OUTPUT_QUIET
+    )
+    if(NOT _easy_ssh_codesign_rc EQUAL 0)
+      message(WARNING \"EasySshInstall: codesign failed (\${_easy_ssh_codesign_rc}): \${_easy_ssh_codesign_err}\")
     endif()
   endif()
 endif()

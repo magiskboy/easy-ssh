@@ -14,7 +14,7 @@ option(EASY_SSH_FETCH_QT
     OFF)
 option(EASY_SSH_BUNDLE_RUNTIME
     "Bundle non-system runtime libraries into the install tree (for CPack fat packages)"
-    ON)
+    OFF)
 option(EASY_SSH_INTEGRATION_TESTS
     "Build local headless integration tests (Linux only)"
     ${_easy_ssh_it_default})

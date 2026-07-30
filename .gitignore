@@ -1,3 +1,5 @@
+.venv
+
 # Build trees (CMake presets: build, build-release, build-integration, …)
 /build/
 /build-*/
