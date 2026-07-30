@@ -6,11 +6,17 @@ if(NOT EASY_SSH_FETCH_QT)
     return()
 endif()
 
-# Probe existing Qt (system install or CMAKE_PREFIX_PATH from the user).
-find_package(Qt6 ${EASY_SSH_QT_VERSION} QUIET COMPONENTS Core)
-if(Qt6_FOUND)
+# Reuse an existing Qt only if it can build FetchContent deps (qtermwidget still
+# find_packages Qt6LinguistTools even when BUILD_TRANSLATIONS=OFF).
+find_package(Qt6 ${EASY_SSH_QT_VERSION} QUIET COMPONENTS Core LinguistTools)
+if(Qt6_FOUND AND Qt6LinguistTools_FOUND)
     message(STATUS "EasySshQt: using existing Qt ${Qt6_VERSION}")
     return()
+endif()
+if(Qt6_FOUND)
+    message(STATUS
+        "EasySshQt: existing Qt ${Qt6_VERSION} lacks LinguistTools; "
+        "fetching ${EASY_SSH_QT_VERSION} via aqt")
 endif()
 
 set(EASY_SSH_QT_ROOT "${CMAKE_SOURCE_DIR}/.deps/qt/${EASY_SSH_QT_VERSION}")
@@ -45,8 +51,10 @@ endif()
 
 set(EASY_SSH_QT_PREFIX "${EASY_SSH_QT_ROOT}/${_aqt_path_suffix}")
 set(_qt_marker "${EASY_SSH_QT_PREFIX}/lib/cmake/Qt6/Qt6Config.cmake")
+set(_qt_linguist_marker
+    "${EASY_SSH_QT_PREFIX}/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsConfig.cmake")
 
-if(NOT EXISTS "${_qt_marker}")
+if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
     message(STATUS "EasySshQt: installing Qt ${EASY_SSH_QT_VERSION} via aqt (${_aqt_host}/${_aqt_arch})")
 
     find_program(EASY_SSH_AQT aqt)
@@ -73,11 +81,10 @@ if(NOT EXISTS "${_qt_marker}")
 
     file(MAKE_DIRECTORY "${EASY_SSH_QT_ROOT}")
 
-    # Base Qt is installed by default; qtbase/qttools are archives, not --modules.
-    set(_aqt_extra_args)
-    if(WIN32)
-        list(APPEND _aqt_extra_args --archives qtbase qttools)
-    endif()
+    # qttools provides LinguistTools (lrelease) required by qtermwidget.
+    # On Windows the default aqt payload is split; pin archives everywhere for
+    # a smaller, predictable SDK that still has tools.
+    set(_aqt_extra_args --archives qtbase qttools)
 
     if(_aqt_launch_mode STREQUAL "exe")
         set(_aqt_cmd
@@ -113,6 +120,11 @@ if(NOT EXISTS "${_qt_marker}")
 
     if(NOT EXISTS "${_qt_marker}")
         message(FATAL_ERROR "EasySshQt: Qt6Config.cmake not found at ${_qt_marker}")
+    endif()
+    if(NOT EXISTS "${_qt_linguist_marker}")
+        message(FATAL_ERROR
+            "EasySshQt: Qt6LinguistToolsConfig.cmake not found at ${_qt_linguist_marker}\n"
+            "aqt install may have omitted qttools; retry after removing ${EASY_SSH_QT_ROOT}")
     endif()
 else()
     message(STATUS "EasySshQt: reusing cached Qt at ${EASY_SSH_QT_PREFIX}")
