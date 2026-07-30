@@ -13,8 +13,6 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "EASY_SSH_USE_SYSTEM_PACKAGES": "OFF",
-        "EASY_SSH_FETCH_QT": "ON",
         "EASY_SSH_BUNDLE_RUNTIME": "OFF"
       }
     },
@@ -25,8 +23,6 @@
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "EASY_SSH_USE_SYSTEM_PACKAGES": "OFF",
-        "EASY_SSH_FETCH_QT": "ON",
         "EASY_SSH_BUNDLE_RUNTIME": "ON"
       }
     }
