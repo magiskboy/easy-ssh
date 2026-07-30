@@ -34,13 +34,15 @@ endforeach()
 set(_easy_ssh_lib_file_genex "")
 set(_easy_ssh_lib_soname_genex "")
 foreach(_easy_ssh_dep IN LISTS _easy_ssh_bundle_deps)
-    # Skip static zlib; only shared libs belong in the runtime tree.
     get_target_property(_easy_ssh_dep_type ${_easy_ssh_dep} TYPE)
     if(NOT _easy_ssh_dep_type STREQUAL "SHARED_LIBRARY")
         continue()
     endif()
     string(APPEND _easy_ssh_lib_file_genex "$<TARGET_FILE:${_easy_ssh_dep}>;")
-    string(APPEND _easy_ssh_lib_soname_genex "$<TARGET_SONAME_FILE_NAME:${_easy_ssh_dep}>;")
+    # TARGET_SONAME_FILE_NAME is invalid on DLL platforms (Windows).
+    if(NOT WIN32)
+        string(APPEND _easy_ssh_lib_soname_genex "$<TARGET_SONAME_FILE_NAME:${_easy_ssh_dep}>;")
+    endif()
 endforeach()
 
 set(_easy_ssh_deploy_tool_options "")
