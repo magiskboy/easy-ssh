@@ -81,10 +81,12 @@ if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
 
     file(MAKE_DIRECTORY "${EASY_SSH_QT_ROOT}")
 
-    # qttools provides LinguistTools (lrelease) required by qtermwidget.
-    # On Windows the default aqt payload is split; pin archives everywhere for
-    # a smaller, predictable SDK that still has tools.
+    # qttools → LinguistTools; icu → bundled libicui18n for Linux host tools (lrelease).
+    # See https://github.com/miurahr/aqtinstall/issues/532
     set(_aqt_extra_args --archives qtbase qttools)
+    if(UNIX AND NOT APPLE)
+        list(APPEND _aqt_extra_args icu)
+    endif()
 
     if(_aqt_launch_mode STREQUAL "exe")
         set(_aqt_cmd
