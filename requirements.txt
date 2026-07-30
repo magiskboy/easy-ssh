@@ -21,5 +21,5 @@ clang-format==22.1.8
 cmake==3.31.10
 ninja==1.13.0
 
-# ELF RPATH helper used when packaging Linux binaries (replaces apt patchelf).
-patchelf==0.17.2.4
+# ELF RPATH helper (Linux only — no Windows/macOS wheels on PyPI).
+patchelf==0.17.2.4; sys_platform == "linux"

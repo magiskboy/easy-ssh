@@ -150,13 +150,23 @@ clang-format, cmake, ninja, patchelf) is what CI uses:
 python3 -m pip install -r requirements.txt
 ```
 
+On macOS (Homebrew Python / PEP 668), prefer a venv — CI uses the same approach:
+
+```bash
+python3 -m venv .deps/venv
+source .deps/venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Or run `.github/scripts/install-pip-toolchains.sh` and put its printed `bin` directory on `PATH`.
+
 Optional local extras (clang-tidy, clang-include-cleaner, icnsutil):
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
 ```
 
-Ensure the install bin directory is on `PATH` (venv `bin/`, or `~/.local/bin` with
+Ensure the install bin directory is on `PATH` (venv `bin/` / `Scripts`, or `~/.local/bin` with
 `--user`).
 
 **Not available via pip** (kept as OS / GitHub Actions tooling):

@@ -25,8 +25,9 @@ jobs:
 
       - name: Install pip toolchains
         run: |
-          python3 -m pip install --user -r requirements.txt
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          chmod +x .github/scripts/install-pip-toolchains.sh
+          bin="$(.github/scripts/install-pip-toolchains.sh)"
+          echo "$bin" >> "$GITHUB_PATH"
 
       - name: Check formatting
         run: |
@@ -79,20 +80,21 @@ jobs:
         if: matrix.os_family == 'windows'
         shell: bash
         run: |
-          python -m pip install --user -r requirements.txt
-          # Prefer pip-installed aqt/cmake/ninja over any preinstalled copies.
-          python -c "import pathlib, site; print(pathlib.Path(site.USER_BASE) / 'Scripts')" >> "$GITHUB_PATH"
+          chmod +x .github/scripts/install-pip-toolchains.sh
+          bin="$(.github/scripts/install-pip-toolchains.sh)"
+          echo "$bin" >> "$GITHUB_PATH"
 
       - name: Install Linux build tools
         if: matrix.os_family == 'linux'
         run: |
           sudo apt-get update
           # System libs / compiler — not available via pip (see ci/apt-linux.txt).
-          # cmake/ninja/patchelf come from requirements.txt.
+          # cmake/ninja/patchelf come from requirements.txt via venv.
           mapfile -t pkgs < <(grep -vE '^\s*(#|$)' ci/apt-linux.txt)
           sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
-          python3 -m pip install --user -r requirements.txt
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          chmod +x .github/scripts/install-pip-toolchains.sh
+          bin="$(.github/scripts/install-pip-toolchains.sh)"
+          echo "$bin" >> "$GITHUB_PATH"
 
       - name: Install Linux AppImage tool
         if: matrix.os_family == 'linux'
@@ -106,10 +108,12 @@ jobs:
         if: matrix.os_family == 'macos'
         run: |
           brew update
-          # cmake/ninja come from requirements.txt (pip), not brew.
+          # cmake/ninja come from requirements.txt (venv), not brew.
+          # Use a venv — Homebrew Python is PEP 668 externally-managed.
           brew install pkg-config
-          python3 -m pip install --user -r requirements.txt
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          chmod +x .github/scripts/install-pip-toolchains.sh
+          bin="$(.github/scripts/install-pip-toolchains.sh)"
+          echo "$bin" >> "$GITHUB_PATH"
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -117,8 +121,9 @@ jobs:
           path: |
             .deps/qt
             .deps/tools
+            .deps/venv
             build-release/_deps
-          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements.txt', 'ci/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', 'third_party/qtermwidget-patches/**') }}
+          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements.txt', 'ci/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget-patches/**') }}
 
       - name: Configure
         run: |
