@@ -183,7 +183,18 @@ jobs:
               cpack -C Release -G DragNDrop
               ;;
             windows)
-              cpack -C Release -G NSIS
+              if ! cpack -C Release -G NSIS; then
+                nsis_log="_CPack_Packages/win64/NSIS/NSISOutput.log"
+                if [[ -f "$nsis_log" ]]; then
+                  echo "::group::NSISOutput.log"
+                  cat "$nsis_log"
+                  echo "::endgroup::"
+                else
+                  echo "NSISOutput.log not found at $nsis_log" >&2
+                  find _CPack_Packages -name 'NSISOutput.log' -print -exec cat {} \; 2>/dev/null || true
+                fi
+                exit 1
+              fi
               ;;
           esac
           shopt -s nullglob
