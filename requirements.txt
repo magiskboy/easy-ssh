@@ -10,7 +10,7 @@
 # Ensure the install bin dir is on PATH (venv/bin, or ~/.local/bin with --user).
 
 # Qt CLI installer — downloads pinned Qt (see cmake/EasySshVersions.cmake) into
-# .deps/qt for both debug and release presets (EASY_SSH_FETCH_QT=ON).
+# .deps/qt for both debug and release presets.
 # Also can install MinGW / vcredist via `aqt install-tool` (not the MSVC compiler).
 aqtinstall==3.3.0
 

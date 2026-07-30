@@ -38,23 +38,3 @@ elseif(APPLE)
     # (QTermWidget otherwise hardcodes INSTALL_NAME_DIR=/usr/local/lib).
     list(APPEND CMAKE_BUILD_RPATH "${CMAKE_BINARY_DIR}/lib")
 endif()
-
-include(${CMAKE_CURRENT_LIST_DIR}/EasySshQt.cmake)
-
-find_package(Qt6 ${EASY_SSH_QT_VERSION} REQUIRED COMPONENTS
-    Core
-    Gui
-    Widgets
-    Concurrent
-    Network
-)
-
-# Refuse distro / Homebrew Qt — both presets must use aqt under .deps/qt.
-if(NOT Qt6_DIR MATCHES "/\\.deps/qt/")
-    message(FATAL_ERROR
-        "EasySshDefaults: refusing non-project Qt at ${Qt6_DIR}\n"
-        "Expected Qt ${EASY_SSH_QT_VERSION} under ${CMAKE_SOURCE_DIR}/.deps/qt "
-        "(enable EASY_SSH_FETCH_QT and install via aqt).")
-endif()
-
-qt_standard_project_setup()
