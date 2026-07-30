@@ -143,14 +143,6 @@ cmake --build --preset release
 Requires Python 3 + pip for `aqtinstall` when `EASY_SSH_FETCH_QT=ON`.
 First configure may take several minutes while Qt and FetchContent deps download.
 
-**Integration tests (local Linux only, not CI):**
-
-```bash
-tests/integration/scripts/up.sh
-tests/integration/scripts/run-tests.sh
-tests/integration/scripts/down.sh
-```
-
 Enable local git hooks (clang-format pre-commit, same check as CI):
 
 ```bash

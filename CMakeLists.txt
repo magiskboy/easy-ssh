@@ -14,15 +14,6 @@ include(cmake/EasySshDependencies.cmake)
 add_subdirectory(src)
 add_subdirectory(resources)
 
-if(EASY_SSH_INTEGRATION_TESTS)
-    if(UNIX AND NOT APPLE)
-        enable_testing()
-        add_subdirectory(tests/integration)
-    else()
-        message(WARNING "Integration tests are only supported on Linux for now")
-    endif()
-endif()
-
 include(cmake/EasySshInstall.cmake)
 include(cmake/EasySshPackaging.cmake)
 

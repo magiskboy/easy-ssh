@@ -1,4 +1,2 @@
-# Prefer the primary local build database so clangd sees Qt6::Test flags
-# for tests/integration (requires a configure with EASY_SSH_INTEGRATION_TESTS).
 CompileFlags:
   CompilationDatabase: build

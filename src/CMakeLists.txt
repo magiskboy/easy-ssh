@@ -1,65 +1,67 @@
-set(EASY_SSH_SOURCES
-    main.cpp
-    MainWindow.cpp
-    MainWindow.h
-    AppSettings.cpp
-    AppSettings.h
-    Connection.h
-    ConnectionStore.cpp
-    ConnectionStore.h
-    ConnectionModel.cpp
-    ConnectionModel.h
-    ConnectionFilterProxy.cpp
-    ConnectionFilterProxy.h
-    SshConfigParser.cpp
-    SshConfigParser.h
-    ErrorNotifier.cpp
-    ErrorNotifier.h
-    Logging.cpp
-    Logging.h
-    SecretStore.cpp
-    SecretStore.h
-    SshWorker.cpp
-    SshWorker.h
-    SftpTypes.h
-    RemoteFileModel.cpp
-    RemoteFileModel.h
-    OpenFileTracker.cpp
-    OpenFileTracker.h
-    Tunnel.h
-    TunnelStore.cpp
-    TunnelStore.h
-    TunnelListModel.cpp
-    TunnelListModel.h
-    terminal/TerminalIoBridge.h
-    widgets/AboutDialog.cpp
-    widgets/AboutDialog.h
-    widgets/ConnectionDialog.cpp
-    widgets/ConnectionDialog.h
-    widgets/ConnectionListWidget.cpp
-    widgets/ConnectionListWidget.h
-    widgets/FileExplorerWidget.cpp
-    widgets/FileExplorerWidget.h
-    widgets/SessionTabWidget.cpp
-    widgets/SessionTabWidget.h
-    widgets/SettingsDialog.cpp
-    widgets/SettingsDialog.h
-    widgets/ShortcutsDialog.cpp
-    widgets/ShortcutsDialog.h
-    widgets/TerminalSessionWidget.cpp
-    widgets/TerminalSessionWidget.h
-    widgets/TunnelDialog.cpp
-    widgets/TunnelDialog.h
-    widgets/TunnelListWidget.cpp
-    widgets/TunnelListWidget.h
-    widgets/WelcomeWidget.cpp
-    widgets/WelcomeWidget.h
+set(EASY_SSH_CORE_SOURCES
+    core/util/Logging.cpp
+    core/util/Logging.h
+    core/settings/AppSettings.cpp
+    core/settings/AppSettings.h
+    core/connection/Connection.h
+    core/connection/ConnectionStore.cpp
+    core/connection/ConnectionStore.h
+    core/connection/SecretStore.cpp
+    core/connection/SecretStore.h
+    core/connection/SshConfigParser.cpp
+    core/connection/SshConfigParser.h
+    core/ssh/SshWorker.cpp
+    core/ssh/SshWorker.h
+    core/ssh/SftpTypes.h
+    core/tunnel/Tunnel.h
+    core/tunnel/TunnelStore.cpp
+    core/tunnel/TunnelStore.h
+)
+
+set(EASY_SSH_GUI_SOURCES
+    gui/MainWindow.cpp
+    gui/MainWindow.h
+    gui/ErrorNotifier.cpp
+    gui/ErrorNotifier.h
+    gui/models/ConnectionModel.cpp
+    gui/models/ConnectionModel.h
+    gui/models/ConnectionFilterProxy.cpp
+    gui/models/ConnectionFilterProxy.h
+    gui/models/RemoteFileModel.cpp
+    gui/models/RemoteFileModel.h
+    gui/models/TunnelListModel.cpp
+    gui/models/TunnelListModel.h
+    gui/models/OpenFileTracker.cpp
+    gui/models/OpenFileTracker.h
+    gui/terminal/TerminalIoBridge.h
+    gui/session/SessionTabWidget.cpp
+    gui/session/SessionTabWidget.h
+    gui/session/TerminalSessionWidget.cpp
+    gui/session/TerminalSessionWidget.h
+    gui/connection/ConnectionListWidget.cpp
+    gui/connection/ConnectionListWidget.h
+    gui/connection/ConnectionDialog.cpp
+    gui/connection/ConnectionDialog.h
+    gui/connection/WelcomeWidget.cpp
+    gui/connection/WelcomeWidget.h
+    gui/sftp/FileExplorerWidget.cpp
+    gui/sftp/FileExplorerWidget.h
+    gui/tunnel/TunnelListWidget.cpp
+    gui/tunnel/TunnelListWidget.h
+    gui/tunnel/TunnelDialog.cpp
+    gui/tunnel/TunnelDialog.h
+    gui/dialogs/AboutDialog.cpp
+    gui/dialogs/AboutDialog.h
+    gui/dialogs/SettingsDialog.cpp
+    gui/dialogs/SettingsDialog.h
+    gui/dialogs/ShortcutsDialog.cpp
+    gui/dialogs/ShortcutsDialog.h
 )
 
 if(WIN32)
-    list(APPEND EASY_SSH_SOURCES terminal/TerminalIoBridge_win.cpp)
+    list(APPEND EASY_SSH_GUI_SOURCES gui/terminal/TerminalIoBridge_win.cpp)
 else()
-    list(APPEND EASY_SSH_SOURCES terminal/TerminalIoBridge_unix.cpp)
+    list(APPEND EASY_SSH_GUI_SOURCES gui/terminal/TerminalIoBridge_unix.cpp)
 endif()
 
 set(EASY_SSH_PLATFORM_SOURCES)
@@ -80,7 +82,9 @@ if(APPLE)
 endif()
 
 qt_add_executable(easy-ssh
-    ${EASY_SSH_SOURCES}
+    app/main.cpp
+    ${EASY_SSH_CORE_SOURCES}
+    ${EASY_SSH_GUI_SOURCES}
     ${EASY_SSH_PLATFORM_SOURCES}
 )
 
