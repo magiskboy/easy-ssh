@@ -130,6 +130,18 @@ if(EASY_SSH_BUNDLE_RUNTIME)
             list(APPEND _easy_ssh_runtime_search_dirs "${_vcpkg_bin}")
         endif()
     endif()
+    if(WIN32)
+        # libssh links OpenSSL; GitHub windows runners ship it under Program Files.
+        foreach(_ssl_bin IN ITEMS
+            "$ENV{OPENSSL_ROOT_DIR}/bin"
+            "C:/Program Files/OpenSSL/bin"
+            "C:/Program Files/OpenSSL-Win64/bin"
+        )
+            if(EXISTS "${_ssl_bin}")
+                list(APPEND _easy_ssh_runtime_search_dirs "${_ssl_bin}")
+            endif()
+        endforeach()
+    endif()
     if(APPLE)
         foreach(_brew_lib IN ITEMS /opt/homebrew/lib /usr/local/lib)
             if(EXISTS "${_brew_lib}")
