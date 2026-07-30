@@ -172,7 +172,8 @@ jobs:
             -DEASY_SSH_BUNDLE_RUNTIME=ON \
             -DEASY_SSH_INTEGRATION_TESTS=OFF \
             -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
-            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/staging"
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/staging" \
+            -DCPACK_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION=OFF
 
       - name: Build
         run: cmake --build build-release --parallel
