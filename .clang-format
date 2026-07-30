@@ -43,3 +43,11 @@ SpacesInParentheses: false
 SpaceBeforeCpp11BracedList: false
 SortIncludes: CaseSensitive
 IncludeBlocks: Preserve
+InsertNewlineAtEOF: true
+
+# Qt macros that look like loops / forever blocks
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - forever
+  - Q_FOREVER

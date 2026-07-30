@@ -1,0 +1,8 @@
+-r requirements.txt
+
+clang-tidy==22.1.8
+clang-include-cleaner==22.1.7
+icnsutil==1.1.0
+
+# SPDX / REUSE compliance (headers + lint)
+reuse==5.1.1

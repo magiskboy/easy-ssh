@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Create .deps/venv and install requirements.txt into it.
+
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+# Create .deps/venv and install requirements into it (default: requirements/requirements.txt).
 # Prints the venv scripts/bin directory (add to PATH).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV="${EASY_SSH_VENV:-${ROOT}/.deps/venv}"
-REQ="${1:-${ROOT}/requirements.txt}"
+REQ="${1:-${ROOT}/requirements/requirements.txt}"
 
 if command -v python3 >/dev/null 2>&1; then
   PY=python3

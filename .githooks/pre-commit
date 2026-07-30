@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
-# Run the same clang-format check as CI before each commit.
+
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+# Pre-commit: mirror blocking CI checks (clang-format on staged C++, REUSE lint).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-exec "${ROOT}/.github/scripts/run-clang-format-check.sh"
+cd "$ROOT"
+
+FORMAT="${ROOT}/.github/scripts/run-clang-format.sh"
+REUSE_LINT="${ROOT}/.github/scripts/run-reuse-lint.sh"
+
+# Staged C/C++ that still exist (added / copied / modified / renamed).
+mapfile -t staged_cxx < <(
+  git diff --cached --name-only --diff-filter=ACMR -- '*.cpp' '*.h' '*.hpp' \
+    | while IFS= read -r f; do
+        [[ -f "$f" ]] && printf '%s\n' "$f"
+      done
+)
+
+if [[ ${#staged_cxx[@]} -gt 0 ]]; then
+  echo "pre-commit: clang-format --check (${#staged_cxx[@]} staged file(s))"
+  "$FORMAT" --check "${staged_cxx[@]}"
+else
+  echo "pre-commit: clang-format skipped (no staged C/C++ files)"
+fi
+
+echo "pre-commit: reuse lint"
+"$REUSE_LINT"

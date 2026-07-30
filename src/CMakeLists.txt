@@ -1,10 +1,6 @@
-# Layering:
-#   core/ssh/    — SSH common (session, auth, known hosts, SshWorker facade)
-#   core/shell/  — interactive shell channel
-#   core/fs/     — remote filesystem (FsRemote / FsEngine)
-#   core/tunnel/ — port forwards + tunnel store
-#   gui/         — may depend on core/
-#   app/         — main.cpp (+ platform resources on the executable only)
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
 
 set(EASY_SSH_CORE_SOURCES
     core/util/Logging.cpp

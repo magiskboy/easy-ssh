@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 include_guard(GLOBAL)
 
 include(FetchContent)
@@ -73,7 +77,7 @@ if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
                 FATAL_ERROR
                 "EasySshDeps: aqtinstall not found. Install it first, e.g.:\n"
                 "  .github/scripts/install-pip-toolchains.sh\n"
-                "  # or: python3 -m pip install -r requirements.txt"
+                "  # or: python3 -m pip install -r requirements/requirements.txt"
             )
         endif()
         set(_aqt_launch_mode "module")

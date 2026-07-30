@@ -1,19 +1,29 @@
 #!/usr/bin/env bash
-# Enable repository git hooks (clang-format pre-commit).
+
+# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+# Enable repository git hooks (clang-format + REUSE pre-commit).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 chmod +x .githooks/pre-commit
-chmod +x .github/scripts/run-clang-format-check.sh
+chmod +x .github/scripts/run-clang-format.sh
+chmod +x .github/scripts/run-reuse-lint.sh
 
 git config core.hooksPath .githooks
 
 echo "Git hooks installed (core.hooksPath=.githooks)"
-echo "Pre-commit runs: .github/scripts/run-clang-format-check.sh"
+echo "Pre-commit runs:"
+echo "  - clang-format --check on staged *.cpp / *.h"
+echo "  - reuse lint (whole tree; same as CI)"
 echo
-echo "Tip: install pip toolchains with:"
-echo "  python3 -m pip install -r requirements.txt"
-echo "Optional extras (tidy, include-cleaner, icnsutil):"
-echo "  python3 -m pip install -r requirements-dev.txt"
+echo "Required on PATH:"
+echo "  clang-format  →  python3 -m pip install -r requirements/requirements.txt"
+echo "  reuse         →  python3 -m pip install -r requirements/requirements-dev.txt"
+echo
+echo "Tip: after installing into .deps/venv:"
+echo "  export PATH=\"\$(pwd)/.deps/venv/bin:\$PATH\""

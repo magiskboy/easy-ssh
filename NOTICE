@@ -1,0 +1,46 @@
+# NOTICE
+
+Easy SSH is licensed under the GNU General Public License v3.0.
+See the [LICENSE](LICENSE) file for the full text.
+
+This product bundles or links against third-party software. Their licenses
+remain in effect and are independent of the Easy SSH license.
+
+## Qt
+
+- Project: https://www.qt.io/
+- License: GNU Lesser General Public License v3 (LGPL-3.0) and/or commercial
+  (as distributed by The Qt Company for the modules used here)
+- Used version pin: see `cmake/EasySshVersions.cmake` (`EASY_SSH_QT_VERSION`)
+
+## libssh
+
+- Project: https://www.libssh.org/
+- Source: https://gitlab.com/libssh/libssh-mirror
+- License: GNU Lesser General Public License v2.1 or later (LGPL-2.1+)
+- Used tag: see `EASY_SSH_LIBSSH_GIT_TAG` in `cmake/EasySshVersions.cmake`
+
+## QTermWidget
+
+- Project: https://github.com/lxqt/qtermwidget
+- License: GNU General Public License v2 or later (GPL-2.0+)
+- Used tag: see `EASY_SSH_QTERMWIDGET_GIT_TAG` in `cmake/EasySshVersions.cmake`
+- Easy SSH applies local patches under `third_party/qtermwidget-patches/`
+
+## Qt Keychain (qt6keychain)
+
+- Project: https://github.com/frankosterfeld/qtkeychain
+- License: BSD 3-Clause License
+- Used tag: see `EASY_SSH_QTKEYCHAIN_GIT_TAG` in `cmake/EasySshVersions.cmake`
+
+## lxqt-build-tools
+
+- Project: https://github.com/lxqt/lxqt-build-tools
+- License: BSD 3-Clause License (project files; check upstream tree)
+- Used as a build dependency for QTermWidget (`EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG`)
+
+---
+
+For the authoritative license text of each dependency, refer to the upstream
+source trees downloaded at configure/build time (or the copies shipped with
+binary packages of those projects).
