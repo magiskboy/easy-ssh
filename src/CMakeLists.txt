@@ -1,3 +1,8 @@
+# Layering:
+#   core/  — no gui/ includes, no Qt Widgets / QTermWidget
+#   gui/   — may depend on core/
+#   app/   — main.cpp (+ platform resources on the executable only)
+
 set(EASY_SSH_CORE_SOURCES
     core/util/Logging.cpp
     core/util/Logging.h
@@ -81,10 +86,34 @@ if(APPLE)
     list(APPEND EASY_SSH_PLATFORM_SOURCES "${EASY_SSH_MACOS_ICON}")
 endif()
 
+add_library(easy-ssh-core STATIC ${EASY_SSH_CORE_SOURCES})
+target_include_directories(easy-ssh-core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(easy-ssh-core
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        ssh
+        Qt6Keychain::Qt6Keychain
+)
+
+add_library(easy-ssh-gui STATIC ${EASY_SSH_GUI_SOURCES})
+target_link_libraries(easy-ssh-gui
+    PUBLIC
+        easy-ssh-core
+        Qt6::Widgets
+        qtermwidget6
+)
+target_compile_definitions(easy-ssh-gui
+    PUBLIC
+        APP_VERSION="${PROJECT_VERSION}"
+)
+
 qt_add_executable(easy-ssh
     app/main.cpp
-    ${EASY_SSH_CORE_SOURCES}
-    ${EASY_SSH_GUI_SOURCES}
     ${EASY_SSH_PLATFORM_SOURCES}
 )
 
@@ -99,24 +128,7 @@ set_target_properties(easy-ssh PROPERTIES
     MACOSX_BUNDLE_COPYRIGHT "Copyright (C) Easy SSH contributors"
 )
 
-target_include_directories(easy-ssh
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
 target_link_libraries(easy-ssh
     PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-        Qt6::Concurrent
-        Qt6::Network
-        ssh
-        qtermwidget6
-        Qt6Keychain::Qt6Keychain
-)
-
-target_compile_definitions(easy-ssh
-    PRIVATE
-        APP_VERSION="${PROJECT_VERSION}"
+        easy-ssh-gui
 )
