@@ -26,7 +26,7 @@ else
   PIP_PY="${BIN}/python"
 fi
 
-"$PIP_PY" -m pip install --upgrade pip
-"$PIP_PY" -m pip install -r "$REQ"
+"$PIP_PY" -m pip install --upgrade pip >&2
+"$PIP_PY" -m pip install -r "$REQ" >&2
 
 printf '%s\n' "$BIN"
