@@ -8,7 +8,12 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "Easy SSH")
 set(CPACK_VERBATIM_VARIABLES ON)
 set(CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/README.md")
-set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/resources/icons/app-256.png")
+# NSIS maps CPACK_PACKAGE_ICON → MUI_HEADERIMAGE_BITMAP, which requires a BMP
+# (not PNG) and often fails with forward-slash paths. Skip on Windows; MUI
+# icons below are enough.
+if(NOT WIN32)
+    set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/resources/icons/app-256.png")
+endif()
 
 if(EASY_SSH_PACKAGE_SUFFIX)
     set(CPACK_PACKAGE_FILE_NAME "easy-ssh-${EASY_SSH_PACKAGE_SUFFIX}")
@@ -20,8 +25,11 @@ if(WIN32)
     set(CPACK_GENERATOR "NSIS")
     set(CPACK_NSIS_DISPLAY_NAME "Easy SSH")
     set(CPACK_NSIS_PACKAGE_NAME "Easy SSH")
-    set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/resources/windows/easy-ssh.ico")
-    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_SOURCE_DIR}/resources/windows/easy-ssh.ico")
+    # NSIS File paths need backslashes; CMake string uses \\\\ for each \.
+    string(REPLACE "/" "\\\\" _easy_ssh_nsis_ico
+        "${CMAKE_SOURCE_DIR}/resources/windows/easy-ssh.ico")
+    set(CPACK_NSIS_MUI_ICON "${_easy_ssh_nsis_ico}")
+    set(CPACK_NSIS_MUI_UNIICON "${_easy_ssh_nsis_ico}")
     set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\easy-ssh.exe")
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
     set(CPACK_NSIS_CREATE_ICONS_EXTRA

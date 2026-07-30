@@ -103,12 +103,14 @@ install(SCRIPT ${easy_ssh_deploy_script})
 
 if(EASY_SSH_BUNDLE_RUNTIME)
     # Collect extra search paths for FetchContent build-tree libs / prefix installs.
-    set(_easy_ssh_runtime_search_dirs "")
-    foreach(_build_subdir IN ITEMS bin lib lib64)
-        if(EXISTS "${CMAKE_BINARY_DIR}/${_build_subdir}")
-            list(APPEND _easy_ssh_runtime_search_dirs "${CMAKE_BINARY_DIR}/${_build_subdir}")
-        endif()
-    endforeach()
+    # Always include CMAKE_BINARY_DIR/{bin,lib,lib64}: EXISTS at configure time is
+    # false before the first build, which left DIRECTORIES empty and made
+    # ssh/qtkeychain/qtermwidget6 unresolved on Windows CI.
+    set(_easy_ssh_runtime_search_dirs
+        "${CMAKE_BINARY_DIR}/bin"
+        "${CMAKE_BINARY_DIR}/lib"
+        "${CMAKE_BINARY_DIR}/lib64"
+    )
     if(CMAKE_PREFIX_PATH)
         foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
             if(EXISTS "${_prefix}/bin")
@@ -128,6 +130,18 @@ if(EASY_SSH_BUNDLE_RUNTIME)
             list(APPEND _easy_ssh_runtime_search_dirs "${_vcpkg_bin}")
         endif()
     endif()
+    if(WIN32)
+        # libssh links OpenSSL; GitHub windows runners ship it under Program Files.
+        foreach(_ssl_bin IN ITEMS
+            "$ENV{OPENSSL_ROOT_DIR}/bin"
+            "C:/Program Files/OpenSSL/bin"
+            "C:/Program Files/OpenSSL-Win64/bin"
+        )
+            if(EXISTS "${_ssl_bin}")
+                list(APPEND _easy_ssh_runtime_search_dirs "${_ssl_bin}")
+            endif()
+        endforeach()
+    endif()
     if(APPLE)
         foreach(_brew_lib IN ITEMS /opt/homebrew/lib /usr/local/lib)
             if(EXISTS "${_brew_lib}")
@@ -143,6 +157,21 @@ if(EASY_SSH_BUNDLE_RUNTIME)
     endforeach()
 
     if(WIN32)
+        # Copy FetchContent DLLs next to the exe (same idea as macOS Frameworks).
+        # Avoid install(TARGETS) on those deps — their own install rules may use
+        # absolute destinations that NSIS rejects.
+        foreach(_easy_ssh_dep IN LISTS _easy_ssh_bundle_deps)
+            install(CODE "
+set(_src \"$<TARGET_FILE:${_easy_ssh_dep}>\")
+if(EXISTS \"\${_src}\")
+  get_filename_component(_base \"\${_src}\" NAME)
+  if(NOT EXISTS \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/\${_base}\")
+    file(INSTALL \"\${_src}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
+  endif()
+endif()
+")
+        endforeach()
+
         install(CODE "
 set(_exe \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/easy-ssh.exe\")
 if(NOT EXISTS \"\${_exe}\")
@@ -157,18 +186,36 @@ if(EXISTS \"\${_exe}\")
 ${_easy_ssh_runtime_dirs_code}    PRE_EXCLUDE_REGEXES
       \"api-ms-\"
       \"ext-ms-\"
+      \"hvsi\"
+      \"wpaxholder\"
     POST_EXCLUDE_REGEXES
-      \".*[/\\\\\\\\]Windows[/\\\\\\\\]System32/.*\"
-      \".*[/\\\\\\\\]WinSxS/.*\"
+      \".*[\\\\/][Ss][Yy][Ss][Tt][Ee][Mm]32[\\\\/].*\"
+      \".*[\\\\/][Ss][Yy][Ss][Ww][Oo][Ww]64[\\\\/].*\"
+      \".*[\\\\/][Ww][Ii][Nn][Ss][Xx][Ss][\\\\/].*\"
   )
-  foreach(_dep \${_resolved_deps})
+  foreach(_dep IN LISTS _resolved_deps)
+    string(TOLOWER \"\${_dep}\" _dep_lower)
+    if(_dep_lower MATCHES \"system32|syswow64|winsxs\")
+      continue()
+    endif()
     get_filename_component(_base \"\${_dep}\" NAME)
     if(NOT EXISTS \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/\${_base}\")
       file(INSTALL \"\${_dep}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
     endif()
   endforeach()
-  if(_unresolved_deps)
-    message(WARNING \"Unresolved Windows runtime dependencies: \${_unresolved_deps}\")
+  set(_easy_ssh_missing_unresolved \"\")
+  foreach(_u IN LISTS _unresolved_deps)
+    string(TOLOWER \"\${_u}\" _u_lower)
+    if(_u_lower MATCHES \"hvsi|wpaxholder|api-ms-|ext-ms-\")
+      continue()
+    endif()
+    if(EXISTS \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/\${_u}\")
+      continue()
+    endif()
+    list(APPEND _easy_ssh_missing_unresolved \"\${_u}\")
+  endforeach()
+  if(_easy_ssh_missing_unresolved)
+    message(WARNING \"Unresolved Windows runtime dependencies: \${_easy_ssh_missing_unresolved}\")
   endif()
 endif()
 ")
