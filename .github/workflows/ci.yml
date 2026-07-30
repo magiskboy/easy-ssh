@@ -192,7 +192,7 @@ jobs:
               cpack -C Release -G DragNDrop
               ;;
             windows)
-              cpack -C Release -G NSIS
+              cpack -C Release -G NSIS -DCPACK_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION=OFF
               ;;
           esac
           shopt -s nullglob
