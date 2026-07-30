@@ -152,7 +152,6 @@ bool SshSession::establish(const Connection &connection,
     return true;
 }
 
-
 bool SshSession::applyConnectionOptions(const Connection &connection)
 {
     if (m_session == nullptr) {
@@ -201,7 +200,6 @@ bool SshSession::applyConnectionOptions(const Connection &connection)
     return true;
 }
 
-
 void SshSession::applyAdvancedOptions(const Connection &connection)
 {
     if (m_session == nullptr) {
@@ -215,7 +213,6 @@ void SshSession::applyAdvancedOptions(const Connection &connection)
         ssh_options_set(m_session, SSH_OPTIONS_COMPRESSION, "yes");
     }
 }
-
 
 void SshSession::registerJumpCallbacks(const Connection &connection)
 {
@@ -245,7 +242,6 @@ void SshSession::registerJumpCallbacks(const Connection &connection)
         }
     }
 }
-
 
 bool SshSession::connectWithFallback(const Connection &connection, QString *errorOut)
 {
@@ -296,7 +292,6 @@ bool SshSession::connectWithFallback(const Connection &connection, QString *erro
     return false;
 }
 
-
 void SshSession::applyWindowsAlgorithmFallback()
 {
 #ifdef Q_OS_WIN
@@ -317,7 +312,6 @@ void SshSession::applyWindowsAlgorithmFallback()
     ssh_options_set(m_session, SSH_OPTIONS_CIPHERS_S_C, kCiphers);
 #endif
 }
-
 
 void SshSession::logSessionOptions(const char *stage) const
 {
@@ -350,7 +344,6 @@ void SshSession::logSessionOptions(const char *stage) const
                     s2c.isEmpty() ? QStringLiteral("<default>") : s2c,
                     compression.isEmpty() ? QStringLiteral("<default>") : compression);
 }
-
 
 int SshSession::jumpBeforeConnectionCb(ssh_session session, void *userdata)
 {
@@ -399,7 +392,8 @@ int SshSession::handleJumpVerifyKnownHost(ssh_session session, int hopIndex)
     }
 
     const JumpHop &hop = m_connection.jumpHops.at(hopIndex);
-    const QString context = trSession("Gateway (%1@%2:%3)").arg(hop.username, hop.host).arg(hop.port);
+    const QString context =
+        trSession("Gateway (%1@%2:%3)").arg(hop.username, hop.host).arg(hop.port);
 
     if (m_hostKeyVerifier && m_hostKeyVerifier(session, context)) {
         return SSH_OK;
@@ -436,7 +430,6 @@ int SshSession::handleJumpAuthenticate(ssh_session session, int hopIndex)
                      << sessionErrorOf(session);
     return SSH_ERROR;
 }
-
 
 bool SshSession::pollKeepAlive(bool hadChannelActivity, QString *errorOut)
 {

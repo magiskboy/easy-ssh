@@ -33,10 +33,8 @@ bool RemoteTunnelSession::start()
 
     const QByteArray address = m_def.remoteHost.toUtf8();
     int boundPort = 0;
-    const int rc = ssh_channel_listen_forward(m_session,
-                                              address.isEmpty() ? nullptr : address.constData(),
-                                              m_def.remotePort,
-                                              &boundPort);
+    const int rc = ssh_channel_listen_forward(
+        m_session, address.isEmpty() ? nullptr : address.constData(), m_def.remotePort, &boundPort);
 
     if (rc != SSH_OK) {
         const QString message = tr("Remote listen failed: %1").arg(sessionError());

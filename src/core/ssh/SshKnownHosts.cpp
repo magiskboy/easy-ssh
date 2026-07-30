@@ -68,7 +68,9 @@ QString SshKnownHosts::knownHostsFilePathFor(ssh_session session)
     return QDir::home().filePath(QStringLiteral(".ssh/known_hosts"));
 }
 
-bool SshKnownHosts::knownHostsLineMatchesHost(const QString &hostField, const QString &host, int port)
+bool SshKnownHosts::knownHostsLineMatchesHost(const QString &hostField,
+                                              const QString &host,
+                                              int port)
 {
     if (hostField.isEmpty() || host.isEmpty()) {
         return false;

@@ -36,6 +36,5 @@ signals:
 };
 
 /// Create Local/Remote session (parented). Dynamic → stub that reports NotSupported.
-ITunnelSession *createTunnelSession(const TunnelDefinition &def,
-                                    ssh_session session,
-                                    QObject *parent);
+ITunnelSession *
+createTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *parent);

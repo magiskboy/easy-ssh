@@ -21,8 +21,8 @@ public:
     };
 
     /// Return true if the user accepted the host key.
-    using TrustCallback =
-        std::function<bool(Disposition disposition, const QString &fingerprint, const QString &contextLabel)>;
+    using TrustCallback = std::function<bool(
+        Disposition disposition, const QString &fingerprint, const QString &contextLabel)>;
     using ErrorCallback = std::function<void(const QString &message)>;
 
     static QString fingerprintOf(ssh_session session);

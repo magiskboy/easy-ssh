@@ -12,7 +12,9 @@ class RemoteTunnelSession final : public ITunnelSession
     Q_OBJECT
 
 public:
-    RemoteTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *parent = nullptr);
+    RemoteTunnelSession(const TunnelDefinition &def,
+                        ssh_session session,
+                        QObject *parent = nullptr);
     ~RemoteTunnelSession() override;
 
     QUuid id() const override { return m_def.id; }

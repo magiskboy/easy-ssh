@@ -4,9 +4,8 @@
 #include "LocalTunnelSession.h"
 #include "RemoteTunnelSession.h"
 
-ITunnelSession *createTunnelSession(const TunnelDefinition &def,
-                                    ssh_session session,
-                                    QObject *parent)
+ITunnelSession *
+createTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *parent)
 {
     switch (def.type) {
     case TunnelType::Local:

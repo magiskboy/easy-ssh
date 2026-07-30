@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/connection/Connection.h"
 #include "ErrorNotifier.h"
+#include "core/connection/Connection.h"
 
 #include <QHash>
 #include <QList>

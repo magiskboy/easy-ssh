@@ -1,7 +1,7 @@
 #pragma once
 
-#include "gui/ErrorNotifier.h"
 #include "core/tunnel/Tunnel.h"
+#include "gui/ErrorNotifier.h"
 #include "gui/session/TerminalSessionWidget.h"
 
 #include <QWidget>

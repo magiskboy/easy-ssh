@@ -1,8 +1,8 @@
 #include "TunnelListWidget.h"
 
+#include "core/tunnel/TunnelStore.h"
 #include "gui/ErrorNotifier.h"
 #include "gui/models/TunnelListModel.h"
-#include "core/tunnel/TunnelStore.h"
 #include "gui/tunnel/TunnelDialog.h"
 
 #include <QAbstractItemView>

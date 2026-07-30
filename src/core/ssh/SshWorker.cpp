@@ -12,10 +12,9 @@ SshWorker::SshWorker(QObject *parent) : QObject(parent)
         emit sftpProgress(done, total, name);
     });
 
-    m_session.setHostKeyVerifier(
-        [this](ssh_session session, const QString &contextLabel) {
-            return verifyKnownHostForSession(session, contextLabel);
-        });
+    m_session.setHostKeyVerifier([this](ssh_session session, const QString &contextLabel) {
+        return verifyKnownHostForSession(session, contextLabel);
+    });
 }
 
 SshWorker::~SshWorker()

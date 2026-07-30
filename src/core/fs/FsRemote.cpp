@@ -359,7 +359,9 @@ bool FsRemote::uploadFileTo(const QString &localPath, const QString &remotePath,
     return true;
 }
 
-bool FsRemote::downloadPaths(const QStringList &remotePaths, const QString &localDir, QString *error)
+bool FsRemote::downloadPaths(const QStringList &remotePaths,
+                             const QString &localDir,
+                             QString *error)
 {
     if (!isOpen()) {
         if (error) {
@@ -439,7 +441,8 @@ bool FsRemote::uploadPathRecursive(const QString &localPath,
         if (!m_engine->createDirectory(remotePath, &createError)) {
             bool existsAsDir = false;
             QString statError;
-            if (!(m_engine->isRemoteDirectory(remotePath, &existsAsDir, &statError) && existsAsDir)) {
+            if (!(m_engine->isRemoteDirectory(remotePath, &existsAsDir, &statError) &&
+                  existsAsDir)) {
                 if (error) {
                     *error = createError.isEmpty()
                                  ? trFs("Cannot create remote folder: %1").arg(statError)

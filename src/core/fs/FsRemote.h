@@ -40,9 +40,8 @@ public:
     void setProgressCallback(ProgressCallback callback);
     bool wasCanceled() const;
 
-    bool listDirectoryEntries(const QString &path,
-                              QVector<RemoteEntry> *outEntries,
-                              QString *error);
+    bool
+    listDirectoryEntries(const QString &path, QVector<RemoteEntry> *outEntries, QString *error);
     bool createDirectory(const QString &path, QString *error);
     bool renamePath(const QString &from, const QString &to, QString *error);
     bool removePath(const QString &path, bool recursive, QString *error);

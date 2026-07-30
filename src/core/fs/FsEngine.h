@@ -17,7 +17,8 @@
 class FsEngine
 {
 public:
-    enum Capability {
+    enum Capability
+    {
         List = 1 << 0,
         Mkdir = 1 << 1,
         Rename = 1 << 2,
@@ -38,16 +39,13 @@ public:
     virtual void close() = 0;
     virtual bool isOpen() const = 0;
 
-    virtual bool listDirectoryEntries(const QString &path,
-                                      QVector<RemoteEntry> *outEntries,
-                                      QString *error) = 0;
+    virtual bool
+    listDirectoryEntries(const QString &path, QVector<RemoteEntry> *outEntries, QString *error) = 0;
     virtual bool createDirectory(const QString &path, QString *error) = 0;
     virtual bool renamePath(const QString &from, const QString &to, QString *error) = 0;
     virtual bool removeFile(const QString &path, QString *error) = 0;
     virtual bool removeDirectory(const QString &path, QString *error) = 0;
-    virtual bool canonicalizePath(const QString &path,
-                                  QString *canonicalOut,
-                                  QString *error) = 0;
+    virtual bool canonicalizePath(const QString &path, QString *canonicalOut, QString *error) = 0;
     virtual bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) = 0;
     virtual bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) = 0;
 

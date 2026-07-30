@@ -1,10 +1,10 @@
 #include "TerminalSessionWidget.h"
 
 #include "core/settings/AppSettings.h"
-#include "gui/ErrorNotifier.h"
-#include "core/util/Logging.h"
 #include "core/ssh/SshWorker.h"
 #include "core/tunnel/TunnelStore.h"
+#include "core/util/Logging.h"
+#include "gui/ErrorNotifier.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
 #include <QAbstractButton>

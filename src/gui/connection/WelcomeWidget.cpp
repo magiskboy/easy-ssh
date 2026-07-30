@@ -1,7 +1,7 @@
 #include "WelcomeWidget.h"
 
-#include "core/settings/AppSettings.h"
 #include "core/connection/Connection.h"
+#include "core/settings/AppSettings.h"
 #include "gui/models/ConnectionModel.h"
 
 #include <QAbstractItemView>

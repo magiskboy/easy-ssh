@@ -21,8 +21,7 @@
 class SshSession
 {
 public:
-    using HostKeyVerifyFn =
-        std::function<bool(ssh_session session, const QString &contextLabel)>;
+    using HostKeyVerifyFn = std::function<bool(ssh_session session, const QString &contextLabel)>;
 
     SshSession() = default;
     ~SshSession();

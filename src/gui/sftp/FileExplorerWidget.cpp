@@ -1,10 +1,10 @@
 #include "FileExplorerWidget.h"
 
+#include "core/fs/SftpTypes.h"
 #include "core/settings/AppSettings.h"
 #include "gui/ErrorNotifier.h"
 #include "gui/models/OpenFileTracker.h"
 #include "gui/models/RemoteFileModel.h"
-#include "core/fs/SftpTypes.h"
 #include "gui/session/TerminalSessionWidget.h"
 
 #include <QAbstractItemView>

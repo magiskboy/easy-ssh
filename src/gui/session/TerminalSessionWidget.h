@@ -1,10 +1,10 @@
 #pragma once
 
 #include "core/connection/Connection.h"
-#include "gui/ErrorNotifier.h"
 #include "core/fs/SftpTypes.h"
 #include "core/ssh/SshWorker.h"
 #include "core/tunnel/Tunnel.h"
+#include "gui/ErrorNotifier.h"
 
 #include <QByteArray>
 #include <QDateTime>

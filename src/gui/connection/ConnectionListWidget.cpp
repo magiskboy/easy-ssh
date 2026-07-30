@@ -1,10 +1,10 @@
 #include "ConnectionListWidget.h"
 
 #include "ConnectionDialog.h"
+#include "core/connection/SecretStore.h"
+#include "gui/ErrorNotifier.h"
 #include "gui/models/ConnectionFilterProxy.h"
 #include "gui/models/ConnectionModel.h"
-#include "gui/ErrorNotifier.h"
-#include "core/connection/SecretStore.h"
 
 #include <QAbstractItemView>
 #include <QItemSelectionModel>

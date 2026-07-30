@@ -69,20 +69,14 @@ bool ScpEngine::remoteFileSize(const QString &, qint64 *, QString *error)
     return notSupported(error);
 }
 
-bool ScpEngine::uploadFile(const QString &,
-                           const QString &,
-                           const CancelCheck &,
-                           const ProgressNote &,
-                           QString *error)
+bool ScpEngine::uploadFile(
+    const QString &, const QString &, const CancelCheck &, const ProgressNote &, QString *error)
 {
     return notSupported(error);
 }
 
-bool ScpEngine::downloadFile(const QString &,
-                             const QString &,
-                             const CancelCheck &,
-                             const ProgressNote &,
-                             QString *error)
+bool ScpEngine::downloadFile(
+    const QString &, const QString &, const CancelCheck &, const ProgressNote &, QString *error)
 {
     return notSupported(error);
 }

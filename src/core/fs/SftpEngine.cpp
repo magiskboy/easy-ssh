@@ -61,7 +61,8 @@ bool SftpEngine::open(ssh_session session, QString *failureMessage)
             const QString detail =
                 sftpErrorMessage().isEmpty() ? sessionErrorOf(session) : sftpErrorMessage();
             if (detail.contains(QStringLiteral("subsystem"), Qt::CaseInsensitive) ||
-                sessionErrorOf(session).contains(QStringLiteral("subsystem"), Qt::CaseInsensitive)) {
+                sessionErrorOf(session).contains(QStringLiteral("subsystem"),
+                                                 Qt::CaseInsensitive)) {
                 *failureMessage =
                     trSftp("This server does not support SFTP (subsystem request failed).");
             } else {
@@ -374,7 +375,8 @@ bool SftpEngine::uploadFile(const QString &localPath,
     QFile local(localPath);
     if (!local.open(QIODevice::ReadOnly)) {
         if (error) {
-            *error = trSftp("Cannot open local file: %1").arg(localIoErrorMessage(local.errorString()));
+            *error =
+                trSftp("Cannot open local file: %1").arg(localIoErrorMessage(local.errorString()));
         }
         return false;
     }
@@ -405,8 +407,8 @@ bool SftpEngine::uploadFile(const QString &localPath,
         const qint64 nread = local.read(buffer, static_cast<qint64>(sizeof(buffer)));
         if (nread < 0) {
             if (error) {
-                *error =
-                    trSftp("Cannot read local file: %1").arg(localIoErrorMessage(local.errorString()));
+                *error = trSftp("Cannot read local file: %1")
+                             .arg(localIoErrorMessage(local.errorString()));
             }
             sftp_close(file);
             return false;
@@ -503,8 +505,8 @@ bool SftpEngine::downloadFile(const QString &remotePath,
 
         if (local.write(buffer, nbytes) != nbytes) {
             if (error) {
-                *error =
-                    trSftp("Cannot write local file: %1").arg(localIoErrorMessage(local.errorString()));
+                *error = trSftp("Cannot write local file: %1")
+                             .arg(localIoErrorMessage(local.errorString()));
             }
             sftp_close(file);
             return false;

@@ -43,8 +43,7 @@ bool pollChannelToSocket(TunnelBridge *bridge)
 
     char buffer[8192];
     while (true) {
-        const int nbytes =
-            ssh_channel_read_nonblocking(bridge->channel, buffer, sizeof(buffer), 0);
+        const int nbytes = ssh_channel_read_nonblocking(bridge->channel, buffer, sizeof(buffer), 0);
         if (nbytes == SSH_EOF || nbytes < 0) {
             return true;
         }

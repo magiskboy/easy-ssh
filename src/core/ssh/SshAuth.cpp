@@ -96,8 +96,8 @@ bool SshAuth::authenticateWithAgent(ssh_session session)
 }
 
 bool SshAuth::authenticatePrivateKey(ssh_session session,
-                                       const QString &keyPath,
-                                       const QString &passphrase)
+                                     const QString &keyPath,
+                                     const QString &passphrase)
 {
     if (keyPath.isEmpty()) {
         return false;
@@ -126,4 +126,3 @@ bool SshAuth::authenticatePublicKeyAuto(ssh_session session, const QString &pass
     const int rc = ssh_userauth_publickey_auto(session, nullptr, phrasePtr);
     return rc == SSH_AUTH_SUCCESS;
 }
-
