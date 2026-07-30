@@ -5,9 +5,63 @@ install(TARGETS easy-ssh
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-# Fat packages ship non-Qt deps via EASY_SSH_BUNDLE_RUNTIME (GET_RUNTIME_DEPENDENCIES)
-# and Qt via qt_generate_deploy_app_script — not install(TARGETS) on dependency targets
-# (IMPORTED system targets cannot be installed that way).
+# Fat packages: embed in-tree FetchContent shared libs, then Qt deploy, then
+# GET_RUNTIME_DEPENDENCIES for remaining runtime deps. Never install(TARGETS) on
+# IMPORTED system packages.
+
+# Non-IMPORTED shared deps built in this tree (FetchContent).
+set(_easy_ssh_bundle_deps "")
+foreach(_easy_ssh_dep IN ITEMS ssh qt6keychain qtermwidget6)
+    if(NOT TARGET ${_easy_ssh_dep})
+        continue()
+    endif()
+    get_target_property(_easy_ssh_dep_imported ${_easy_ssh_dep} IMPORTED)
+    if(_easy_ssh_dep_imported)
+        continue()
+    endif()
+    get_target_property(_easy_ssh_dep_type ${_easy_ssh_dep} TYPE)
+    if(NOT _easy_ssh_dep_type STREQUAL "SHARED_LIBRARY")
+        continue()
+    endif()
+    list(APPEND _easy_ssh_bundle_deps ${_easy_ssh_dep})
+endforeach()
+
+# macOS: copy FetchContent dylibs into the .app Frameworks *before* macdeployqt.
+# Otherwise macdeployqt/GET_RUNTIME_DEPENDENCIES cannot resolve @rpath/libssh.4.dylib
+# (soname) and the DMG ships without those libs.
+if(APPLE AND EASY_SSH_BUNDLE_RUNTIME AND _easy_ssh_bundle_deps)
+    foreach(_easy_ssh_dep IN LISTS _easy_ssh_bundle_deps)
+        install(CODE "
+set(_src \"$<TARGET_FILE:${_easy_ssh_dep}>\")
+set(_soname \"$<TARGET_SONAME_FILE_NAME:${_easy_ssh_dep}>\")
+set(_fw \"\${CMAKE_INSTALL_PREFIX}/easy-ssh.app/Contents/Frameworks\")
+file(MAKE_DIRECTORY \"\${_fw}\")
+file(INSTALL \"\${_src}\" DESTINATION \"\${_fw}\" RENAME \"\${_soname}\")
+execute_process(COMMAND install_name_tool
+  -id \"@executable_path/../Frameworks/\${_soname}\" \"\${_fw}/\${_soname}\"
+  ERROR_QUIET)
+file(GLOB _apps \"\${CMAKE_INSTALL_PREFIX}/*.app\")
+list(LENGTH _apps _app_count)
+if(_app_count GREATER 0)
+  list(GET _apps 0 _app)
+  file(GLOB _bins \"\${_app}/Contents/MacOS/*\")
+  foreach(_candidate IN LISTS _bins)
+    if(IS_DIRECTORY \"\${_candidate}\")
+      continue()
+    endif()
+    get_filename_component(_bin \"\${_candidate}\" NAME)
+    if(_bin MATCHES \"^\\\\.\\\\.\")
+      continue()
+    endif()
+    execute_process(COMMAND install_name_tool
+      -change \"@rpath/\${_soname}\" \"@executable_path/../Frameworks/\${_soname}\" \"\${_candidate}\"
+      ERROR_QUIET)
+    break()
+  endforeach()
+endif()
+")
+    endforeach()
+endif()
 
 install(FILES
     ${CMAKE_SOURCE_DIR}/resources/linux/io.github.magiskboy.easy-ssh.desktop
@@ -30,9 +84,12 @@ set(_easy_ssh_deploy_tool_options "")
 if(WIN32)
     set(_easy_ssh_deploy_tool_options --ignore-library-errors)
 elseif(APPLE)
-    # Ad-hoc sign so Gatekeeper accepts the DMG app; we re-sign again after
-    # install_name_tool in EASY_SSH_BUNDLE_RUNTIME.
-    set(_easy_ssh_deploy_tool_options -codesign=-)
+    # Ad-hoc sign; re-signed again after any later install_name_tool.
+    # -libpath helps macdeployqt find remaining non-Qt deps in the build tree.
+    set(_easy_ssh_deploy_tool_options
+        -codesign=-
+        -libpath=${CMAKE_BINARY_DIR}/lib
+    )
 endif()
 
 qt_generate_deploy_app_script(
@@ -172,12 +229,17 @@ ${_easy_ssh_runtime_dirs_code}      POST_EXCLUDE_REGEXES
         endif()
       endif()
     endforeach()
-    # GET_RUNTIME_DEPENDENCIES often reports @rpath/* as unresolved even when
-    # macdeployqt already copied them into Frameworks — only warn if missing.
+    # @rpath/* may still appear unresolved even after we embedded FetchContent
+    # libs under Frameworks — only warn if the file is truly missing.
     set(_easy_ssh_missing_unresolved \"\")
     foreach(_u IN LISTS _unresolved_deps)
-      string(REGEX REPLACE \"^.*/\" \"\" _ubase \"\${_u}\")
-      if(NOT EXISTS \"\${_fw}/\${_ubase}\")
+      string(REGEX REPLACE \"^@rpath/\" \"\" _ubase \"\${_u}\")
+      string(REGEX REPLACE \"^.*/\" \"\" _ubase \"\${_ubase}\")
+      if(EXISTS \"\${_fw}/\${_ubase}\")
+        execute_process(COMMAND install_name_tool
+          -change \"@rpath/\${_ubase}\" \"@executable_path/../Frameworks/\${_ubase}\" \"\${_exe}\"
+          ERROR_QUIET)
+      else()
         list(APPEND _easy_ssh_missing_unresolved \"\${_u}\")
       endif()
     endforeach()
