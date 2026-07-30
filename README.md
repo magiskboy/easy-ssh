@@ -140,8 +140,47 @@ cmake --build --preset release
 ./build-release/bin/easy-ssh
 ```
 
-Requires Python 3 + pip for `aqtinstall` when `EASY_SSH_FETCH_QT=ON`.
+Requires Python 3 + pip when `EASY_SSH_FETCH_QT=ON` (`aqtinstall` downloads Qt).
 First configure may take several minutes while Qt and FetchContent deps download.
+
+Install pip-managed toolchains so local and CI match. Core set (aqtinstall,
+clang-format, cmake, ninja, patchelf) is what CI uses:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+On macOS (Homebrew Python / PEP 668), prefer a venv — CI uses the same approach:
+
+```bash
+python3 -m venv .deps/venv
+source .deps/venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Or run `.github/scripts/install-pip-toolchains.sh` and put its printed `bin` directory on `PATH`.
+
+Optional local extras (clang-tidy, clang-include-cleaner, icnsutil):
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+```
+
+Ensure the install bin directory is on `PATH` (venv `bin/` / `Scripts`, or `~/.local/bin` with
+`--user`).
+
+**Not available via pip** (kept as OS / GitHub Actions tooling):
+
+| Need | How CI provides it | Why not pip |
+|------|--------------------|-------------|
+| Linux Qt runtime (xcb, OpenGL, …) | [`ci/apt-linux.txt`](ci/apt-linux.txt) via apt | System `.so` libs; [Qt Linux requirements](https://doc.qt.io/qt-6/linux-requirements.html) |
+| MSVC C++ compiler | `ilammy/msvc-dev-cmd` on `windows-2022` | No MSVC wheel on PyPI; `aqtinstall` can install MinGW/vcredist only |
+| appimagetool | [`.github/scripts/fetch-appimagetool.sh`](.github/scripts/fetch-appimagetool.sh) (pinned release) | Official binary is an AppImage, not a PyPI package |
+
+```bash
+# Linux system packages (example):
+sudo apt-get install -y --no-install-recommends $(grep -vE '^\s*(#|$)' ci/apt-linux.txt)
+```
 
 Enable local git hooks (clang-format pre-commit, same check as CI):
 

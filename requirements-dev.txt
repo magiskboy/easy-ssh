@@ -1,0 +1,15 @@
+# Extended local / optional CI tooling (includes core requirements.txt).
+#
+#   python3 -m pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+# Static analysis; wheel also ships clang-apply-replacements, run-clang-tidy,
+# and clang-tidy-diff (aligned with clang-format 22.1.8).
+clang-tidy==22.1.8
+
+# Find/remove unused #includes (clang-tools-extra). Closest 22.1.x on PyPI.
+clang-include-cleaner==22.1.7
+
+# scripts/generate-icons.sh fallback when macOS iconutil is unavailable.
+icnsutil==1.1.0

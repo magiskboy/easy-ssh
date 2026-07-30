@@ -57,12 +57,22 @@ set(_qt_linguist_marker
 if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
     message(STATUS "EasySshQt: installing Qt ${EASY_SSH_QT_VERSION} via aqt (${_aqt_host}/${_aqt_arch})")
 
-    find_program(EASY_SSH_AQT aqt)
+    # Prefer project venv from .github/scripts/install-pip-toolchains.sh (CI / local).
+    set(_easy_ssh_venv_hints
+        "${CMAKE_SOURCE_DIR}/.deps/venv/Scripts"
+        "${CMAKE_SOURCE_DIR}/.deps/venv/bin"
+    )
+    find_program(EASY_SSH_AQT NAMES aqt aqt.exe HINTS ${_easy_ssh_venv_hints})
     if(EASY_SSH_AQT)
         set(_aqt_launcher "${EASY_SSH_AQT}")
         set(_aqt_launch_mode "exe")
     else()
-        find_program(EASY_SSH_PYTHON3 NAMES python3 python python3.exe python.exe REQUIRED)
+        find_program(
+            EASY_SSH_PYTHON3
+            NAMES python python3 python.exe python3.exe
+            HINTS ${_easy_ssh_venv_hints}
+            REQUIRED
+        )
         execute_process(
             COMMAND ${EASY_SSH_PYTHON3} -m aqt --help
             RESULT_VARIABLE _aqt_probe
@@ -73,7 +83,8 @@ if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
             message(
                 FATAL_ERROR
                 "EasySshQt: aqtinstall not found. Install it first, e.g.:\n"
-                "  pip install aqtinstall   or   pipx install aqtinstall   or   brew install pipx && pipx install aqtinstall"
+                "  .github/scripts/install-pip-toolchains.sh\n"
+                "  # or: python3 -m pip install -r requirements.txt"
             )
         endif()
         set(_aqt_launch_mode "module")
