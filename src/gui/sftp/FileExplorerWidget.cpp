@@ -5,11 +5,11 @@
 #include "FileExplorerWidget.h"
 
 #include "core/fs/SftpTypes.h"
+#include "core/session/Session.h"
 #include "core/settings/AppSettings.h"
 #include "gui/ErrorNotifier.h"
 #include "gui/models/OpenFileTracker.h"
 #include "gui/models/RemoteFileModel.h"
-#include "gui/session/TerminalSessionWidget.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -217,7 +217,7 @@ bool FileExplorerWidget::eventFilter(QObject *watched, QEvent *event)
     return QWidget::eventFilter(watched, event);
 }
 
-void FileExplorerWidget::bindSession(TerminalSessionWidget *session)
+void FileExplorerWidget::bindSession(Session *session)
 {
     if (m_session == session && session != nullptr) {
         return;
@@ -250,33 +250,20 @@ void FileExplorerWidget::bindSession(TerminalSessionWidget *session)
 
     updateSessionBadge();
 
-    connect(m_session,
-            &TerminalSessionWidget::pathCanonicalized,
-            this,
-            &FileExplorerWidget::onPathCanonicalized);
-    connect(
-        m_session, &TerminalSessionWidget::sftpFinished, this, &FileExplorerWidget::onSftpFinished);
-    connect(m_session, &TerminalSessionWidget::sftpError, this, &FileExplorerWidget::onSftpError);
-    connect(
-        m_session, &TerminalSessionWidget::sftpCanceled, this, &FileExplorerWidget::onSftpCanceled);
-    connect(
-        m_session, &TerminalSessionWidget::sftpProgress, this, &FileExplorerWidget::onSftpProgress);
-    connect(m_session,
-            &TerminalSessionWidget::directoryListed,
-            this,
-            &FileExplorerWidget::onDirectoryListed);
-    connect(m_session,
-            &TerminalSessionWidget::sftpUnavailable,
-            this,
-            [this](const QString &message) { showSftpUnavailable(message); });
-    connect(m_session,
-            &TerminalSessionWidget::sessionStateChanged,
-            this,
-            [this](TerminalSessionWidget::State state) {
-                if (state != TerminalSessionWidget::State::Connected) {
-                    unbindSession();
-                }
-            });
+    connect(m_session, &Session::pathCanonicalized, this, &FileExplorerWidget::onPathCanonicalized);
+    connect(m_session, &Session::sftpFinished, this, &FileExplorerWidget::onSftpFinished);
+    connect(m_session, &Session::sftpError, this, &FileExplorerWidget::onSftpError);
+    connect(m_session, &Session::sftpCanceled, this, &FileExplorerWidget::onSftpCanceled);
+    connect(m_session, &Session::sftpProgress, this, &FileExplorerWidget::onSftpProgress);
+    connect(m_session, &Session::directoryListed, this, &FileExplorerWidget::onDirectoryListed);
+    connect(m_session, &Session::sftpUnavailable, this, [this](const QString &message) {
+        showSftpUnavailable(message);
+    });
+    connect(m_session, &Session::stateChanged, this, [this](SessionState state) {
+        if (state != SessionState::Connected) {
+            unbindSession();
+        }
+    });
 
     if (!m_session->isSftpAvailable()) {
         showSftpUnavailable(m_session->sftpUnavailableReason().isEmpty()
@@ -1054,8 +1041,7 @@ void FileExplorerWidget::copySelectedPath()
 
 void FileExplorerWidget::updateActionsEnabled()
 {
-    const bool connected = m_session &&
-                           m_session->sessionState() == TerminalSessionWidget::State::Connected &&
+    const bool connected = m_session && m_session->state() == SessionState::Connected &&
                            !m_model->rootPath().isEmpty();
     const QModelIndex index = currentIndex();
     const bool hasSelection = index.isValid() && !m_model->isParentNavEntry(index);
@@ -1170,7 +1156,7 @@ void FileExplorerWidget::showSftpUnavailable(const QString &message)
     finishTransferProgress();
     setOpInFlight(false);
     m_model->unbindSession();
-    // Keep m_session so tab switches / disconnect still work via sessionStateChanged.
+    // Keep m_session so tab switches / disconnect still work via stateChanged.
     const QString detail = message.isEmpty() ? tr("This server does not support SFTP.") : message;
     m_pathLabel->setText(tr("SFTP unavailable"));
     m_emptyLabel->setText(tr("%1\n\nTerminal session is still active.").arg(detail));

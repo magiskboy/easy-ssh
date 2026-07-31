@@ -7,6 +7,7 @@
 #include "core/tunnel/Tunnel.h"
 #include "core/util/Logging.h"
 #include "gui/MainWindow.h"
+#include "gui/terminal/QTermWidgetResources.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -26,6 +27,8 @@ int main(int argc, char *argv[])
     initLogging();
     qCWarning(lcApp) << "Starting Easy SSH" << QApplication::applicationVersion()
                      << "log:" << logFilePath();
+
+    registerQTermWidgetResources();
 
     qRegisterMetaType<RemoteEntry>("RemoteEntry");
     qRegisterMetaType<QVector<RemoteEntry>>("QVector<RemoteEntry>");

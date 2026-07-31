@@ -4,7 +4,7 @@
 
 #include "OpenFileTracker.h"
 
-#include "gui/session/TerminalSessionWidget.h"
+#include "core/session/Session.h"
 
 #include <QDir>
 #include <QFile>
@@ -26,9 +26,7 @@ OpenFileTracker::OpenFileTracker(QObject *parent)
     connect(m_debounce, &QTimer::timeout, this, &OpenFileTracker::flushPendingUploads);
 }
 
-void OpenFileTracker::track(const QString &localPath,
-                            const QString &remotePath,
-                            TerminalSessionWidget *session)
+void OpenFileTracker::track(const QString &localPath, const QString &remotePath, Session *session)
 {
     if (localPath.isEmpty() || remotePath.isEmpty() || session == nullptr) {
         return;
@@ -47,7 +45,7 @@ void OpenFileTracker::track(const QString &localPath,
     }
 }
 
-void OpenFileTracker::untrackSession(TerminalSessionWidget *session)
+void OpenFileTracker::untrackSession(Session *session)
 {
     if (session == nullptr) {
         return;

@@ -11,6 +11,7 @@
 
 Q_DECLARE_LOGGING_CATEGORY(lcSsh)
 Q_DECLARE_LOGGING_CATEGORY(lcApp)
+Q_DECLARE_LOGGING_CATEGORY(lcGui)
 
 void initLogging();
 QString logFilePath();

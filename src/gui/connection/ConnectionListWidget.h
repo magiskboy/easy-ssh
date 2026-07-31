@@ -32,9 +32,11 @@ public:
 
     void createConnection();
     void editSelectedConnection();
+    void editConnectionById(const QUuid &id);
     void deleteSelectedConnection();
     void duplicateSelectedConnection();
     void importSelectedFromSshConfig();
+    void promptImportFromSshConfig();
     void reloadSshConfig();
     void openSelectedConnection();
     void focusSearch();
@@ -42,6 +44,7 @@ public:
 signals:
     void connectionActivated(const QUuid &id);
     void connectionSelected(const QUuid &id);
+    void connectionEdited(const QUuid &id, bool connectivityChanged);
     void statusMessage(const QString &message, ErrorNotifier::Level level);
 
 private slots:

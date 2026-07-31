@@ -14,7 +14,7 @@
 #include <memory>
 #include <vector>
 
-class TerminalSessionWidget;
+class Session;
 
 class RemoteFileModel final : public QAbstractItemModel
 {
@@ -30,9 +30,9 @@ public:
     explicit RemoteFileModel(QObject *parent = nullptr);
     ~RemoteFileModel() override;
 
-    void bindSession(TerminalSessionWidget *session);
+    void bindSession(Session *session);
     void unbindSession();
-    TerminalSessionWidget *session() const;
+    Session *session() const;
 
     void setRootPath(const QString &path);
     QString rootPath() const;
@@ -81,7 +81,7 @@ private:
     static QString formatSize(qint64 size);
     static QString formatMtime(qint64 mtime);
 
-    TerminalSessionWidget *m_session = nullptr;
+    Session *m_session = nullptr;
     std::unique_ptr<Node> m_root;
     QString m_rootPath;
     bool m_showHiddenFiles = false;

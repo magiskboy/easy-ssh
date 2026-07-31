@@ -22,7 +22,7 @@ class QPushButton;
 class QTreeView;
 class OpenFileTracker;
 class RemoteFileModel;
-class TerminalSessionWidget;
+class Session;
 
 class FileExplorerWidget final : public QWidget
 {
@@ -31,7 +31,7 @@ class FileExplorerWidget final : public QWidget
 public:
     explicit FileExplorerWidget(QWidget *parent = nullptr);
 
-    void bindSession(TerminalSessionWidget *session);
+    void bindSession(Session *session);
     void unbindSession();
     void applySettings();
     void rebindShortcuts();
@@ -119,7 +119,7 @@ private:
     QAction *m_mkdirAction = nullptr;
     QAction *m_renameAction = nullptr;
     QAction *m_deleteAction = nullptr;
-    TerminalSessionWidget *m_session = nullptr;
+    Session *m_session = nullptr;
     QString m_pendingRootRequest;
     QString m_refreshAfterOp;
     QStringList m_pendingDeletes;

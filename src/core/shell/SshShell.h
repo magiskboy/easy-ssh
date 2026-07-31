@@ -21,7 +21,8 @@ public:
     {
         Idle,
         Data,
-        Disconnected,
+        /// Channel EOF / closed — not transport loss; caller must not tear down ssh_session.
+        ChannelClosed,
         Error,
     };
 

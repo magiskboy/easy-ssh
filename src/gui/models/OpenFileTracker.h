@@ -15,7 +15,7 @@
 
 class QFileSystemWatcher;
 class QTimer;
-class TerminalSessionWidget;
+class Session;
 
 class OpenFileTracker final : public QObject
 {
@@ -24,8 +24,8 @@ class OpenFileTracker final : public QObject
 public:
     explicit OpenFileTracker(QObject *parent = nullptr);
 
-    void track(const QString &localPath, const QString &remotePath, TerminalSessionWidget *session);
-    void untrackSession(TerminalSessionWidget *session);
+    void track(const QString &localPath, const QString &remotePath, Session *session);
+    void untrackSession(Session *session);
     void clear();
 
 signals:
@@ -41,7 +41,7 @@ private:
     struct Entry
     {
         QString remotePath;
-        QPointer<TerminalSessionWidget> session;
+        QPointer<Session> session;
         QString parentDir;
     };
 

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QFont>
 #include <QKeySequence>
 #include <QList>
@@ -64,6 +65,20 @@ public:
     // --- Session / General ---
     bool autoReconnect() const;
     void setAutoReconnect(bool enabled);
+
+    // --- Main window ---
+    QByteArray windowGeometry() const;
+    void setWindowGeometry(const QByteArray &geometry);
+
+    // --- Sidebar ---
+    static constexpr int kSidebarMinWidth = 220;
+    static constexpr int kSidebarMaxWidth = 420;
+    static constexpr int kSidebarDefaultWidth = 260;
+
+    int sidebarWidth() const;
+    void setSidebarWidth(int width);
+    int sidebarTabIndex() const;
+    void setSidebarTabIndex(int index);
 
     // --- Shortcuts ---
     QKeySequence shortcut(const QString &actionId) const;

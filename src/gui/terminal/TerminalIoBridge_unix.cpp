@@ -4,6 +4,8 @@
 
 #include "gui/terminal/TerminalIoBridge.h"
 
+#include "core/util/Logging.h"
+
 #include <QSocketNotifier>
 #include <QTimer>
 
@@ -78,12 +80,17 @@ void TerminalIoBridge::feed(const QByteArray &data)
 
 void TerminalIoBridge::syncSize(int cols, int rows)
 {
+    qCDebug(lcGui) << "TerminalIoBridge::syncSize" << cols << "x" << rows << "active" << isActive()
+                   << "term" << static_cast<const void *>(m_term) << "termSize"
+                   << (m_term ? m_term->size() : QSize());
     if (!isActive() || cols <= 0 || rows <= 0) {
+        qCDebug(lcGui) << "TerminalIoBridge::syncSize skipped";
         return;
     }
 
     const int fd = m_term->getPtySlaveFd();
     if (fd < 0) {
+        qCDebug(lcGui) << "TerminalIoBridge::syncSize no pty fd";
         return;
     }
 
@@ -92,7 +99,9 @@ void TerminalIoBridge::syncSize(int cols, int rows)
     ws.ws_row = static_cast<unsigned short>(rows);
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
-    ::ioctl(fd, TIOCSWINSZ, &ws);
+    if (::ioctl(fd, TIOCSWINSZ, &ws) != 0) {
+        qCDebug(lcGui) << "TerminalIoBridge::syncSize ioctl failed errno" << errno;
+    }
 }
 
 void TerminalIoBridge::setupNotifier()

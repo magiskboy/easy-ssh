@@ -131,13 +131,13 @@ bool SshShell::changePtySize(int cols, int rows, QString *errorOut)
 SshShell::PollStatus SshShell::poll(QByteArray *outData, QString *errorOut)
 {
     if (m_session == nullptr) {
-        return PollStatus::Disconnected;
+        return PollStatus::ChannelClosed;
     }
     if (m_channel == nullptr) {
         return PollStatus::Idle;
     }
     if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel)) {
-        return PollStatus::Disconnected;
+        return PollStatus::ChannelClosed;
     }
 
     constexpr int kMaxBytesPerTick = 64 * 1024;
@@ -150,12 +150,17 @@ SshShell::PollStatus SshShell::poll(QByteArray *outData, QString *errorOut)
             const int nbytes =
                 ssh_channel_read_nonblocking(m_channel, buffer, sizeof(buffer), isStderr);
             if (nbytes == SSH_EOF) {
-                return PollStatus::Disconnected;
+                return PollStatus::ChannelClosed;
             }
             if (nbytes < 0) {
-                if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
-                    !ssh_is_connected(m_session)) {
-                    return PollStatus::Disconnected;
+                if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel)) {
+                    return PollStatus::ChannelClosed;
+                }
+                if (!ssh_is_connected(m_session)) {
+                    if (errorOut) {
+                        *errorOut = trShell("Read error: %1").arg(sessionError());
+                    }
+                    return PollStatus::Error;
                 }
                 if (errorOut) {
                     *errorOut = trShell("Read error: %1").arg(sessionError());
@@ -183,9 +188,14 @@ SshShell::PollStatus SshShell::poll(QByteArray *outData, QString *errorOut)
         return st;
     }
 
-    if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
-        !ssh_is_connected(m_session)) {
-        return PollStatus::Disconnected;
+    if (!ssh_is_connected(m_session)) {
+        if (errorOut) {
+            *errorOut = trShell("SSH connection lost");
+        }
+        return PollStatus::Error;
+    }
+    if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel)) {
+        return PollStatus::ChannelClosed;
     }
 
     return hadData ? PollStatus::Data : PollStatus::Idle;

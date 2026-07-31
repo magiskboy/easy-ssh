@@ -6,9 +6,9 @@
 
 #pragma once
 
+#include "core/session/Session.h"
 #include "core/tunnel/Tunnel.h"
 #include "gui/ErrorNotifier.h"
-#include "gui/session/TerminalSessionWidget.h"
 
 #include <QWidget>
 
@@ -26,7 +26,7 @@ class TunnelListWidget final : public QWidget
 public:
     explicit TunnelListWidget(QWidget *parent = nullptr);
 
-    void bindSession(TerminalSessionWidget *session);
+    void bindSession(Session *session);
     void unbindSession();
 
 signals:
@@ -41,7 +41,7 @@ private slots:
     void onCustomContextMenu(const QPoint &pos);
     void onTunnelStatusChanged(const QUuid &tunnelId, const QString &status, const QString &detail);
     void onTunnelError(const QUuid &tunnelId, const QString &message);
-    void onSessionStateChanged(TerminalSessionWidget::State state);
+    void onSessionStateChanged(SessionState state);
 
 private:
     void reloadFromStore();
@@ -63,5 +63,5 @@ private:
     QAction *m_deleteAction = nullptr;
     QAction *m_toggleAction = nullptr;
 
-    TerminalSessionWidget *m_session = nullptr;
+    Session *m_session = nullptr;
 };

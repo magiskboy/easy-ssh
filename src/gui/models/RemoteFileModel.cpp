@@ -4,7 +4,7 @@
 
 #include "RemoteFileModel.h"
 
-#include "gui/session/TerminalSessionWidget.h"
+#include "core/session/Session.h"
 
 #include <QDateTime>
 #include <QFileIconProvider>
@@ -23,7 +23,7 @@ RemoteFileModel::RemoteFileModel(QObject *parent) : QAbstractItemModel(parent) {
 
 RemoteFileModel::~RemoteFileModel() = default;
 
-void RemoteFileModel::bindSession(TerminalSessionWidget *session)
+void RemoteFileModel::bindSession(Session *session)
 {
     if (m_session == session) {
         return;
@@ -44,7 +44,7 @@ void RemoteFileModel::bindSession(TerminalSessionWidget *session)
     }
 
     connect(m_session,
-            &TerminalSessionWidget::directoryListed,
+            &Session::directoryListed,
             this,
             [this](const QString &path, const QVector<RemoteEntry> &entries) {
                 applyListing(path, entries);
@@ -56,7 +56,7 @@ void RemoteFileModel::unbindSession()
     bindSession(nullptr);
 }
 
-TerminalSessionWidget *RemoteFileModel::session() const
+Session *RemoteFileModel::session() const
 {
     return m_session;
 }
