@@ -13,6 +13,8 @@ path = [
   ".clang-format",
   ".clang-tidy",
   ".clangd",
+  ".gitattributes",
+  "CMakePresets.json",
   "requirements/**",
   ".githooks/**",
   ".github/**",

@@ -1,6 +1,3 @@
-# Conservative clang-tidy config for Easy SSH (Qt 6 / C++20).
-# Used by clangd (IDE) and .github/scripts/run-clang-tidy.sh.
-#
 # Generate / inspect: clang-tidy --dump-config
 # Docs: https://clang.llvm.org/extra/clang-tidy/
 

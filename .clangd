@@ -1,25 +1,14 @@
 CompileFlags:
   CompilationDatabase: build
-  # Qt moc / third-party flags clangd may not know about
   Add: [-Wno-unknown-warning-option]
-
-Index:
-  Background: Build
-  # Index project sources only — skip FetchContent / aqt Qt trees
-  PathMatch: [src/.*]
 
 Diagnostics:
   UnusedIncludes: Strict
-  ClangTidy:
-    # Base checks come from .clang-tidy; suppress extra IDE noise
-    Remove:
-      - modernize-use-trailing-return-type
-      - modernize-use-nodiscard
-      - readability-magic-numbers
-      - readability-identifier-length
-      - misc-include-cleaner
 
+---
 If:
   PathMatch: [build/.*, \.deps/.*, third_party/.*]
-  Diagnostics:
-    Suppress: ["*"]
+Diagnostics:
+  Suppress: ["*"]
+Index:
+  Background: Skip

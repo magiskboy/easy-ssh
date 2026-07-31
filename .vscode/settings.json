@@ -20,7 +20,6 @@
     "--completion-style=detailed"
   ],
   "cmake.configureOnOpen": false,
-  "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
   "cmake.configureSettings": {
     "CMAKE_EXPORT_COMPILE_COMMANDS": true
   },

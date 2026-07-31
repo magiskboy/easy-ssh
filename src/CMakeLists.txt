@@ -96,8 +96,18 @@ endif()
 set(EASY_SSH_PLATFORM_SOURCES)
 if(WIN32)
     enable_language(RC)
+    # Absolute path so the generated .rc (in the build tree) can find the icon.
+    file(TO_CMAKE_PATH
+        "${CMAKE_SOURCE_DIR}/resources/windows/easy-ssh.ico"
+        EASY_SSH_WINDOWS_ICON
+    )
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/resources/windows/easy-ssh.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/easy-ssh.rc"
+        @ONLY
+    )
     list(APPEND EASY_SSH_PLATFORM_SOURCES
-        ${CMAKE_SOURCE_DIR}/resources/windows/easy-ssh.rc
+        "${CMAKE_CURRENT_BINARY_DIR}/easy-ssh.rc"
     )
 endif()
 

@@ -44,8 +44,9 @@ remain in effect and are independent of the Easy SSH license.
 - Project: https://zlib.net/
 - Source: https://github.com/madler/zlib
 - License: zlib License
-- Fetched at configure time (tag `v1.3.1` in `cmake/EasySshDependencies.cmake`)
-  as a static dependency of libssh; not installed into the application prefix
+- Used tag: see `EASY_SSH_ZLIB_GIT_TAG` in `cmake/EasySshVersions.cmake`
+  Fetched at configure time as a static dependency of libssh; not installed
+  into the application prefix
 
 ## OpenSSL
 
@@ -57,5 +58,5 @@ remain in effect and are independent of the Easy SSH license.
 ---
 
 For the authoritative license text of each dependency, refer to the upstream
-source trees downloaded at configure/build time (or the copies shipped with
+source trees downl`oaded at configure/build time (or the copies shipped with
 binary packages of those projects).

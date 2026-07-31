@@ -10,6 +10,20 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
+# Prefer project venvs (.venv first — some toolchains live there; then .deps/venv).
+_path_prefix=""
+for _venv in "${ROOT}/.venv" "${ROOT}/.deps/venv"; do
+  if [[ -d "${_venv}/bin" ]]; then
+    _path_prefix="${_path_prefix}${_path_prefix:+:}${_venv}/bin"
+  elif [[ -d "${_venv}/Scripts" ]]; then
+    _path_prefix="${_path_prefix}${_path_prefix:+:}${_venv}/Scripts"
+  fi
+done
+if [[ -n "${_path_prefix}" ]]; then
+  export PATH="${_path_prefix}:${PATH}"
+fi
+unset _path_prefix _venv
+
 FORMAT="${ROOT}/.github/scripts/run-clang-format.sh"
 REUSE_LINT="${ROOT}/.github/scripts/run-reuse-lint.sh"
 

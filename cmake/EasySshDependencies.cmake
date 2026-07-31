@@ -171,15 +171,15 @@ function(_easy_ssh_ensure_zlib)
     FetchContent_Declare(
         zlib
         GIT_REPOSITORY https://github.com/madler/zlib.git
-        GIT_TAG        v1.3.1
+        GIT_TAG        ${EASY_SSH_ZLIB_GIT_TAG}
         GIT_SHALLOW    TRUE
-        # Keep zlib out of default install/CPack. zlib v1.3.1 bakes
+        # Keep zlib out of default install/CPack. zlib bakes
         # CMAKE_INSTALL_PREFIX into absolute INSTALL_*_DIR destinations, which
         # NSIS rejects ("ABSOLUTE path INSTALL DESTINATION forbidden").
         EXCLUDE_FROM_ALL
     )
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    # zlib v1.3.1 uses SKIP_INSTALL_*; ZLIB_INSTALL exists only on develop.
+    # zlib uses SKIP_INSTALL_*; ZLIB_INSTALL exists only on develop.
     set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
     # libssh is a shared library; static zlib must be PIC.
     set(_easy_ssh_pic_prev "${CMAKE_POSITION_INDEPENDENT_CODE}")

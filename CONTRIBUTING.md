@@ -124,8 +124,8 @@ The first configure downloads Qt (currently **6.10.3**) into `.deps/qt` and buil
 
 Recommended extensions are listed in [`.vscode/extensions.json`](.vscode/extensions.json) (clangd, CMake Tools, EditorConfig). Workspace settings in [`.vscode/settings.json`](.vscode/settings.json) disable the Microsoft C/C++ IntelliSense engine so it does not conflict with clangd.
 
-1. Configure a **debug** build so `build/compile_commands.json` exists (see above).
-2. [`.clangd`](.clangd) points clangd at `build/` and indexes `src/` only.
+1. Configure a **debug** build so `build/compile_commands.json` exists (see above). clangd reads that path only (not a root-level copy).
+2. [`.clangd`](.clangd) points clangd at `build/`, and skips diagnostics plus background indexing under `build/`, `.deps/`, and `third_party/`.
 3. Formatting uses [`.clang-format`](.clang-format); lint checks use [`.clang-tidy`](.clang-tidy).
 
 Indent and newline defaults for other editors are in [`.editorconfig`](.editorconfig).
@@ -240,7 +240,7 @@ cpack -C Release -G "DEB;RPM;TGZ;AppImage"   # Linux (needs appimagetool + patch
 
 ### Windows notes
 
-Use the `release` preset with MSVC and NSIS installed. The project embeds `resources/windows/easy-ssh.ico` / `.rc` and configures CPack NSIS (Start Menu shortcut, uninstall).
+Use the `release` preset with MSVC and NSIS installed. The project embeds `resources/windows/easy-ssh.ico` and generates `easy-ssh.rc` from `easy-ssh.rc.in` (version from `PROJECT_VERSION`), then configures CPack NSIS (Start Menu shortcut, uninstall).
 
 ## Pull requests
 
