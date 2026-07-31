@@ -15,7 +15,9 @@
 #include <QUuid>
 
 class ConnectionModel;
-class TerminalSessionWidget;
+class Session;
+class SessionManager;
+class SessionPage;
 class WelcomeWidget;
 
 class SessionTabWidget final : public QTabWidget
@@ -26,6 +28,7 @@ public:
     explicit SessionTabWidget(QWidget *parent = nullptr);
 
     void setConnectionModel(ConnectionModel *model);
+    void setSessionManager(SessionManager *manager);
     void refreshWelcome();
 
     void openSshSession(const Connection &connection, const SessionCredentials &credentials);
@@ -35,9 +38,11 @@ public:
     void nextSession();
     void previousSession();
     void applySettingsToAllSessions();
+    void refreshConnectionPresentation(const QUuid &connectionId);
 
-    TerminalSessionWidget *activeTerminal() const;
-    QList<TerminalSessionWidget *> allTerminals() const;
+    SessionPage *activeSessionPage() const;
+    Session *activeSession() const;
+    QList<SessionPage *> allSessionPages() const;
 
 signals:
     void sessionOpened(const QString &displayName);
@@ -47,6 +52,8 @@ signals:
     void openConnectionRequested(const QUuid &id);
     void createConnectionRequested();
     void showConnectionsRequested();
+    void editConnectionRequested(const QUuid &id);
+    void deleteConnectionRequested(const QUuid &id);
 
 private slots:
     void onTabCloseRequested(int index);
@@ -58,11 +65,12 @@ private:
     void removeWelcomeTabIfPresent();
     bool isWelcomeTab(int index) const;
     WelcomeWidget *welcomeWidget() const;
-    QString makeSessionTitle(const Connection &connection);
-    void updateTabPresentation(TerminalSessionWidget *session);
-    TerminalSessionWidget *terminalAt(int index) const;
+    SessionPage *pageAt(int index) const;
+    void updateTabPresentation(SessionPage *page);
+    int indexForConnection(const QUuid &connectionId) const;
 
     ConnectionModel *m_connectionModel = nullptr;
+    SessionManager *m_sessionManager = nullptr;
     int m_welcomeIndex = -1;
-    QHash<QUuid, int> m_sessionSerialByConnection;
+    QHash<QUuid, SessionPage *> m_pagesByConnection;
 };

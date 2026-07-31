@@ -1,0 +1,44 @@
+diff --git a/lib/ScreenWindow.cpp b/lib/ScreenWindow.cpp
+index a6ce7c2..5854709 100644
+--- a/lib/ScreenWindow.cpp
++++ b/lib/ScreenWindow.cpp
+@@ -196,7 +196,8 @@ QPoint ScreenWindow::cursorPosition() const
+ 
+ int ScreenWindow::currentLine() const
+ {
+-    return qBound(0,_currentLine,lineCount()-windowLines());
++    // windowLines() can exceed lineCount() mid-resize; Qt6 qBound asserts if max < min.
++    return qBound(0, _currentLine, qMax(0, lineCount() - windowLines()));
+ }
+ 
+ void ScreenWindow::scrollBy( RelativeScrollMode mode , int amount )
+@@ -218,7 +219,8 @@ bool ScreenWindow::atEndOfOutput() const
+ 
+ void ScreenWindow::scrollTo( int line )
+ {
+-    int maxCurrentLineNumber = lineCount() - windowLines();
++    // Same clamp as currentLine() — avoid qBound(0, line, negative).
++    int maxCurrentLineNumber = qMax(0, lineCount() - windowLines());
+     line = qBound(0,line,maxCurrentLineNumber);
+ 
+     const int delta = line - _currentLine;
+diff --git a/lib/TerminalDisplay.cpp b/lib/TerminalDisplay.cpp
+index d41475e..ecab47c 100644
+--- a/lib/TerminalDisplay.cpp
++++ b/lib/TerminalDisplay.cpp
+@@ -2353,8 +2353,13 @@ void TerminalDisplay::extendSelection( const QPoint& position )
+   // Adjust position within text area bounds.
+   QPoint oldpos = pos;
+ 
+-  pos.setX( qBound(textBounds.left(),pos.x(),textBounds.right()) );
+-  pos.setY( qBound(textBounds.top(),pos.y(),textBounds.bottom()) );
++  // Empty usedColumns/usedLines yield width/height -1 → inverted bounds; Qt6 asserts.
++  if (textBounds.isValid()) {
++    pos.setX( qBound(textBounds.left(),pos.x(),textBounds.right()) );
++    pos.setY( qBound(textBounds.top(),pos.y(),textBounds.bottom()) );
++  } else {
++    pos = textBounds.topLeft();
++  }
+ 
+   if ( oldpos.y() > textBounds.bottom() )
+   {

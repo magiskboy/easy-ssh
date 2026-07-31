@@ -31,6 +31,10 @@ constexpr auto kAutoReconnect = "session/autoReconnect";
 constexpr auto kRecentConnections = "session/recentConnectionIds";
 constexpr int kMaxRecentConnections = 8;
 
+constexpr auto kWindowGeometry = "ui/window/geometry";
+constexpr auto kSidebarWidth = "ui/sidebar/width";
+constexpr auto kSidebarTabIndex = "ui/sidebar/tabIndex";
+
 struct ShortcutDef
 {
     const char *id;
@@ -46,11 +50,13 @@ constexpr ShortcutDef kShortcutDefs[] = {
     {"general.shortcuts", "General", "Keyboard Shortcuts", "Ctrl+Shift+,"},
     {"general.about", "General", "About", "F1"},
 
-    {"session.newSession", "Session", "New Session", "Ctrl+T"},
-    {"session.closeSession", "Session", "Close Session", "Ctrl+W"},
-    {"session.nextTab", "Session", "Next Tab", "Ctrl+Tab"},
-    {"session.previousTab", "Session", "Previous Tab", "Ctrl+Shift+Tab"},
-    {"session.reconnect", "Session", "Reconnect", "Ctrl+R"},
+    {"session.newSession", "Terminal", "New Shell", "Ctrl+T"},
+    {"session.closeSession", "Windows", "Close Session", "Ctrl+W"},
+    {"session.nextTab", "Windows", "Next Tab", "Ctrl+Tab"},
+    {"session.previousTab", "Windows", "Previous Tab", "Ctrl+Shift+Tab"},
+    {"session.reconnect", "Windows", "Reconnect", "Ctrl+R"},
+    {"shell.close", "Terminal", "Close Shell", "Ctrl+Shift+W"},
+    {"connection.disconnect", "Windows", "Disconnect", "Ctrl+Shift+D"},
 
     {"terminal.copy", "Terminal", "Copy", "Ctrl+Shift+C"},
     {"terminal.paste", "Terminal", "Paste", "Ctrl+Shift+V"},
@@ -288,6 +294,39 @@ bool AppSettings::autoReconnect() const
 void AppSettings::setAutoReconnect(bool enabled)
 {
     setBoolValue(QLatin1String(kAutoReconnect), enabled);
+}
+
+QByteArray AppSettings::windowGeometry() const
+{
+    QSettings settings;
+    return settings.value(QLatin1String(kWindowGeometry)).toByteArray();
+}
+
+void AppSettings::setWindowGeometry(const QByteArray &geometry)
+{
+    QSettings settings;
+    settings.setValue(QLatin1String(kWindowGeometry), geometry);
+}
+
+int AppSettings::sidebarWidth() const
+{
+    const int width = intValue(QLatin1String(kSidebarWidth), kSidebarDefaultWidth);
+    return qBound(kSidebarMinWidth, width, kSidebarMaxWidth);
+}
+
+void AppSettings::setSidebarWidth(int width)
+{
+    setIntValue(QLatin1String(kSidebarWidth), qBound(kSidebarMinWidth, width, kSidebarMaxWidth));
+}
+
+int AppSettings::sidebarTabIndex() const
+{
+    return intValue(QLatin1String(kSidebarTabIndex), 0);
+}
+
+void AppSettings::setSidebarTabIndex(int index)
+{
+    setIntValue(QLatin1String(kSidebarTabIndex), index);
 }
 
 QKeySequence AppSettings::shortcut(const QString &actionId) const

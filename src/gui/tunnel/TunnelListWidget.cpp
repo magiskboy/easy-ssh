@@ -83,7 +83,7 @@ TunnelListWidget::TunnelListWidget(QWidget *parent) : QWidget(parent)
     updateActionsEnabled();
 }
 
-void TunnelListWidget::bindSession(TerminalSessionWidget *session)
+void TunnelListWidget::bindSession(Session *session)
 {
     if (m_session == session) {
         updateActionsEnabled();
@@ -99,15 +99,10 @@ void TunnelListWidget::bindSession(TerminalSessionWidget *session)
 
     updateSessionBadge();
 
-    connect(m_session,
-            &TerminalSessionWidget::sessionStateChanged,
-            this,
-            &TunnelListWidget::onSessionStateChanged);
-    connect(m_session,
-            &TerminalSessionWidget::tunnelStatusChanged,
-            this,
-            &TunnelListWidget::onTunnelStatusChanged);
-    connect(m_session, &TerminalSessionWidget::tunnelError, this, &TunnelListWidget::onTunnelError);
+    connect(m_session, &Session::stateChanged, this, &TunnelListWidget::onSessionStateChanged);
+    connect(
+        m_session, &Session::tunnelStatusChanged, this, &TunnelListWidget::onTunnelStatusChanged);
+    connect(m_session, &Session::tunnelError, this, &TunnelListWidget::onTunnelError);
     connect(m_session, &QObject::destroyed, this, [this]() {
         m_session = nullptr;
         m_model->clear();
@@ -305,9 +300,9 @@ void TunnelListWidget::onTunnelError(const QUuid &tunnelId, const QString &messa
     ErrorNotifier::status(tr("Tunnel: %1").arg(message), ErrorNotifier::Level::Error);
 }
 
-void TunnelListWidget::onSessionStateChanged(TerminalSessionWidget::State state)
+void TunnelListWidget::onSessionStateChanged(SessionState state)
 {
-    if (state == TerminalSessionWidget::State::Connected) {
+    if (state == SessionState::Connected) {
         // Keep current rows; only reset runtime when leaving Connected.
         if (m_model->rowCount() == 0) {
             reloadFromStore();
@@ -409,5 +404,5 @@ std::optional<TunnelDefinition> TunnelListWidget::selectedTunnel() const
 
 bool TunnelListWidget::isSessionConnected() const
 {
-    return m_session && m_session->sessionState() == TerminalSessionWidget::State::Connected;
+    return m_session && m_session->state() == SessionState::Connected;
 }

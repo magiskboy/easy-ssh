@@ -11,6 +11,7 @@
 #include "gui/models/ConnectionModel.h"
 
 #include <QAbstractItemView>
+#include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QLineEdit>
 #include <QListView>
@@ -114,21 +115,30 @@ void ConnectionListWidget::createConnection()
 
 void ConnectionListWidget::editSelectedConnection()
 {
-    if (!m_model || !selectedIsAppConnection()) {
-        return;
-    }
-
     const auto id = selectedConnectionId();
     if (!id) {
         return;
     }
+    editConnectionById(*id);
+}
 
-    const auto existing = m_model->connectionById(*id);
-    if (!existing) {
+void ConnectionListWidget::editConnectionById(const QUuid &id)
+{
+    if (!m_model || id.isNull()) {
+        return;
+    }
+
+    const auto existing = m_model->connectionById(id);
+    if (!existing || existing->source != ConnectionSource::App) {
+        ErrorNotifier::notify(this,
+                              tr("Edit Connection"),
+                              tr("Only Easy SSH connections can be edited."),
+                              ErrorNotifier::Level::Warning);
         return;
     }
 
     const AuthType previousAuthType = existing->authType;
+    const Connection before = *existing;
 
     ConnectionDialog dialog(ConnectionDialog::Mode::Edit, this);
     dialog.setConnection(*existing);
@@ -157,6 +167,13 @@ void ConnectionListWidget::editSelectedConnection()
 
     emit statusMessage(tr("Updated connection: %1").arg(connection.name),
                        ErrorNotifier::Level::Success);
+
+    const bool connectivityChanged =
+        before.host != connection.host || before.port != connection.port ||
+        before.username != connection.username || before.authType != connection.authType ||
+        before.privateKeyPath != connection.privateKeyPath ||
+        before.usesJumpHost() != connection.usesJumpHost();
+    emit connectionEdited(connection.id, connectivityChanged);
 }
 
 void ConnectionListWidget::deleteSelectedConnection()
@@ -259,6 +276,53 @@ void ConnectionListWidget::importSelectedFromSshConfig()
     }
 
     const auto imported = m_model->importFromSshConfig(*id);
+    if (!imported) {
+        ErrorNotifier::notify(this,
+                              tr("Error"),
+                              tr("Failed to import SSH config host."),
+                              ErrorNotifier::Level::Warning);
+        return;
+    }
+
+    emit statusMessage(tr("Imported connection: %1").arg(imported->name),
+                       ErrorNotifier::Level::Success);
+}
+
+void ConnectionListWidget::promptImportFromSshConfig()
+{
+    if (!m_model) {
+        return;
+    }
+
+    QStringList labels;
+    QList<QUuid> ids;
+    for (const Connection &connection : m_model->connections()) {
+        if (connection.source != ConnectionSource::SshConfig) {
+            continue;
+        }
+        labels.append(connection.displayText());
+        ids.append(connection.id);
+    }
+    if (labels.isEmpty()) {
+        ErrorNotifier::notify(this,
+                              tr("Import"),
+                              tr("No SSH config hosts found. Check ~/.ssh/config."),
+                              ErrorNotifier::Level::Warning);
+        return;
+    }
+
+    bool ok = false;
+    const QString chosen = QInputDialog::getItem(
+        this, tr("Import from SSH Config"), tr("Host:"), labels, 0, false, &ok);
+    if (!ok || chosen.isEmpty()) {
+        return;
+    }
+    const int index = labels.indexOf(chosen);
+    if (index < 0 || index >= ids.size()) {
+        return;
+    }
+
+    const auto imported = m_model->importFromSshConfig(ids.at(index));
     if (!imported) {
         ErrorNotifier::notify(this,
                               tr("Error"),

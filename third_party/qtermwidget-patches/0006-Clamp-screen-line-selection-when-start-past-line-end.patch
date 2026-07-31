@@ -1,0 +1,38 @@
+--- a/lib/Screen.cpp
++++ b/lib/Screen.cpp
+@@ -1389,25 +1389,26 @@
+     }
+     else
+     {
+-        if ( count == -1 )
+-            count = columns - start;
+-
+-        Q_ASSERT( count >= 0 );
+-
+         const int screenLine = line-history->getLines();
+ 
+         Character* data = screenLines[screenLine].data();
+         int length = screenLines[screenLine].count();
+ 
++        // Mirror history path: selection may start past end of short/empty
++        // screen lines. Qt6 qBound asserts when length-start < 0.
++        start = qMin(start, qMax(0, length - 1));
++        if (count == -1) {
++            count = length - start;
++        } else {
++            count = qMin(start + count, length) - start;
++        }
++
+         //retrieve line from screen image
+-        for (int i=start;i < qMin(start+count,length);i++)
++        for (int i = start; i < start + count; i++)
+         {
+             characterBuffer[i-start] = data[i];
+         }
+ 
+-        // count cannot be any greater than length
+-        count = qBound(0,count,length-start);
+-
+         Q_ASSERT( screenLine < lineProperties.count() );
+         currentLineProperties |= lineProperties[screenLine];
+     }

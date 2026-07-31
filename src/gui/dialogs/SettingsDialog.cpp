@@ -114,8 +114,17 @@ QWidget *SettingsDialog::createTerminalPage()
     m_fontSize->setRange(8, 48);
 
     m_colorScheme = new QComboBox(page);
-    const QStringList schemes = QTermWidget::availableColorSchemes();
-    m_colorScheme->addItems(schemes);
+    QStringList schemes = QTermWidget::availableColorSchemes();
+    schemes.sort(Qt::CaseInsensitive);
+    if (schemes.isEmpty()) {
+        m_colorScheme->addItem(tr("No color schemes found"));
+        m_colorScheme->setEnabled(false);
+        m_colorScheme->setToolTip(
+            tr("Bundled terminal color schemes were not found. "
+               "Rebuild/install Easy SSH so share/easy-ssh/color-schemes is available."));
+    } else {
+        m_colorScheme->addItems(schemes);
+    }
 
     m_historySize = new QSpinBox(page);
     m_historySize->setRange(-1, 1000000);
@@ -176,7 +185,8 @@ void SettingsDialog::loadFromSettings()
     const int schemeIndex = m_colorScheme->findText(s.colorScheme());
     if (schemeIndex >= 0) {
         m_colorScheme->setCurrentIndex(schemeIndex);
-    } else if (!s.colorScheme().isEmpty()) {
+    } else if (m_colorScheme->isEnabled() && !s.colorScheme().isEmpty()) {
+        // Saved name missing from catalog — keep it selectable so Apply can re-save.
         m_colorScheme->addItem(s.colorScheme());
         m_colorScheme->setCurrentText(s.colorScheme());
     }
@@ -203,7 +213,9 @@ void SettingsDialog::saveToSettings()
     font.setPointSize(m_fontSize->value());
     font.setStyleHint(QFont::TypeWriter);
     s.setTerminalFont(font);
-    s.setColorScheme(m_colorScheme->currentText());
+    if (m_colorScheme->isEnabled()) {
+        s.setColorScheme(m_colorScheme->currentText());
+    }
     s.setHistorySize(m_historySize->value());
     s.setCursorShape(m_cursorShape->currentData().toInt());
     s.setCursorBlink(m_cursorBlink->isChecked());

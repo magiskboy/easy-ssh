@@ -22,6 +22,11 @@ set(EASY_SSH_CORE_SOURCES
     core/ssh/SshAuth.h
     core/ssh/SshSession.cpp
     core/ssh/SshSession.h
+    core/session/SessionTypes.h
+    core/session/Session.cpp
+    core/session/Session.h
+    core/session/SessionManager.cpp
+    core/session/SessionManager.h
     core/shell/SshShell.cpp
     core/shell/SshShell.h
     core/fs/FsEngine.h
@@ -63,10 +68,18 @@ set(EASY_SSH_GUI_SOURCES
     gui/models/OpenFileTracker.cpp
     gui/models/OpenFileTracker.h
     gui/terminal/TerminalIoBridge.h
+    gui/terminal/QTermWidgetResources.cpp
+    gui/terminal/QTermWidgetResources.h
     gui/session/SessionTabWidget.cpp
     gui/session/SessionTabWidget.h
     gui/session/TerminalSessionWidget.cpp
     gui/session/TerminalSessionWidget.h
+    gui/session/SessionSideBar.cpp
+    gui/session/SessionSideBar.h
+    gui/session/ShellListWidget.cpp
+    gui/session/ShellListWidget.h
+    gui/session/SessionPage.cpp
+    gui/session/SessionPage.h
     gui/connection/ConnectionListWidget.cpp
     gui/connection/ConnectionListWidget.h
     gui/connection/ConnectionDialog.cpp
@@ -166,3 +179,23 @@ target_link_libraries(easy-ssh
     PRIVATE
         easy-ssh-gui
 )
+
+# Dev builds: keep QTermWidget data next to the binary layout (bin/../share/easy-ssh).
+# On macOS also mirror into the .app Resources tree that qtermwidget searches.
+if(DEFINED EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR)
+    if(APPLE)
+        add_custom_command(TARGET easy-ssh POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes"
+                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts"
+                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
+            COMMENT "Copy QTermWidget data into app bundle Resources"
+        )
+    endif()
+endif()

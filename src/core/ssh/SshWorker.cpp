@@ -10,6 +10,8 @@
 #include <QFileInfo>
 #include <QTimer>
 
+#include <libssh/libssh.h>
+
 SshWorker::SshWorker(QObject *parent) : QObject(parent)
 {
     m_fs.setProgressCallback([this](qint64 done, qint64 total, const QString &name) {
@@ -28,11 +30,17 @@ SshWorker::~SshWorker()
 
 void SshWorker::connectToHost(const Connection &connection,
                               const SessionCredentials &credentials,
+                              const QUuid &initialShellId,
                               int cols,
                               int rows)
 {
     if (m_running) {
         emit errorOccurred(tr("Session already connected"));
+        return;
+    }
+
+    if (initialShellId.isNull()) {
+        emit errorOccurred(tr("Initial shell id is required"));
         return;
     }
 
@@ -46,7 +54,7 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
-    if (!m_shell.open(m_session.handle(), cols, rows, &error)) {
+    if (!openShellLocked(initialShellId, cols, rows, &error)) {
         if (!error.isEmpty()) {
             emit errorOccurred(error);
         }
@@ -59,7 +67,8 @@ void SshWorker::connectToHost(const Connection &connection,
 
     m_running = true;
     qCWarning(lcSsh) << "Connected to" << connection.host << "sftp:" << (sftpReady ? "yes" : "no");
-    emit connected();
+    emit connected(initialShellId);
+    emit shellOpened(initialShellId);
 
     if (!sftpReady) {
         qCWarning(lcSsh) << "SFTP unavailable:" << sftpFailure;
@@ -74,27 +83,101 @@ void SshWorker::connectToHost(const Connection &connection,
     m_ioTimer->start(20);
 }
 
-void SshWorker::writeToChannel(const QByteArray &data)
+void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
 {
-    if (!m_running) {
+    if (!m_running || !m_session.isConnected()) {
+        emit shellOpenFailed(shellId, tr("SSH session is not connected"));
+        return;
+    }
+    if (shellId.isNull()) {
+        emit shellOpenFailed(shellId, tr("Invalid shell id"));
+        return;
+    }
+    if (m_shells.contains(shellId)) {
+        emit shellOpenFailed(shellId, tr("Shell already open"));
+        return;
+    }
+    if (m_shells.size() >= kMaxShells) {
+        emit shellOpenFailed(shellId, tr("Maximum of %1 shells per session").arg(kMaxShells));
         return;
     }
 
     QString error;
-    if (!m_shell.write(data, &error)) {
-        if (!error.isEmpty()) {
-            emit errorOccurred(error);
-        }
-        disconnectSession();
+    if (!openShellLocked(shellId, cols, rows, &error)) {
+        emit shellOpenFailed(shellId, error.isEmpty() ? tr("Failed to open shell") : error);
+        return;
+    }
+
+    emit shellOpened(shellId);
+}
+
+bool SshWorker::openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut)
+{
+    auto *shell = new SshShell();
+    if (!shell->open(m_session.handle(), cols, rows, errorOut)) {
+        delete shell;
+        return false;
+    }
+    m_shells.insert(shellId, shell);
+    return true;
+}
+
+void SshWorker::closeShell(const QUuid &shellId)
+{
+    retireShell(shellId, true);
+}
+
+void SshWorker::retireShell(const QUuid &shellId, bool emitClosed)
+{
+    SshShell *shell = m_shells.take(shellId);
+    if (shell == nullptr) {
+        return;
+    }
+    shell->cleanup();
+    delete shell;
+    if (emitClosed) {
+        emit shellClosed(shellId);
     }
 }
 
-void SshWorker::changePtySize(int cols, int rows)
+void SshWorker::writeToChannel(const QUuid &shellId, const QByteArray &data)
 {
     if (!m_running) {
         return;
     }
-    m_shell.changePtySize(cols, rows);
+
+    SshShell *shell = m_shells.value(shellId, nullptr);
+    if (shell == nullptr) {
+        return;
+    }
+
+    QString error;
+    if (!shell->write(data, &error)) {
+        if (!m_session.isConnected() ||
+            (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
+            if (!error.isEmpty()) {
+                emit errorOccurred(error);
+            }
+            disconnectSession();
+            return;
+        }
+        if (!error.isEmpty()) {
+            emit shellFailed(shellId, error);
+        }
+        retireShell(shellId, true);
+    }
+}
+
+void SshWorker::changePtySize(const QUuid &shellId, int cols, int rows)
+{
+    if (!m_running) {
+        return;
+    }
+    SshShell *shell = m_shells.value(shellId, nullptr);
+    if (shell == nullptr) {
+        return;
+    }
+    shell->changePtySize(cols, rows);
 }
 
 void SshWorker::disconnectSession()
@@ -270,38 +353,64 @@ void SshWorker::canonicalizePath(const QString &path)
 
 void SshWorker::pollChannel()
 {
-    if (!m_running || !m_session.isConnected()) {
+    if (!m_running) {
+        return;
+    }
+
+    if (!m_session.isConnected()) {
+        disconnectSession();
         return;
     }
 
     pollTunnels();
 
-    QByteArray data;
+    bool hadActivity = false;
+    const QList<QUuid> shellIds = m_shells.keys();
+    for (const QUuid &shellId : shellIds) {
+        SshShell *shell = m_shells.value(shellId, nullptr);
+        if (shell == nullptr) {
+            continue;
+        }
+
+        QByteArray data;
+        QString error;
+        const SshShell::PollStatus status = shell->poll(&data, &error);
+        switch (status) {
+        case SshShell::PollStatus::Data:
+            if (!data.isEmpty()) {
+                emit dataReceived(shellId, data);
+            }
+            hadActivity = true;
+            break;
+        case SshShell::PollStatus::Idle:
+            break;
+        case SshShell::PollStatus::ChannelClosed:
+            retireShell(shellId, true);
+            break;
+        case SshShell::PollStatus::Error:
+            if (!m_session.isConnected() ||
+                (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
+                if (!error.isEmpty()) {
+                    emit errorOccurred(error);
+                }
+                disconnectSession();
+                return;
+            }
+            emit shellFailed(shellId, error.isEmpty() ? tr("Shell read error") : error);
+            retireShell(shellId, true);
+            break;
+        }
+    }
+
+    if (!m_session.isConnected()) {
+        disconnectSession();
+        return;
+    }
+
     QString error;
-    const SshShell::PollStatus status = m_shell.poll(&data, &error);
-    switch (status) {
-    case SshShell::PollStatus::Data:
-        if (!data.isEmpty()) {
-            emit dataReceived(data);
-        }
-        if (!m_session.pollKeepAlive(true, &error)) {
-            emit errorOccurred(error);
-            disconnectSession();
-        }
-        break;
-    case SshShell::PollStatus::Idle:
-        if (!m_session.pollKeepAlive(false, &error)) {
-            emit errorOccurred(error);
-            disconnectSession();
-        }
-        break;
-    case SshShell::PollStatus::Error:
+    if (!m_session.pollKeepAlive(hadActivity, &error)) {
         emit errorOccurred(error);
         disconnectSession();
-        break;
-    case SshShell::PollStatus::Disconnected:
-        disconnectSession();
-        break;
     }
 }
 
@@ -382,7 +491,14 @@ void SshWorker::cleanup()
 
     stopAllTunnels();
     m_fs.close();
-    m_shell.cleanup();
+    const QList<QUuid> shellIds = m_shells.keys();
+    for (const QUuid &id : shellIds) {
+        SshShell *shell = m_shells.take(id);
+        if (shell) {
+            shell->cleanup();
+            delete shell;
+        }
+    }
     m_session.cleanup();
 }
 

@@ -52,6 +52,7 @@ void messageHandler(QtMsgType type, const QMessageLogContext &context, const QSt
 
 Q_LOGGING_CATEGORY(lcSsh, "easy.ssh", QtWarningMsg)
 Q_LOGGING_CATEGORY(lcApp, "easy.app", QtWarningMsg)
+Q_LOGGING_CATEGORY(lcGui, "easy.gui", QtWarningMsg)
 
 QString logFilePath()
 {

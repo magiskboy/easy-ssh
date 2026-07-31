@@ -34,6 +34,41 @@ foreach(_icon_size IN ITEMS 16 22 24 32 48 64 128 256 512)
     )
 endforeach()
 
+# QTermWidget color schemes + keyboard layouts (bundled; not the system qtermwidget prefix).
+if(DEFINED EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
+    install(DIRECTORY "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/color-schemes"
+        FILES_MATCHING PATTERN "*.colorscheme"
+    )
+endif()
+if(DEFINED EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
+    install(DIRECTORY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/kb-layouts"
+        FILES_MATCHING
+            PATTERN "*.keytab"
+            PATTERN "historic"
+            PATTERN "README" EXCLUDE
+    )
+endif()
+if(APPLE)
+    # macOS looks under Contents/Resources (see qtermwidget patch 0007).
+    if(DEFINED EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
+        install(DIRECTORY "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/"
+            DESTINATION "easy-ssh.app/Contents/Resources/color-schemes"
+            FILES_MATCHING PATTERN "*.colorscheme"
+        )
+    endif()
+    if(DEFINED EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
+        install(DIRECTORY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/"
+            DESTINATION "easy-ssh.app/Contents/Resources/kb-layouts"
+            FILES_MATCHING
+                PATTERN "*.keytab"
+                PATTERN "historic"
+                PATTERN "README" EXCLUDE
+        )
+    endif()
+endif()
+
 # Build genex lists for install-time driver (paths known after build).
 set(_easy_ssh_lib_file_genex "")
 set(_easy_ssh_lib_soname_genex "")

@@ -353,6 +353,29 @@ if(NOT TARGET qtermwidget6)
 endif()
 message(STATUS "EasySshDeps: QTermWidget from FetchContent (${EASY_SSH_QTERMWIDGET_GIT_TAG})")
 
+# Bundle QTermWidget color schemes + kb-layouts next to the build/install prefix so
+# the app finds them via ../share/easy-ssh from bin/ (see patch 0007).
+set(EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC "${_qtw_src}/lib/color-schemes")
+set(EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC "${_qtw_src}/lib/kb-layouts")
+set(EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR "${CMAKE_BINARY_DIR}/share/easy-ssh")
+if(NOT EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
+    message(FATAL_ERROR "EasySshDeps: missing QTermWidget color-schemes at ${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
+endif()
+if(NOT EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
+    message(FATAL_ERROR "EasySshDeps: missing QTermWidget kb-layouts at ${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
+endif()
+file(MAKE_DIRECTORY "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes")
+file(MAKE_DIRECTORY "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
+file(GLOB _easy_ssh_qtw_schemes "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/*.colorscheme")
+file(COPY ${_easy_ssh_qtw_schemes} DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes")
+file(GLOB _easy_ssh_qtw_keytabs "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/*.keytab")
+file(COPY ${_easy_ssh_qtw_keytabs} DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
+if(EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/historic")
+    file(COPY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/historic"
+         DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
+endif()
+message(STATUS "EasySshDeps: QTermWidget data → ${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}")
+
 message(STATUS "EasySshDeps: third-party libraries built from source (FetchContent)")
 
 # FetchContent shared libs: use @rpath so the build-tree app finds them under

@@ -28,11 +28,15 @@
 #error "easy-ssh requires libssh >= 0.11 for ProxyJump (SSH_OPTIONS_PROXYJUMP)"
 #endif
 
+/// Worker-thread SSH I/O for one transport (SshSession). Transport teardown via
+/// disconnectSession() — does not destroy the domain Session object.
 class SshWorker final : public QObject
 {
     Q_OBJECT
 
 public:
+    static constexpr int kMaxShells = 8;
+
     enum class HostKeyPrompt
     {
         Unknown,
@@ -45,12 +49,17 @@ public:
     ~SshWorker() override;
 
 public slots:
+    /// Establish transport + SFTP, open initial shell, start poll timer.
     void connectToHost(const Connection &connection,
                        const SessionCredentials &credentials,
+                       const QUuid &initialShellId,
                        int cols = 80,
                        int rows = 24);
-    void writeToChannel(const QByteArray &data);
-    void changePtySize(int cols, int rows);
+    void openShell(const QUuid &shellId, int cols = 80, int rows = 24);
+    void closeShell(const QUuid &shellId);
+    void writeToChannel(const QUuid &shellId, const QByteArray &data);
+    void changePtySize(const QUuid &shellId, int cols, int rows);
+    /// Tear down transport (all shells, SFTP, tunnels, SshSession). Not domain Session destroy.
     void disconnectSession();
     void respondHostKeyTrust(bool accept);
 
@@ -69,8 +78,12 @@ public slots:
     void stopAllTunnels();
 
 signals:
-    void connected();
-    void dataReceived(const QByteArray &data);
+    void connected(const QUuid &initialShellId);
+    void dataReceived(const QUuid &shellId, const QByteArray &data);
+    void shellOpened(const QUuid &shellId);
+    void shellClosed(const QUuid &shellId);
+    void shellFailed(const QUuid &shellId, const QString &message);
+    void shellOpenFailed(const QUuid &shellId, const QString &message);
     void hostKeyPrompt(SshWorker::HostKeyPrompt reason,
                        const QString &fingerprintSha256,
                        const QString &contextLabel);
@@ -99,9 +112,11 @@ private:
     void cleanup();
     void pollTunnels();
     void wireTunnelSession(ITunnelSession *session);
+    void retireShell(const QUuid &shellId, bool emitClosed);
+    bool openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut);
 
     SshSession m_session;
-    SshShell m_shell;
+    QHash<QUuid, SshShell *> m_shells;
     FsRemote m_fs;
     QHash<QUuid, ITunnelSession *> m_tunnelSessions;
     class QTimer *m_ioTimer = nullptr;

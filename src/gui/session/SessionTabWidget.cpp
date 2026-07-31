@@ -4,8 +4,11 @@
 
 #include "SessionTabWidget.h"
 
-#include "TerminalSessionWidget.h"
+#include "SessionPage.h"
+#include "core/session/Session.h"
+#include "core/session/SessionManager.h"
 #include "gui/connection/WelcomeWidget.h"
+#include "gui/models/ConnectionModel.h"
 
 #include <QAction>
 #include <QMenu>
@@ -36,6 +39,11 @@ void SessionTabWidget::setConnectionModel(ConnectionModel *model)
     }
 }
 
+void SessionTabWidget::setSessionManager(SessionManager *manager)
+{
+    m_sessionManager = manager;
+}
+
 void SessionTabWidget::refreshWelcome()
 {
     if (auto *welcome = welcomeWidget()) {
@@ -46,40 +54,59 @@ void SessionTabWidget::refreshWelcome()
 void SessionTabWidget::openSshSession(const Connection &connection,
                                       const SessionCredentials &credentials)
 {
+    if (!m_sessionManager) {
+        return;
+    }
+
+    const int existing = indexForConnection(connection.id);
+    if (existing >= 0) {
+        setCurrentIndex(existing);
+        if (Session *session = m_sessionManager->get(connection.id)) {
+            if (session->state() == SessionState::Disconnected ||
+                session->state() == SessionState::Failed) {
+                session->reconnect();
+            }
+        }
+        return;
+    }
+
     removeWelcomeTabIfPresent();
 
-    auto *session = new TerminalSessionWidget(this);
-    connect(session, &TerminalSessionWidget::statusMessage, this, &SessionTabWidget::statusMessage);
-    connect(session, &TerminalSessionWidget::sessionFailed, this, [this, session](const QString &) {
-        updateTabPresentation(session);
-    });
-    connect(session, &TerminalSessionWidget::sessionDisconnected, this, [this, session]() {
-        updateTabPresentation(session);
-    });
-    connect(session,
-            &TerminalSessionWidget::sessionStateChanged,
-            this,
-            [this, session](TerminalSessionWidget::State) { updateTabPresentation(session); });
+    Session *session = m_sessionManager->open(connection, credentials);
+    auto *page = new SessionPage(session, this);
+    m_pagesByConnection.insert(connection.id, page);
 
-    const QString title = makeSessionTitle(connection);
-    const int index = addTab(session, title);
+    connect(page, &SessionPage::statusMessage, this, &SessionTabWidget::statusMessage);
+    connect(page, &SessionPage::closeRequested, this, [this, page]() {
+        const int index = indexOf(page);
+        if (index >= 0) {
+            onTabCloseRequested(index);
+        }
+    });
+    connect(page, &SessionPage::editRequested, this, [this, session]() {
+        emit editConnectionRequested(session->connectionId());
+    });
+    connect(session, &Session::stateChanged, this, [this, page](SessionState) {
+        updateTabPresentation(page);
+    });
+
+    const int index = addTab(page, session->displayName());
     setCurrentIndex(index);
-
-    session->start(connection, credentials);
-    updateTabPresentation(session);
-    emit sessionOpened(title);
+    session->connectTransport();
+    updateTabPresentation(page);
+    emit sessionOpened(session->displayName());
 }
 
 void SessionTabWidget::disconnectCurrentSession()
 {
-    if (auto *session = activeTerminal()) {
-        session->disconnectSession();
+    if (Session *session = activeSession()) {
+        session->disconnectTransport();
     }
 }
 
 void SessionTabWidget::reconnectCurrentSession()
 {
-    if (auto *session = activeTerminal()) {
+    if (Session *session = activeSession()) {
         session->reconnect();
     }
 }
@@ -112,25 +139,27 @@ void SessionTabWidget::previousSession()
 
 void SessionTabWidget::applySettingsToAllSessions()
 {
-    for (TerminalSessionWidget *session : allTerminals()) {
-        session->applySettings();
+    for (SessionPage *page : allSessionPages()) {
+        page->applySettings();
     }
 }
 
-TerminalSessionWidget *SessionTabWidget::activeTerminal() const
+SessionPage *SessionTabWidget::activeSessionPage() const
 {
-    return terminalAt(currentIndex());
+    return pageAt(currentIndex());
 }
 
-QList<TerminalSessionWidget *> SessionTabWidget::allTerminals() const
+Session *SessionTabWidget::activeSession() const
 {
-    QList<TerminalSessionWidget *> sessions;
-    for (int i = 0; i < count(); ++i) {
-        if (auto *session = terminalAt(i)) {
-            sessions.append(session);
-        }
+    if (SessionPage *page = activeSessionPage()) {
+        return page->session();
     }
-    return sessions;
+    return nullptr;
+}
+
+QList<SessionPage *> SessionTabWidget::allSessionPages() const
+{
+    return m_pagesByConnection.values();
 }
 
 void SessionTabWidget::onTabCloseRequested(int index)
@@ -138,29 +167,33 @@ void SessionTabWidget::onTabCloseRequested(int index)
     if (isWelcomeTab(index)) {
         return;
     }
-
-    const QString name = tabText(index);
-    QWidget *page = widget(index);
-    removeTab(index);
-    if (page) {
-        page->deleteLater();
+    SessionPage *page = pageAt(index);
+    if (!page) {
+        return;
     }
-
+    const QString name = page->session() ? page->session()->displayName() : QString();
+    const QUuid id = page->session() ? page->session()->connectionId() : QUuid();
+    m_pagesByConnection.remove(id);
+    removeTab(index);
+    page->deleteLater();
+    if (m_sessionManager && !id.isNull()) {
+        m_sessionManager->close(id);
+    }
     emit sessionClosed(name);
-
     if (count() == 0) {
         ensureWelcomeTab();
-        refreshWelcome();
     }
 }
 
 void SessionTabWidget::onCurrentChanged(int index)
 {
-    if (index < 0) {
+    SessionPage *page = pageAt(index);
+    if (page && page->session() && m_sessionManager) {
+        m_sessionManager->setActive(page->session()->connectionId());
+        emit activeSessionChanged(page->session()->displayName());
+    } else {
         emit activeSessionChanged(QString());
-        return;
     }
-    emit activeSessionChanged(tabText(index));
 }
 
 void SessionTabWidget::onTabContextMenu(const QPoint &pos)
@@ -169,33 +202,36 @@ void SessionTabWidget::onTabContextMenu(const QPoint &pos)
     if (index < 0 || isWelcomeTab(index)) {
         return;
     }
-
-    auto *session = terminalAt(index);
-    if (!session) {
+    SessionPage *page = pageAt(index);
+    if (!page || !page->session()) {
         return;
     }
-
-    setCurrentIndex(index);
+    Session *session = page->session();
 
     QMenu menu(this);
-    QAction *disconnectAction = menu.addAction(tr("Disconnect"));
-    QAction *reconnectAction = menu.addAction(tr("Reconnect"));
+    menu.addAction(tr("New shell"), session, [session]() { session->newShell(); });
     menu.addSeparator();
-    QAction *closeAction = menu.addAction(tr("Close"));
-
-    const auto state = session->sessionState();
-    disconnectAction->setEnabled(state == TerminalSessionWidget::State::Connected ||
-                                 state == TerminalSessionWidget::State::Connecting);
-    reconnectAction->setEnabled(state != TerminalSessionWidget::State::Connecting);
-
-    QAction *chosen = menu.exec(tabBar()->mapToGlobal(pos));
-    if (chosen == disconnectAction) {
-        session->disconnectSession();
-    } else if (chosen == reconnectAction) {
-        session->reconnect();
-    } else if (chosen == closeAction) {
-        onTabCloseRequested(index);
+    if (session->state() == SessionState::Connected) {
+        menu.addAction(tr("Disconnect"), session, &Session::disconnectTransport);
+    } else {
+        menu.addAction(tr("Reconnect"), session, [session]() { session->reconnect(); });
     }
+    menu.addAction(tr("Close"), this, [this, index]() { onTabCloseRequested(index); });
+    menu.addSeparator();
+    menu.addAction(tr("Edit connection…"), this, [this, session]() {
+        emit editConnectionRequested(session->connectionId());
+    });
+    menu.addAction(tr("Duplicate connection…"), this, [this, session]() {
+        if (!m_connectionModel) {
+            return;
+        }
+        m_connectionModel->duplicate(session->connectionId());
+        emit statusMessage(tr("Duplicated connection"), ErrorNotifier::Level::Success);
+    });
+    menu.addAction(tr("Delete connection…"), this, [this, session]() {
+        emit deleteConnectionRequested(session->connectionId());
+    });
+    menu.exec(tabBar()->mapToGlobal(pos));
 }
 
 void SessionTabWidget::ensureWelcomeTab()
@@ -203,7 +239,6 @@ void SessionTabWidget::ensureWelcomeTab()
     if (m_welcomeIndex >= 0) {
         return;
     }
-
     auto *welcome = new WelcomeWidget(this);
     welcome->setConnectionModel(m_connectionModel);
     connect(welcome,
@@ -218,12 +253,10 @@ void SessionTabWidget::ensureWelcomeTab()
             &WelcomeWidget::showConnectionsRequested,
             this,
             &SessionTabWidget::showConnectionsRequested);
-    connect(welcome, &WelcomeWidget::statusMessage, this, &SessionTabWidget::statusMessage);
-
     m_welcomeIndex = addTab(welcome, tr("Welcome"));
-    tabBar()->setTabButton(m_welcomeIndex, QTabBar::LeftSide, nullptr);
+    setTabsClosable(false);
     tabBar()->setTabButton(m_welcomeIndex, QTabBar::RightSide, nullptr);
-    setCurrentIndex(m_welcomeIndex);
+    setTabsClosable(true);
 }
 
 void SessionTabWidget::removeWelcomeTabIfPresent()
@@ -231,16 +264,15 @@ void SessionTabWidget::removeWelcomeTabIfPresent()
     if (m_welcomeIndex < 0) {
         return;
     }
-
-    QWidget *page = widget(m_welcomeIndex);
+    QWidget *w = widget(m_welcomeIndex);
     removeTab(m_welcomeIndex);
-    delete page;
+    delete w;
     m_welcomeIndex = -1;
 }
 
 bool SessionTabWidget::isWelcomeTab(int index) const
 {
-    return index >= 0 && index == m_welcomeIndex;
+    return index == m_welcomeIndex;
 }
 
 WelcomeWidget *SessionTabWidget::welcomeWidget() const
@@ -251,52 +283,51 @@ WelcomeWidget *SessionTabWidget::welcomeWidget() const
     return qobject_cast<WelcomeWidget *>(widget(m_welcomeIndex));
 }
 
-QString SessionTabWidget::makeSessionTitle(const Connection &connection)
-{
-    const int serial = ++m_sessionSerialByConnection[connection.id];
-    if (serial <= 1) {
-        return connection.name;
-    }
-    return QStringLiteral("%1 (#%2)").arg(connection.name).arg(serial);
-}
-
-void SessionTabWidget::updateTabPresentation(TerminalSessionWidget *session)
-{
-    if (!session) {
-        return;
-    }
-
-    const int index = indexOf(session);
-    if (index < 0) {
-        return;
-    }
-
-    QString tip = session->displayName();
-    switch (session->sessionState()) {
-    case TerminalSessionWidget::State::Connecting:
-        tip += tr(" — Connecting");
-        break;
-    case TerminalSessionWidget::State::Connected:
-        tip += tr(" — Connected");
-        break;
-    case TerminalSessionWidget::State::Disconnected:
-        tip += tr(" — Disconnected");
-        break;
-    case TerminalSessionWidget::State::Failed:
-        tip += tr(" — Failed");
-        break;
-    }
-    setTabToolTip(index, tip);
-
-    if (index == currentIndex()) {
-        emit activeSessionChanged(tabText(index));
-    }
-}
-
-TerminalSessionWidget *SessionTabWidget::terminalAt(int index) const
+SessionPage *SessionTabWidget::pageAt(int index) const
 {
     if (index < 0 || isWelcomeTab(index)) {
         return nullptr;
     }
-    return qobject_cast<TerminalSessionWidget *>(widget(index));
+    return qobject_cast<SessionPage *>(widget(index));
+}
+
+void SessionTabWidget::updateTabPresentation(SessionPage *page)
+{
+    if (!page || !page->session()) {
+        return;
+    }
+    const int index = indexOf(page);
+    if (index < 0) {
+        return;
+    }
+    setTabText(index, page->session()->displayName());
+    QString tip = page->session()->displayName();
+    switch (page->session()->state()) {
+    case SessionState::Connecting:
+        tip += tr(" — Connecting");
+        break;
+    case SessionState::Connected:
+        tip += tr(" — Connected");
+        break;
+    case SessionState::Disconnected:
+        tip += tr(" — Disconnected");
+        break;
+    case SessionState::Failed:
+        tip += tr(" — Failed");
+        break;
+    }
+    setTabToolTip(index, tip);
+}
+
+void SessionTabWidget::refreshConnectionPresentation(const QUuid &connectionId)
+{
+    if (SessionPage *page = m_pagesByConnection.value(connectionId, nullptr)) {
+        updateTabPresentation(page);
+    }
+}
+
+int SessionTabWidget::indexForConnection(const QUuid &connectionId) const
+{
+    SessionPage *page = m_pagesByConnection.value(connectionId, nullptr);
+    return page ? indexOf(page) : -1;
 }

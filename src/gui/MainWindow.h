@@ -17,14 +17,17 @@
 
 class QAction;
 class QLabel;
-class QTabWidget;
+class QMenu;
 class QTimer;
+class QCloseEvent;
 class ConnectionListWidget;
 class ConnectionModel;
 class FileExplorerWidget;
 class SecretStore;
+class Session;
+class SessionManager;
+class SessionSideBar;
 class SessionTabWidget;
-class TerminalSessionWidget;
 class TunnelListWidget;
 
 class MainWindow final : public QMainWindow
@@ -34,19 +37,27 @@ class MainWindow final : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private:
     void setupUi();
+    void restoreOrDefaultGeometry();
+    QSize defaultStartupSize() const;
     void setupMenus();
+    void rebuildConnectionsListMenu();
     void setStatusText(const QString &text,
                        ErrorNotifier::Level level = ErrorNotifier::Level::Status);
     void updateTerminalActionsEnabled();
     void updateSessionStatusInfo();
-    void syncFileExplorerToActiveSession();
-    void syncTunnelsToActiveSession();
+    void syncSidePanelsToActiveSession();
     void openConnectionById(const QUuid &id);
     void readTargetSecretForConnect(const Connection &connection);
     void finishConnect(const Connection &connection, const SessionCredentials &credentials);
-    void wireActiveSessionStateSync(TerminalSessionWidget *session);
+    void wireActiveSessionStateSync(Session *session);
+    void editConnection(const QUuid &id);
+    void onConnectionEdited(const QUuid &id, bool connectivityChanged);
+    void deleteConnection(const QUuid &id);
     void openSettings();
     void openShortcuts();
     void openAbout();
@@ -58,17 +69,19 @@ private:
 
     ConnectionModel *m_connectionModel = nullptr;
     SecretStore *m_secretStore = nullptr;
+    SessionManager *m_sessionManager = nullptr;
     ConnectionListWidget *m_connectionList = nullptr;
     SessionTabWidget *m_sessionTabs = nullptr;
+    SessionSideBar *m_sideBar = nullptr;
     FileExplorerWidget *m_fileExplorer = nullptr;
     TunnelListWidget *m_tunnelList = nullptr;
-    QTabWidget *m_sideTabs = nullptr;
+    QMenu *m_connectionsListMenu = nullptr;
     QLabel *m_statusLabel = nullptr;
     QLabel *m_sessionInfoLabel = nullptr;
     QTimer *m_sessionInfoTimer = nullptr;
     QList<QAction *> m_terminalActions;
     QHash<QString, QAction *> m_shortcutActions;
-    TerminalSessionWidget *m_wiredSessionState = nullptr;
+    Session *m_wiredSessionState = nullptr;
 
     QUuid m_pendingConnectId;
     SessionCredentials m_pendingCredentials;
