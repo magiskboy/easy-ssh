@@ -81,6 +81,7 @@ Port 22
 ListenAddress 0.0.0.0
 AddressFamily inet
 UseDNS no
+UsePAM yes
 PermitRootLogin no
 PrintMotd no
 AcceptEnv LANG LC_*

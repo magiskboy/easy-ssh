@@ -17,6 +17,7 @@ class QCheckBox;
 class QComboBox;
 class QFormLayout;
 class QGroupBox;
+class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
@@ -100,6 +101,7 @@ private:
     QLineEdit *m_privateKeyEdit = nullptr;
     QWidget *m_privateKeyRow = nullptr;
     QLineEdit *m_passphraseEdit = nullptr;
+    QLabel *m_authAgentHint = nullptr;
     QLineEdit *m_startupDirEdit = nullptr;
 
     QButtonGroup *m_proxyModeGroup = nullptr;
