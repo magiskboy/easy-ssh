@@ -111,7 +111,7 @@ private:
     void wireWorker();
     int nextShellSerial();
     ShellChannelState *findShell(const QUuid &shellId);
-    void updateTunnelStatus(const QUuid &tunnelId, const QString &status, const QString &detail);
+    void updateTunnelStatus(const QUuid &tunnelId, TunnelRunStatus status, const QString &detail);
     void onWorkerConnected(const QUuid &initialShellId);
     void onWorkerDisconnected();
     void onWorkerError(const QString &message);

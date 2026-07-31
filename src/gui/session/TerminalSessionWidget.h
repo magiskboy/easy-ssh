@@ -103,8 +103,8 @@ protected:
 private slots:
     void onConnected(const QUuid &initialShellId);
     void onDataReceived(const QUuid &shellId, const QByteArray &data);
-    void onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
-                         const QString &fingerprint,
+    void onHostKeyPrompt(const QString &fingerprint,
+                         SshWorker::HostKeyPrompt reason,
                          const QString &contextLabel);
     void onErrorOccurred(const QString &message);
     void onDisconnected();

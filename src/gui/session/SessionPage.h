@@ -54,8 +54,8 @@ private slots:
     void onShellsChanged();
     void onActiveShellChanged(const QUuid &shellId);
     void onShellData(const QUuid &shellId, const QByteArray &data);
-    void onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
-                         const QString &fingerprint,
+    void onHostKeyPrompt(const QString &fingerprint,
+                         SshWorker::HostKeyPrompt reason,
                          const QString &contextLabel);
     void onSendData(const char *data, int length);
     void syncPtySize();

@@ -65,7 +65,14 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     connect(m_session, &Session::shellsChanged, this, &SessionPage::onShellsChanged);
     connect(m_session, &Session::activeShellChanged, this, &SessionPage::onActiveShellChanged);
     connect(m_session, &Session::shellData, this, &SessionPage::onShellData);
-    connect(m_session, &Session::hostKeyPrompt, this, &SessionPage::onHostKeyPrompt);
+    connect(m_session,
+            &Session::hostKeyPrompt,
+            this,
+            [this](SshWorker::HostKeyPrompt reason,
+                   const QString &fingerprint,
+                   const QString &contextLabel) {
+                onHostKeyPrompt(fingerprint, reason, contextLabel);
+            });
     connect(m_session, &Session::statusMessage, this, [this](const QString &msg, int level) {
         emit statusMessage(msg, static_cast<ErrorNotifier::Level>(level));
     });
@@ -224,8 +231,8 @@ void SessionPage::onSendData(const char *data, int length)
     m_session->writeToActiveShell(QByteArray(data, length));
 }
 
-void SessionPage::onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
-                                  const QString &fingerprint,
+void SessionPage::onHostKeyPrompt(const QString &fingerprint,
+                                  SshWorker::HostKeyPrompt reason,
                                   const QString &contextLabel)
 {
     bool accept = false;

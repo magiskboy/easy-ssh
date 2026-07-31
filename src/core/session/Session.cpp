@@ -528,7 +528,7 @@ void Session::wireWorker()
             &SshWorker::tunnelStatusChanged,
             this,
             [this](const QUuid &tunnelId, const QString &status, const QString &detail) {
-                updateTunnelStatus(tunnelId, status, detail);
+                updateTunnelStatus(tunnelId, tunnelStatusFromString(status), detail);
                 emit tunnelStatusChanged(tunnelId, status, detail);
             });
     connect(m_worker, &SshWorker::tunnelError, this, &Session::tunnelError);
@@ -550,12 +550,12 @@ ShellChannelState *Session::findShell(const QUuid &shellId)
 }
 
 void Session::updateTunnelStatus(const QUuid &tunnelId,
-                                 const QString &status,
+                                 TunnelRunStatus status,
                                  const QString &detail)
 {
     TunnelChannelState &state = m_tunnels[tunnelId];
     state.tunnelId = tunnelId;
-    state.status = tunnelStatusFromString(status);
+    state.status = status;
     state.detail = detail;
     emit tunnelsChanged();
 }

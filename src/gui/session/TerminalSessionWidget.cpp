@@ -495,7 +495,14 @@ void TerminalSessionWidget::beginConnect()
     connect(m_worker, &SshWorker::connected, this, &TerminalSessionWidget::onConnected);
     connect(m_worker, &SshWorker::dataReceived, this, &TerminalSessionWidget::onDataReceived);
     connect(m_worker, &SshWorker::shellClosed, this, &TerminalSessionWidget::onShellClosed);
-    connect(m_worker, &SshWorker::hostKeyPrompt, this, &TerminalSessionWidget::onHostKeyPrompt);
+    connect(m_worker,
+            &SshWorker::hostKeyPrompt,
+            this,
+            [this](SshWorker::HostKeyPrompt reason,
+                   const QString &fingerprint,
+                   const QString &contextLabel) {
+                onHostKeyPrompt(fingerprint, reason, contextLabel);
+            });
     connect(m_worker, &SshWorker::errorOccurred, this, &TerminalSessionWidget::onErrorOccurred);
     connect(m_worker, &SshWorker::disconnected, this, &TerminalSessionWidget::onDisconnected);
     connect(m_worker, &SshWorker::directoryListed, this, &TerminalSessionWidget::directoryListed);
@@ -588,8 +595,8 @@ void TerminalSessionWidget::onShellClosed(const QUuid &shellId)
     emit statusMessage(tr("Shell closed: %1").arg(m_displayName), ErrorNotifier::Level::Warning);
 }
 
-void TerminalSessionWidget::onHostKeyPrompt(SshWorker::HostKeyPrompt reason,
-                                            const QString &fingerprint,
+void TerminalSessionWidget::onHostKeyPrompt(const QString &fingerprint,
+                                            SshWorker::HostKeyPrompt reason,
                                             const QString &contextLabel)
 {
     bool accept = false;
