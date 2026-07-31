@@ -20,6 +20,8 @@ public:
         Passphrase,
         GatewayPassword,
         GatewayPassphrase,
+        /// Keyed by tunnel id (not connection id).
+        TunnelSocksPassword,
     };
 
     explicit SecretStore(QObject *parent = nullptr);

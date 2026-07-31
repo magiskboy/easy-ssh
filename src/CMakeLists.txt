@@ -53,6 +53,8 @@ set(EASY_SSH_CORE_SOURCES
     core/tunnel/RemoteTunnelSession.h
     core/tunnel/DynamicTunnelSession.cpp
     core/tunnel/DynamicTunnelSession.h
+    core/tunnel/Socks5Handshake.cpp
+    core/tunnel/Socks5Handshake.h
     core/tunnel/TunnelSessionFactory.cpp
 )
 

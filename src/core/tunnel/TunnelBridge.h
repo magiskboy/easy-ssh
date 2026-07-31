@@ -10,16 +10,17 @@
 
 #include <libssh/libssh.h>
 
-class QTcpSocket;
+class QIODevice;
 
 /**
- * Shared socket↔SSH-channel byte pipe used by Local/Remote tunnel sessions.
+ * Shared socket↔SSH-channel byte pipe used by Local/Remote/Dynamic tunnel sessions.
+ * socket may be QTcpSocket or QLocalSocket (both QIODevice).
  */
 struct TunnelBridge
 {
     QUuid tunnelId;
     ssh_channel channel = nullptr;
-    QTcpSocket *socket = nullptr;
+    QIODevice *socket = nullptr;
     bool closing = false;
 };
 

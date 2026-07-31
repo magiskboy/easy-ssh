@@ -11,8 +11,9 @@
 
 #include <QList>
 
+class QIODevice;
+class QLocalServer;
 class QTcpServer;
-class QTcpSocket;
 
 class LocalTunnelSession final : public ITunnelSession
 {
@@ -30,18 +31,23 @@ public:
     void poll() override;
 
 private slots:
-    void onNewConnection();
+    void onNewTcpConnection();
+    void onNewLocalConnection();
     void onBridgeSocketReadyRead();
     void onBridgeSocketDisconnected();
 
 private:
-    bool openForwardBridge(QTcpSocket *socket);
-    TunnelBridge *bridgeForSocket(QTcpSocket *socket);
+    bool startTcpListen();
+    bool startUnixListen();
+    bool openForwardBridge(QIODevice *socket, const QString &sourceHost, int sourcePort);
+    void wireBridgeSocket(QIODevice *socket);
+    TunnelBridge *bridgeForSocket(QIODevice *socket);
     void closeBridge(TunnelBridge *bridge);
     QString sessionError() const;
 
     TunnelDefinition m_def;
     ssh_session m_session = nullptr;
-    QTcpServer *m_server = nullptr;
+    QTcpServer *m_tcpServer = nullptr;
+    QLocalServer *m_localServer = nullptr;
     QList<TunnelBridge *> m_bridges;
 };

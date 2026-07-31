@@ -515,10 +515,11 @@ void SshWorker::startTunnel(const TunnelDefinition &def)
         return;
     }
 
-    if (def.id.isNull() ||
-        (def.type != TunnelType::Dynamic && (def.localPort == 0 || def.remotePort == 0))) {
-        emit tunnelError(def.id, tr("Invalid tunnel definition"));
-        emit tunnelStatusChanged(def.id, QStringLiteral("Error"), tr("Invalid tunnel definition"));
+    if (def.id.isNull() || !def.isValid()) {
+        const QString message = def.validationError().isEmpty() ? tr("Invalid tunnel definition")
+                                                                : def.validationError();
+        emit tunnelError(def.id, message);
+        emit tunnelStatusChanged(def.id, QStringLiteral("Error"), message);
         return;
     }
 

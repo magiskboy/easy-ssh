@@ -5,6 +5,9 @@
 #include "LocalTunnelSession.h"
 
 #include <QHostAddress>
+#include <QIODevice>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -37,6 +40,14 @@ bool LocalTunnelSession::start()
         return false;
     }
 
+    if (m_def.localKind == TunnelEndpointKind::UnixSocket) {
+        return startUnixListen();
+    }
+    return startTcpListen();
+}
+
+bool LocalTunnelSession::startTcpListen()
+{
     auto *server = new QTcpServer(this);
     QHostAddress address;
     if (m_def.localHost.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0 ||
@@ -64,9 +75,37 @@ bool LocalTunnelSession::start()
         return false;
     }
 
-    m_server = server;
-    connect(server, &QTcpServer::newConnection, this, &LocalTunnelSession::onNewConnection);
+    m_tcpServer = server;
+    connect(server, &QTcpServer::newConnection, this, &LocalTunnelSession::onNewTcpConnection);
     return true;
+}
+
+bool LocalTunnelSession::startUnixListen()
+{
+#ifndef Q_OS_UNIX
+    const QString message = tr("Local Unix socket bind is not supported on this platform");
+    emit errorOccurred(m_def.id, message);
+    emit statusChanged(m_def.id, QStringLiteral("Error"), message);
+    return false;
+#else
+    const QString path = m_def.localSocketPath.trimmed();
+    QLocalServer::removeServer(path);
+
+    auto *server = new QLocalServer(this);
+    server->setSocketOptions(QLocalServer::UserAccessOption);
+    if (!server->listen(path)) {
+        const QString message =
+            tr("Cannot listen on Unix socket %1: %2").arg(path, server->errorString());
+        emit errorOccurred(m_def.id, message);
+        emit statusChanged(m_def.id, QStringLiteral("Error"), message);
+        server->deleteLater();
+        return false;
+    }
+
+    m_localServer = server;
+    connect(server, &QLocalServer::newConnection, this, &LocalTunnelSession::onNewLocalConnection);
+    return true;
+#endif
 }
 
 void LocalTunnelSession::stop(bool emitOff)
@@ -77,11 +116,22 @@ void LocalTunnelSession::stop(bool emitOff)
     }
     m_bridges.clear();
 
-    if (m_server) {
-        disconnect(m_server, nullptr, this, nullptr);
-        m_server->close();
-        delete m_server;
-        m_server = nullptr;
+    if (m_tcpServer) {
+        disconnect(m_tcpServer, nullptr, this, nullptr);
+        m_tcpServer->close();
+        delete m_tcpServer;
+        m_tcpServer = nullptr;
+    }
+
+    if (m_localServer) {
+        disconnect(m_localServer, nullptr, this, nullptr);
+        const QString path = m_localServer->fullServerName();
+        m_localServer->close();
+        delete m_localServer;
+        m_localServer = nullptr;
+        if (!path.isEmpty()) {
+            QLocalServer::removeServer(path);
+        }
     }
 
     if (emitOff) {
@@ -102,25 +152,47 @@ void LocalTunnelSession::poll()
     }
 }
 
-void LocalTunnelSession::onNewConnection()
+void LocalTunnelSession::onNewTcpConnection()
 {
-    if (m_server == nullptr) {
+    if (m_tcpServer == nullptr) {
         return;
     }
 
-    while (m_server->hasPendingConnections()) {
-        QTcpSocket *socket = m_server->nextPendingConnection();
+    while (m_tcpServer->hasPendingConnections()) {
+        QTcpSocket *socket = m_tcpServer->nextPendingConnection();
         if (socket == nullptr) {
             continue;
         }
-        if (!openForwardBridge(socket)) {
+        const QString sourceHost = socket->peerAddress().toString();
+        const int sourcePort = static_cast<int>(socket->peerPort());
+        if (!openForwardBridge(socket, sourceHost, sourcePort)) {
             socket->abort();
             socket->deleteLater();
         }
     }
 }
 
-bool LocalTunnelSession::openForwardBridge(QTcpSocket *socket)
+void LocalTunnelSession::onNewLocalConnection()
+{
+    if (m_localServer == nullptr) {
+        return;
+    }
+
+    while (m_localServer->hasPendingConnections()) {
+        QLocalSocket *socket = m_localServer->nextPendingConnection();
+        if (socket == nullptr) {
+            continue;
+        }
+        if (!openForwardBridge(socket, QStringLiteral("127.0.0.1"), 0)) {
+            socket->abort();
+            socket->deleteLater();
+        }
+    }
+}
+
+bool LocalTunnelSession::openForwardBridge(QIODevice *socket,
+                                           const QString &sourceHost,
+                                           int sourcePort)
 {
     ssh_channel channel = ssh_channel_new(m_session);
     if (channel == nullptr) {
@@ -128,24 +200,34 @@ bool LocalTunnelSession::openForwardBridge(QTcpSocket *socket)
         return false;
     }
 
-    const QByteArray remoteHost = m_def.remoteHost.toUtf8();
-    const QByteArray sourceHost = socket->peerAddress().toString().toUtf8();
-    const int sourcePort = static_cast<int>(socket->peerPort());
+    const QByteArray sourceHostBytes = sourceHost.toUtf8();
+    const char *originHost = sourceHostBytes.isEmpty() ? "127.0.0.1" : sourceHostBytes.constData();
+    const int originPort = sourcePort > 0 ? sourcePort : 0;
 
     ssh_set_blocking(m_session, 1);
 
-    const int rc =
-        ssh_channel_open_forward(channel,
-                                 remoteHost.constData(),
-                                 m_def.remotePort,
-                                 sourceHost.isEmpty() ? "127.0.0.1" : sourceHost.constData(),
-                                 sourcePort > 0 ? sourcePort : 0);
-
-    if (rc != SSH_OK) {
-        ssh_channel_free(channel);
-        const QString message = tr("Forward open failed: %1").arg(sessionError());
-        emit errorOccurred(m_def.id, message);
-        return false;
+    int rc = SSH_ERROR;
+    if (m_def.remoteKind == TunnelEndpointKind::UnixSocket) {
+        const QByteArray path = m_def.remoteSocketPath.toUtf8();
+        rc = ssh_channel_open_forward_unix(channel, path.constData(), originHost, originPort);
+        if (rc != SSH_OK) {
+            ssh_channel_free(channel);
+            const QString message = tr("Unix socket forward open failed (server may not support "
+                                       "direct-streamlocal): %1")
+                                        .arg(sessionError());
+            emit errorOccurred(m_def.id, message);
+            return false;
+        }
+    } else {
+        const QByteArray remoteHost = m_def.remoteHost.toUtf8();
+        rc = ssh_channel_open_forward(
+            channel, remoteHost.constData(), m_def.remotePort, originHost, originPort);
+        if (rc != SSH_OK) {
+            ssh_channel_free(channel);
+            const QString message = tr("Forward open failed: %1").arg(sessionError());
+            emit errorOccurred(m_def.id, message);
+            return false;
+        }
     }
 
     auto *bridge = new TunnelBridge;
@@ -154,21 +236,34 @@ bool LocalTunnelSession::openForwardBridge(QTcpSocket *socket)
     bridge->socket = socket;
     m_bridges.append(bridge);
 
-    socket->setParent(this);
-    connect(socket, &QTcpSocket::readyRead, this, &LocalTunnelSession::onBridgeSocketReadyRead);
-    connect(
-        socket, &QTcpSocket::disconnected, this, &LocalTunnelSession::onBridgeSocketDisconnected);
+    wireBridgeSocket(socket);
     return true;
+}
+
+void LocalTunnelSession::wireBridgeSocket(QIODevice *socket)
+{
+    socket->setParent(this);
+    connect(socket, &QIODevice::readyRead, this, &LocalTunnelSession::onBridgeSocketReadyRead);
+
+    if (auto *tcp = qobject_cast<QTcpSocket *>(socket)) {
+        connect(
+            tcp, &QTcpSocket::disconnected, this, &LocalTunnelSession::onBridgeSocketDisconnected);
+    } else if (auto *local = qobject_cast<QLocalSocket *>(socket)) {
+        connect(local,
+                &QLocalSocket::disconnected,
+                this,
+                &LocalTunnelSession::onBridgeSocketDisconnected);
+    }
 }
 
 void LocalTunnelSession::onBridgeSocketReadyRead()
 {
-    auto *socket = qobject_cast<QTcpSocket *>(sender());
-    TunnelBridge *bridge = bridgeForSocket(socket);
+    auto *device = qobject_cast<QIODevice *>(sender());
+    TunnelBridge *bridge = bridgeForSocket(device);
     if (bridge == nullptr) {
         return;
     }
-    const QByteArray data = socket->readAll();
+    const QByteArray data = device->readAll();
     if (!TunnelBridgeIo::writeSocketToChannel(bridge, data)) {
         closeBridge(bridge);
     }
@@ -176,13 +271,13 @@ void LocalTunnelSession::onBridgeSocketReadyRead()
 
 void LocalTunnelSession::onBridgeSocketDisconnected()
 {
-    auto *socket = qobject_cast<QTcpSocket *>(sender());
-    if (TunnelBridge *bridge = bridgeForSocket(socket)) {
+    auto *device = qobject_cast<QIODevice *>(sender());
+    if (TunnelBridge *bridge = bridgeForSocket(device)) {
         closeBridge(bridge);
     }
 }
 
-TunnelBridge *LocalTunnelSession::bridgeForSocket(QTcpSocket *socket)
+TunnelBridge *LocalTunnelSession::bridgeForSocket(QIODevice *socket)
 {
     if (socket == nullptr) {
         return nullptr;

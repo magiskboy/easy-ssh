@@ -6,6 +6,8 @@
 
 #include "ConnectionDialog.h"
 #include "core/connection/SecretStore.h"
+#include "core/tunnel/Tunnel.h"
+#include "core/tunnel/TunnelStore.h"
 #include "gui/ErrorNotifier.h"
 #include "gui/models/ConnectionFilterProxy.h"
 #include "gui/models/ConnectionModel.h"
@@ -202,6 +204,7 @@ void ConnectionListWidget::deleteSelectedConnection()
     }
 
     const QString name = existing->name;
+    const QList<TunnelDefinition> tunnels = TunnelStore::loadForConnection(*id);
     if (!m_model->removeById(*id)) {
         ErrorNotifier::notify(
             this, tr("Error"), tr("Failed to delete connection."), ErrorNotifier::Level::Warning);
@@ -210,6 +213,9 @@ void ConnectionListWidget::deleteSelectedConnection()
 
     if (m_secretStore) {
         m_secretStore->deleteAllSecrets(*id);
+        for (const TunnelDefinition &tunnel : tunnels) {
+            m_secretStore->deleteSecret(tunnel.id, SecretStore::Kind::TunnelSocksPassword);
+        }
     }
 
     emit statusMessage(tr("Deleted connection: %1 (open sessions kept)").arg(name),

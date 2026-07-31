@@ -41,6 +41,6 @@ signals:
     void errorOccurred(const QUuid &tunnelId, const QString &message);
 };
 
-/// Create Local/Remote session (parented). Dynamic → stub that reports NotSupported.
+/// Create Local/Remote/Dynamic session (parented).
 ITunnelSession *
 createTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *parent);

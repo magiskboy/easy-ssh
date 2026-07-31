@@ -434,9 +434,15 @@ void Session::startEnabledTunnels()
 
     const QList<TunnelDefinition> tunnels = TunnelStore::loadForConnection(m_connection.id);
     for (const TunnelDefinition &tunnel : tunnels) {
-        if (tunnel.enabled) {
-            startTunnel(tunnel);
+        if (!tunnel.enabled) {
+            continue;
         }
+        // SOCKS password is injected by TunnelListWidget after SecretStore read.
+        if (tunnel.type == TunnelType::Dynamic &&
+            tunnel.socksAuth == SocksAuthMode::UsernamePassword) {
+            continue;
+        }
+        startTunnel(tunnel);
     }
 }
 
