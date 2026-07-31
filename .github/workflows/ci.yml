@@ -55,7 +55,6 @@ jobs:
   # Optional / advisory: does not block merges while the check set stabilizes.
   tidy:
     name: clang-tidy
-    continue-on-error: true
     needs: [format, reuse]
     runs-on: ubuntu-24.04
     steps:

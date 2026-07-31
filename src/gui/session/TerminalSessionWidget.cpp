@@ -519,7 +519,9 @@ void TerminalSessionWidget::beginConnect()
 
     int cols = kDefaultPtyCols;
     int rows = kDefaultPtyRows;
-    readTerminalSize(&cols, &rows);
+    const QSize termSize = readTerminalSize();
+    cols = termSize.width();
+    rows = termSize.height();
 
     const Connection connection = m_connection;
     const SessionCredentials credentials = m_credentials;
@@ -717,7 +719,9 @@ void TerminalSessionWidget::syncPtySize()
 
     int cols = kDefaultPtyCols;
     int rows = kDefaultPtyRows;
-    readTerminalSize(&cols, &rows);
+    const QSize termSize = readTerminalSize();
+    cols = termSize.width();
+    rows = termSize.height();
     if (cols < kMinTerminalCols || rows < kMinTerminalRows) {
         schedulePtySizeSync();
         return;
@@ -745,7 +749,7 @@ void TerminalSessionWidget::schedulePtySizeSync()
     }
 }
 
-void TerminalSessionWidget::readTerminalSize(int *cols, int *rows) const
+QSize TerminalSessionWidget::readTerminalSize() const
 {
     int c = m_term ? m_term->screenColumnsCount() : 0;
     int r = m_term ? m_term->screenLinesCount() : 0;
@@ -768,8 +772,7 @@ void TerminalSessionWidget::readTerminalSize(int *cols, int *rows) const
         r = kDefaultPtyRows;
     }
 
-    *cols = c;
-    *rows = r;
+    return QSize(c, r);
 }
 
 void TerminalSessionWidget::shutdownWorker()

@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-only
 
-# Pre-commit: mirror blocking CI checks (clang-format on staged C++, REUSE lint).
+# Pre-commit: auto-format staged C++ with clang-format, then REUSE lint.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -36,8 +36,10 @@ mapfile -t staged_cxx < <(
 )
 
 if [[ ${#staged_cxx[@]} -gt 0 ]]; then
-  echo "pre-commit: clang-format --check (${#staged_cxx[@]} staged file(s))"
-  "$FORMAT" --check "${staged_cxx[@]}"
+  echo "pre-commit: clang-format (${#staged_cxx[@]} staged file(s))"
+  "$FORMAT" "${staged_cxx[@]}"
+  # Re-stage so the commit includes any formatting fixes.
+  git add -- "${staged_cxx[@]}"
 else
   echo "pre-commit: clang-format skipped (no staged C/C++ files)"
 fi

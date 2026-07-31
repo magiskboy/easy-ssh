@@ -94,7 +94,7 @@ private:
     void startNextOpenWithDownload();
     void completeOpenWithItem();
     void navigateTo(const QString &path);
-    void setSessionBadge(const QString &name, const QString &detail = QString());
+    void setSessionBadge();
     void updateSessionBadge();
     QString openWithTempRoot() const;
     static QString formatByteSize(qint64 bytes);

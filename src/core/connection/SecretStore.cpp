@@ -60,14 +60,14 @@ void SecretStore::readSecret(const QUuid &connectionId, Kind kind)
             [this, connectionId, kind](QKeychain::Job *j) {
                 auto *readJob = static_cast<QKeychain::ReadPasswordJob *>(j);
                 if (j->error() == QKeychain::NoError) {
-                    emit readFinished(connectionId, kind, true, readJob->textData(), {});
+                    emit readFinished(connectionId, kind, readJob->textData(), true, {});
                     return;
                 }
                 if (j->error() == QKeychain::EntryNotFound) {
-                    emit readFinished(connectionId, kind, true, {}, {});
+                    emit readFinished(connectionId, kind, {}, true, {});
                     return;
                 }
-                emit readFinished(connectionId, kind, false, {}, j->errorString());
+                emit readFinished(connectionId, kind, {}, false, j->errorString());
             });
 
     job->start();

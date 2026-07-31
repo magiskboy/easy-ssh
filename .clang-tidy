@@ -17,6 +17,7 @@ Checks: >
   readability-redundant-control-flow
 
 HeaderFilterRegex: 'src/.*'
-WarningsAsErrors: ''
+
+WarningsAsErrors: 'bugprone-easily-swappable-parameters'
 FormatStyle: file
 UseColor: true

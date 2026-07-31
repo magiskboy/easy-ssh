@@ -177,7 +177,7 @@ bool FsRemote::renamePath(const QString &from, const QString &to, QString *error
     return m_engine->renamePath(from, to, error);
 }
 
-bool FsRemote::canonicalizePath(const QString &path, QString *canonicalOut, QString *error)
+bool FsRemote::canonicalizePath(const QString &path, QString &canonicalOut, QString *error)
 {
     if (!isOpen()) {
         if (error) {
@@ -354,7 +354,7 @@ bool FsRemote::uploadFileTo(const QString &localPath, const QString &remotePath,
         noteTransferProgress(delta, name);
     };
 
-    if (!m_engine->uploadFile(localPath, remotePath, shouldCancel, onProgress, error)) {
+    if (!m_engine->uploadFile(localPath, shouldCancel, remotePath, onProgress, error)) {
         endTransfer();
         return false;
     }
@@ -471,7 +471,7 @@ bool FsRemote::uploadPathRecursive(const QString &localPath,
     const auto onProgress = [this](qint64 delta, const QString &name) {
         noteTransferProgress(delta, name);
     };
-    return m_engine->uploadFile(localPath, remotePath, shouldCancel, onProgress, error);
+    return m_engine->uploadFile(localPath, shouldCancel, remotePath, onProgress, error);
 }
 
 bool FsRemote::downloadPathRecursive(const QString &remotePath,
@@ -511,5 +511,5 @@ bool FsRemote::downloadPathRecursive(const QString &remotePath,
     const auto onProgress = [this](qint64 delta, const QString &name) {
         noteTransferProgress(delta, name);
     };
-    return m_engine->downloadFile(remotePath, localPath, shouldCancel, onProgress, error);
+    return m_engine->downloadFile(remotePath, shouldCancel, localPath, onProgress, error);
 }

@@ -151,39 +151,39 @@ QString SftpEngine::localIoErrorMessage(const QString &qtErrorString)
     return qtErrorString;
 }
 
-QString SftpEngine::formatPermissions(uint32_t permissions, uint8_t type)
+QString SftpEngine::formatPermissions(uint32_t permissions, EntryType type)
 {
     QString result(10, QLatin1Char('-'));
 
     switch (type) {
-    case SSH_FILEXFER_TYPE_DIRECTORY:
+    case EntryType::Directory:
         result[0] = QLatin1Char('d');
         break;
-    case SSH_FILEXFER_TYPE_SYMLINK:
+    case EntryType::Symlink:
         result[0] = QLatin1Char('l');
         break;
-    case SSH_FILEXFER_TYPE_SPECIAL:
+    case EntryType::Special:
         result[0] = QLatin1Char('s');
         break;
-    default:
+    case EntryType::Regular:
         break;
     }
 
-    const auto setBit = [&](int index, uint32_t mask, QChar ch) {
+    const auto setBit = [&](int index, QChar ch, uint32_t mask) {
         if (permissions & mask) {
             result[index] = ch;
         }
     };
 
-    setBit(1, S_IRUSR, QLatin1Char('r'));
-    setBit(2, S_IWUSR, QLatin1Char('w'));
-    setBit(3, S_IXUSR, QLatin1Char('x'));
-    setBit(4, S_IRGRP, QLatin1Char('r'));
-    setBit(5, S_IWGRP, QLatin1Char('w'));
-    setBit(6, S_IXGRP, QLatin1Char('x'));
-    setBit(7, S_IROTH, QLatin1Char('r'));
-    setBit(8, S_IWOTH, QLatin1Char('w'));
-    setBit(9, S_IXOTH, QLatin1Char('x'));
+    setBit(1, QLatin1Char('r'), S_IRUSR);
+    setBit(2, QLatin1Char('w'), S_IWUSR);
+    setBit(3, QLatin1Char('x'), S_IXUSR);
+    setBit(4, QLatin1Char('r'), S_IRGRP);
+    setBit(5, QLatin1Char('w'), S_IWGRP);
+    setBit(6, QLatin1Char('x'), S_IXGRP);
+    setBit(7, QLatin1Char('r'), S_IROTH);
+    setBit(8, QLatin1Char('w'), S_IWOTH);
+    setBit(9, QLatin1Char('x'), S_IXOTH);
     return result;
 }
 
@@ -224,7 +224,8 @@ bool SftpEngine::listDirectoryEntries(const QString &path,
         entry.path = joinRemotePath(path, name);
         entry.isDir = attributes->type == SSH_FILEXFER_TYPE_DIRECTORY;
         entry.size = static_cast<qint64>(attributes->size);
-        entry.permissions = formatPermissions(attributes->permissions, attributes->type);
+        entry.permissions =
+            formatPermissions(attributes->permissions, static_cast<EntryType>(attributes->type));
         if (attributes->flags & SSH_FILEXFER_ATTR_ACMODTIME) {
             entry.mtime = static_cast<qint64>(attributes->mtime);
         } else if (attributes->mtime64 != 0) {
@@ -311,22 +312,18 @@ bool SftpEngine::removeDirectory(const QString &path, QString *error)
     return true;
 }
 
-bool SftpEngine::canonicalizePath(const QString &path, QString *canonicalOut, QString *error)
+bool SftpEngine::canonicalizePath(const QString &path, QString &canonicalOut, QString *error)
 {
     Q_UNUSED(error);
     const QString requested = path.isEmpty() ? QStringLiteral(".") : path;
     const QByteArray remote = requested.toUtf8();
     char *canonical = sftp_canonicalize_path(m_sftp, remote.constData());
     if (canonical == nullptr) {
-        if (canonicalOut) {
-            *canonicalOut = requested;
-        }
+        canonicalOut = requested;
         return true;
     }
 
-    if (canonicalOut) {
-        *canonicalOut = QString::fromUtf8(canonical);
-    }
+    canonicalOut = QString::fromUtf8(canonical);
     ssh_string_free_char(canonical);
     return true;
 }
@@ -367,8 +364,8 @@ bool SftpEngine::remoteFileSize(const QString &path, qint64 *sizeOut, QString *e
 }
 
 bool SftpEngine::uploadFile(const QString &localPath,
-                            const QString &remotePath,
                             const CancelCheck &shouldCancel,
+                            const QString &remotePath,
                             const ProgressNote &onProgress,
                             QString *error)
 {
@@ -455,8 +452,8 @@ bool SftpEngine::uploadFile(const QString &localPath,
 }
 
 bool SftpEngine::downloadFile(const QString &remotePath,
-                              const QString &localPath,
                               const CancelCheck &shouldCancel,
+                              const QString &localPath,
                               const ProgressNote &onProgress,
                               QString *error)
 {

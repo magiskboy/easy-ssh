@@ -28,18 +28,18 @@ public:
     bool renamePath(const QString &from, const QString &to, QString *error) override;
     bool removeFile(const QString &path, QString *error) override;
     bool removeDirectory(const QString &path, QString *error) override;
-    bool canonicalizePath(const QString &path, QString *canonicalOut, QString *error) override;
+    bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error) override;
     bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) override;
     bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) override;
 
     bool uploadFile(const QString &localPath,
-                    const QString &remotePath,
                     const CancelCheck &shouldCancel,
+                    const QString &remotePath,
                     const ProgressNote &onProgress,
                     QString *error) override;
     bool downloadFile(const QString &remotePath,
-                      const QString &localPath,
                       const CancelCheck &shouldCancel,
+                      const QString &localPath,
                       const ProgressNote &onProgress,
                       QString *error) override;
 

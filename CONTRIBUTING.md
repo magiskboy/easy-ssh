@@ -132,7 +132,8 @@ Indent and newline defaults for other editors are in [`.editorconfig`](.editorco
 
 ### Git hooks and formatting
 
-Enable the pre-commit hook (clang-format on staged C++ + REUSE lint, matching CI gates):
+Enable the pre-commit hook (clang-format **auto-fix** on staged C++ + REUSE lint).
+CI still runs `clang-format --check` as a gate:
 
 ```bash
 .github/scripts/install-git-hooks.sh
@@ -150,7 +151,7 @@ Format / check C++ sources:
 .github/scripts/run-clang-format.sh --check path/a.cpp # check specific files
 ```
 
-Style is defined in [`.clang-format`](.clang-format). Please run the format check before opening a PR — the CI `clang-format` job will fail otherwise.
+Style is defined in [`.clang-format`](.clang-format). Pre-commit reformats staged C++ in place (and re-stages); the CI `clang-format` job still fails if the tree is unformatted.
 
 ### License headers (SPDX / REUSE)
 
@@ -187,8 +188,6 @@ EASY_SSH_TIDY_FIX=1 .github/scripts/run-clang-tidy.sh
 # Use a different build tree (e.g. release)
 EASY_SSH_BUILD_DIR=build-release .github/scripts/run-clang-tidy.sh
 ```
-
-CI runs clang-tidy on Linux as an **advisory** job (`continue-on-error`); it does not block merges yet. Prefer fixing new tidy findings in your PR when practical.
 
 ### Icons
 

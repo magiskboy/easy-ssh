@@ -51,18 +51,18 @@ public:
     virtual bool renamePath(const QString &from, const QString &to, QString *error) = 0;
     virtual bool removeFile(const QString &path, QString *error) = 0;
     virtual bool removeDirectory(const QString &path, QString *error) = 0;
-    virtual bool canonicalizePath(const QString &path, QString *canonicalOut, QString *error) = 0;
+    virtual bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error) = 0;
     virtual bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) = 0;
     virtual bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) = 0;
 
     virtual bool uploadFile(const QString &localPath,
-                            const QString &remotePath,
                             const CancelCheck &shouldCancel,
+                            const QString &remotePath,
                             const ProgressNote &onProgress,
                             QString *error) = 0;
     virtual bool downloadFile(const QString &remotePath,
-                              const QString &localPath,
                               const CancelCheck &shouldCancel,
+                              const QString &localPath,
                               const ProgressNote &onProgress,
                               QString *error) = 0;
 };

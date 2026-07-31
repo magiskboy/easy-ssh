@@ -51,7 +51,7 @@ public:
     bool createDirectory(const QString &path, QString *error);
     bool renamePath(const QString &from, const QString &to, QString *error);
     bool removePath(const QString &path, bool recursive, QString *error);
-    bool canonicalizePath(const QString &path, QString *canonicalOut, QString *error);
+    bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error);
 
     bool uploadFiles(const QStringList &localPaths, const QString &remoteDir, QString *error);
     bool uploadFileTo(const QString &localPath, const QString &remotePath, QString *error);

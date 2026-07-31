@@ -58,7 +58,7 @@ bool ScpEngine::removeDirectory(const QString &, QString *error)
     return notSupported(error);
 }
 
-bool ScpEngine::canonicalizePath(const QString &, QString *, QString *error)
+bool ScpEngine::canonicalizePath(const QString &, QString &, QString *error)
 {
     return notSupported(error);
 }
@@ -74,13 +74,13 @@ bool ScpEngine::remoteFileSize(const QString &, qint64 *, QString *error)
 }
 
 bool ScpEngine::uploadFile(
-    const QString &, const QString &, const CancelCheck &, const ProgressNote &, QString *error)
+    const QString &, const CancelCheck &, const QString &, const ProgressNote &, QString *error)
 {
     return notSupported(error);
 }
 
 bool ScpEngine::downloadFile(
-    const QString &, const QString &, const CancelCheck &, const ProgressNote &, QString *error)
+    const QString &, const CancelCheck &, const QString &, const ProgressNote &, QString *error)
 {
     return notSupported(error);
 }

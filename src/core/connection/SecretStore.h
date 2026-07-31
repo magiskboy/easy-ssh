@@ -33,7 +33,7 @@ public:
 signals:
     void storeFinished(const QUuid &connectionId, Kind kind, bool ok, const QString &error);
     void readFinished(
-        const QUuid &connectionId, Kind kind, bool ok, const QString &value, const QString &error);
+        const QUuid &connectionId, Kind kind, const QString &value, bool ok, const QString &error);
     void deleteFinished(const QUuid &connectionId, Kind kind, bool ok, const QString &error);
 
 private:

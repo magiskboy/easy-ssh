@@ -163,8 +163,8 @@ void MainWindow::setupUi()
             this,
             [this](const QUuid &connectionId,
                    SecretStore::Kind kind,
-                   bool ok,
                    const QString &value,
+                   bool ok,
                    const QString &error) {
                 const auto connection = m_connectionModel->connectionById(connectionId);
                 if (!connection) {
@@ -417,7 +417,7 @@ void MainWindow::setupMenus()
     auto *terminalMenu = menuBar()->addMenu(tr("&Terminal"));
 
     auto addTerminalAction =
-        [this, terminalMenu](const QString &text, const QString &actionId, auto method) {
+        [this, terminalMenu](const QString &text, auto method, const QString &actionId) {
             auto *action = terminalMenu->addAction(text);
             registerAction(actionId, action);
             connect(action, &QAction::triggered, this, [this, method]() {
@@ -430,21 +430,21 @@ void MainWindow::setupMenus()
         };
 
     addTerminalAction(
-        tr("&Copy"), QStringLiteral("terminal.copy"), &TerminalSessionWidget::copySelection);
+        tr("&Copy"), &TerminalSessionWidget::copySelection, QStringLiteral("terminal.copy"));
     addTerminalAction(
-        tr("&Paste"), QStringLiteral("terminal.paste"), &TerminalSessionWidget::pasteClipboard);
+        tr("&Paste"), &TerminalSessionWidget::pasteClipboard, QStringLiteral("terminal.paste"));
     terminalMenu->addSeparator();
     addTerminalAction(tr("&Clear Screen"),
-                      QStringLiteral("terminal.clearScreen"),
-                      &TerminalSessionWidget::clearScreen);
+                      &TerminalSessionWidget::clearScreen,
+                      QStringLiteral("terminal.clearScreen"));
     addTerminalAction(
-        tr("&Search…"), QStringLiteral("terminal.search"), &TerminalSessionWidget::toggleSearch);
+        tr("&Search…"), &TerminalSessionWidget::toggleSearch, QStringLiteral("terminal.search"));
     terminalMenu->addSeparator();
     addTerminalAction(
-        tr("Save &Log…"), QStringLiteral("terminal.saveLog"), &TerminalSessionWidget::saveLog);
+        tr("Save &Log…"), &TerminalSessionWidget::saveLog, QStringLiteral("terminal.saveLog"));
     addTerminalAction(tr("Save Screensho&t…"),
-                      QStringLiteral("terminal.saveScreenshot"),
-                      &TerminalSessionWidget::saveScreenshot);
+                      &TerminalSessionWidget::saveScreenshot,
+                      QStringLiteral("terminal.saveScreenshot"));
 
     auto *helpMenu = menuBar()->addMenu(tr("&Help"));
     auto *openLogAction = helpMenu->addAction(tr("Open &Log"));

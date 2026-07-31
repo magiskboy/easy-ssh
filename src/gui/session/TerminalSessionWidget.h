@@ -14,6 +14,7 @@
 
 #include <QByteArray>
 #include <QDateTime>
+#include <QSize>
 #include <QStringList>
 #include <QUuid>
 #include <QVector>
@@ -119,7 +120,7 @@ private:
     void showErrorState(const QString &message);
     void showOverlay(const QString &message, bool showReconnect);
     void clearSecret();
-    void readTerminalSize(int *cols, int *rows) const;
+    QSize readTerminalSize() const;
     void schedulePtySizeSync();
 
     Connection m_connection;

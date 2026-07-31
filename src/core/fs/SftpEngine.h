@@ -35,26 +35,34 @@ public:
     bool renamePath(const QString &from, const QString &to, QString *error) override;
     bool removeFile(const QString &path, QString *error) override;
     bool removeDirectory(const QString &path, QString *error) override;
-    bool canonicalizePath(const QString &path, QString *canonicalOut, QString *error) override;
+    bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error) override;
     bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) override;
     bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) override;
 
     bool uploadFile(const QString &localPath,
-                    const QString &remotePath,
                     const CancelCheck &shouldCancel,
+                    const QString &remotePath,
                     const ProgressNote &onProgress,
                     QString *error) override;
     bool downloadFile(const QString &remotePath,
-                      const QString &localPath,
                       const CancelCheck &shouldCancel,
+                      const QString &localPath,
                       const ProgressNote &onProgress,
                       QString *error) override;
 
 private:
+    enum class EntryType : uint8_t
+    {
+        Regular = SSH_FILEXFER_TYPE_REGULAR,
+        Directory = SSH_FILEXFER_TYPE_DIRECTORY,
+        Symlink = SSH_FILEXFER_TYPE_SYMLINK,
+        Special = SSH_FILEXFER_TYPE_SPECIAL,
+    };
+
     QString sessionErrorOf(ssh_session session) const;
     QString sftpErrorMessage() const;
     static QString localIoErrorMessage(const QString &qtErrorString);
-    static QString formatPermissions(uint32_t permissions, uint8_t type);
+    static QString formatPermissions(uint32_t permissions, EntryType type);
     static QString joinRemotePath(const QString &dir, const QString &name);
 
     sftp_session m_sftp = nullptr;

@@ -260,7 +260,7 @@ void SshWorker::canonicalizePath(const QString &path)
     const QString requested = path.isEmpty() ? QStringLiteral(".") : path;
     QString canonical;
     QString error;
-    if (!m_fs.canonicalizePath(requested, &canonical, &error)) {
+    if (!m_fs.canonicalizePath(requested, canonical, &error)) {
         emit sftpError(error);
         return;
     }

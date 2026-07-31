@@ -333,20 +333,11 @@ void FileExplorerWidget::unbindSession()
     updateActionsEnabled();
 }
 
-void FileExplorerWidget::setSessionBadge(const QString &name, const QString &detail)
-{
-    Q_UNUSED(name);
-    Q_UNUSED(detail);
-}
+void FileExplorerWidget::setSessionBadge() {}
 
 void FileExplorerWidget::updateSessionBadge()
 {
-    if (!m_session) {
-        setSessionBadge(QString());
-        return;
-    }
-    const Connection connection = m_session->connection();
-    setSessionBadge(connection.name, connection.displayText());
+    setSessionBadge();
 }
 
 void FileExplorerWidget::applySettings()
