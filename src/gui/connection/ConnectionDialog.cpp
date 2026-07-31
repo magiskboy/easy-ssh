@@ -37,10 +37,11 @@ void ConnectionDialog::setupUi()
 {
     m_shell = new CategoryDialogShell(this);
     m_shell->addPage(nullptr, tr("Session"), createSessionPage(), QStringLiteral("session"));
-
-    QTreeWidgetItem *connectionItem = m_shell->addPage(
+    m_shell->addPage(
         nullptr, tr("Connection"), createConnectionPage(), QStringLiteral("connection"));
-    m_shell->addPage(connectionItem, tr("Tunnel"), createTunnelPage(), QStringLiteral("tunnel"));
+    // Gateway / Jump Host (ProxyJump) — not port-forward tunnels (those live in the session
+    // sidebar).
+    m_shell->addPage(nullptr, tr("Gateway"), createTunnelPage(), QStringLiteral("gateway"));
 
     QTreeWidgetItem *environmentGroup = m_shell->addGroup(tr("Environment"));
     m_shell->addPage(

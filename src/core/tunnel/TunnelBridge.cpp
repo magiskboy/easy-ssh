@@ -4,7 +4,9 @@
 
 #include "TunnelBridge.h"
 
-#include <QTcpSocket>
+#include <QAbstractSocket>
+#include <QIODevice>
+#include <QLocalSocket>
 
 namespace TunnelBridgeIo
 {
@@ -73,7 +75,13 @@ void closeBridge(TunnelBridge *bridge, QObject *socketSignalContext)
         if (socketSignalContext) {
             QObject::disconnect(bridge->socket, nullptr, socketSignalContext, nullptr);
         }
-        bridge->socket->abort();
+        if (auto *abstract = qobject_cast<QAbstractSocket *>(bridge->socket)) {
+            abstract->abort();
+        } else if (auto *local = qobject_cast<QLocalSocket *>(bridge->socket)) {
+            local->abort();
+        } else {
+            bridge->socket->close();
+        }
         bridge->socket->deleteLater();
         bridge->socket = nullptr;
     }

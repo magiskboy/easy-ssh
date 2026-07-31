@@ -446,9 +446,14 @@ void TerminalSessionWidget::startEnabledTunnels()
 
     const QList<TunnelDefinition> tunnels = TunnelStore::loadForConnection(m_connection.id);
     for (const TunnelDefinition &tunnel : tunnels) {
-        if (tunnel.enabled) {
-            startTunnel(tunnel);
+        if (!tunnel.enabled) {
+            continue;
         }
+        if (tunnel.type == TunnelType::Dynamic &&
+            tunnel.socksAuth == SocksAuthMode::UsernamePassword) {
+            continue;
+        }
+        startTunnel(tunnel);
     }
 }
 

@@ -11,7 +11,7 @@
 
 #include <QList>
 
-class QTcpSocket;
+class QIODevice;
 
 class RemoteTunnelSession final : public ITunnelSession
 {
@@ -41,7 +41,8 @@ private slots:
 
 private:
     bool openForwardBridge(ssh_channel channel);
-    TunnelBridge *bridgeForSocket(QTcpSocket *socket);
+    void wireBridgeSocket(QIODevice *socket);
+    TunnelBridge *bridgeForSocket(QIODevice *socket);
     void closeBridge(TunnelBridge *bridge);
     QString sessionError() const;
 

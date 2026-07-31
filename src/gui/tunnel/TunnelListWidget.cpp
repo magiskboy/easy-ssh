@@ -4,6 +4,7 @@
 
 #include "TunnelListWidget.h"
 
+#include "core/connection/SecretStore.h"
 #include "core/tunnel/TunnelStore.h"
 #include "gui/ErrorNotifier.h"
 #include "gui/models/TunnelListModel.h"
@@ -83,6 +84,11 @@ TunnelListWidget::TunnelListWidget(QWidget *parent) : QWidget(parent)
     updateActionsEnabled();
 }
 
+void TunnelListWidget::setSecretStore(SecretStore *secretStore)
+{
+    m_secretStore = secretStore;
+}
+
 void TunnelListWidget::bindSession(Session *session)
 {
     if (m_session == session) {
@@ -114,6 +120,7 @@ void TunnelListWidget::bindSession(Session *session)
     reloadFromStore();
     if (isSessionConnected()) {
         showList();
+        startEnabledAuthTunnels();
     } else {
         showEmptyState(tr("Connect the session to manage tunnels."));
     }
@@ -133,6 +140,85 @@ void TunnelListWidget::unbindSession()
     updateActionsEnabled();
 }
 
+void TunnelListWidget::persistSocksPassword(const TunnelDefinition &def,
+                                            const QString &password,
+                                            bool changed)
+{
+    if (!m_secretStore) {
+        return;
+    }
+    if (def.type == TunnelType::Dynamic && def.socksAuth == SocksAuthMode::UsernamePassword) {
+        if (changed || !password.isEmpty()) {
+            m_secretStore->storeSecret(def.id, SecretStore::Kind::TunnelSocksPassword, password);
+        }
+    } else {
+        m_secretStore->deleteSecret(def.id, SecretStore::Kind::TunnelSocksPassword);
+    }
+}
+
+void TunnelListWidget::deleteSocksPassword(const QUuid &tunnelId)
+{
+    if (m_secretStore && !tunnelId.isNull()) {
+        m_secretStore->deleteSecret(tunnelId, SecretStore::Kind::TunnelSocksPassword);
+    }
+}
+
+void TunnelListWidget::startTunnelWithSecrets(TunnelDefinition def)
+{
+    if (!m_session || !isSessionConnected()) {
+        return;
+    }
+
+    if (def.type != TunnelType::Dynamic || def.socksAuth != SocksAuthMode::UsernamePassword) {
+        m_session->startTunnel(def);
+        return;
+    }
+
+    if (!m_secretStore) {
+        ErrorNotifier::status(tr("SOCKS password store is unavailable"),
+                              ErrorNotifier::Level::Error);
+        return;
+    }
+
+    const QUuid tunnelId = def.id;
+    connect(
+        m_secretStore,
+        &SecretStore::readFinished,
+        this,
+        [this, def, tunnelId](const QUuid &id,
+                              SecretStore::Kind kind,
+                              const QString &value,
+                              bool ok,
+                              const QString &) {
+            if (id != tunnelId || kind != SecretStore::Kind::TunnelSocksPassword) {
+                return;
+            }
+            if (!m_session || !isSessionConnected()) {
+                return;
+            }
+            TunnelDefinition ready = def;
+            if (ok) {
+                ready.socksPassword = value;
+            }
+            m_session->startTunnel(ready);
+        },
+        Qt::SingleShotConnection);
+    m_secretStore->readSecret(tunnelId, SecretStore::Kind::TunnelSocksPassword);
+}
+
+void TunnelListWidget::startEnabledAuthTunnels()
+{
+    if (!m_session || !isSessionConnected()) {
+        return;
+    }
+    for (const TunnelDefinition &tunnel : m_model->tunnels()) {
+        if (tunnel.enabled && tunnel.type == TunnelType::Dynamic &&
+            tunnel.socksAuth == SocksAuthMode::UsernamePassword) {
+            startTunnelWithSecrets(tunnel);
+        }
+    }
+}
+
 void TunnelListWidget::addTunnel()
 {
     if (!m_session) {
@@ -140,11 +226,13 @@ void TunnelListWidget::addTunnel()
     }
 
     TunnelDialog dialog(TunnelDialog::Mode::Create, m_session->connectionId(), this);
+    dialog.setSecretStore(m_secretStore);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
 
     const TunnelDefinition def = dialog.tunnel();
+    persistSocksPassword(def, dialog.socksPassword(), true);
     m_model->upsert(def);
     persistAll();
     showList();
@@ -152,7 +240,9 @@ void TunnelListWidget::addTunnel()
     emit statusMessage(tr("Tunnel added: %1").arg(def.name), ErrorNotifier::Level::Success);
 
     if (def.enabled && isSessionConnected()) {
-        m_session->startTunnel(def);
+        TunnelDefinition ready = def;
+        ready.socksPassword = dialog.socksPassword();
+        m_session->startTunnel(ready);
     }
 }
 
@@ -173,18 +263,27 @@ void TunnelListWidget::editSelected()
     }
 
     TunnelDialog dialog(TunnelDialog::Mode::Edit, m_session->connectionId(), this);
+    dialog.setSecretStore(m_secretStore);
     dialog.setTunnel(*current);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
 
     const TunnelDefinition def = dialog.tunnel();
+    persistSocksPassword(def, dialog.socksPassword(), dialog.socksPasswordChanged());
     m_model->upsert(def);
     persistAll();
     emit statusMessage(tr("Tunnel updated: %1").arg(def.name), ErrorNotifier::Level::Success);
 
     if (def.enabled && isSessionConnected()) {
-        m_session->startTunnel(def);
+        TunnelDefinition ready = def;
+        ready.socksPassword = dialog.socksPassword();
+        if (def.type == TunnelType::Dynamic && def.socksAuth == SocksAuthMode::UsernamePassword &&
+            !dialog.socksPasswordChanged() && ready.socksPassword.isEmpty()) {
+            startTunnelWithSecrets(ready);
+        } else {
+            m_session->startTunnel(ready);
+        }
     }
     updateActionsEnabled();
 }
@@ -209,13 +308,12 @@ void TunnelListWidget::deleteSelected()
         m_session->stopTunnel(current->id);
     }
 
+    deleteSocksPassword(current->id);
     m_model->removeById(current->id);
     persistAll();
 
     if (m_model->rowCount() == 0 && m_session) {
         showEmptyState(tr("No tunnels for this connection."));
-        // Keep list host ready — user can still Add; show empty overlay text in list area.
-        // Prefer showing table empty rather than blocking Add.
         showList();
     }
 
@@ -252,7 +350,7 @@ void TunnelListWidget::toggleSelected()
         m_model->upsert(def);
         persistAll();
         if (isSessionConnected()) {
-            m_session->startTunnel(def);
+            startTunnelWithSecrets(def);
         } else {
             m_model->setRuntimeStatus(def.id, QStringLiteral("Off"), QString());
             emit statusMessage(tr("Tunnel will enable on next connect: %1").arg(def.name),
@@ -303,11 +401,11 @@ void TunnelListWidget::onTunnelError(const QUuid &tunnelId, const QString &messa
 void TunnelListWidget::onSessionStateChanged(SessionState state)
 {
     if (state == SessionState::Connected) {
-        // Keep current rows; only reset runtime when leaving Connected.
         if (m_model->rowCount() == 0) {
             reloadFromStore();
         }
         showList();
+        startEnabledAuthTunnels();
     } else {
         m_model->clearRuntimeStatuses();
         if (m_session) {

@@ -4,6 +4,8 @@
 
 #include "RemoteTunnelSession.h"
 
+#include <QIODevice>
+#include <QLocalSocket>
 #include <QTcpSocket>
 
 RemoteTunnelSession::RemoteTunnelSession(const TunnelDefinition &def,
@@ -94,14 +96,37 @@ bool RemoteTunnelSession::attachForwardChannel(ssh_channel channel)
 
 bool RemoteTunnelSession::openForwardBridge(ssh_channel channel)
 {
-    auto *socket = new QTcpSocket(this);
-    socket->connectToHost(m_def.localHost, m_def.localPort);
-    if (!socket->waitForConnected(5000)) {
+    QIODevice *socket = nullptr;
+
+    if (m_def.localKind == TunnelEndpointKind::UnixSocket) {
+#ifndef Q_OS_UNIX
         const QString message =
-            tr("Cannot connect to local %1: %2").arg(m_def.localAddress(), socket->errorString());
+            tr("Local Unix socket destination is not supported on this platform");
         emit errorOccurred(m_def.id, message);
-        socket->deleteLater();
         return false;
+#else
+        auto *local = new QLocalSocket(this);
+        local->connectToServer(m_def.localSocketPath);
+        if (!local->waitForConnected(5000)) {
+            const QString message = tr("Cannot connect to local Unix socket %1: %2")
+                                        .arg(m_def.localSocketPath, local->errorString());
+            emit errorOccurred(m_def.id, message);
+            local->deleteLater();
+            return false;
+        }
+        socket = local;
+#endif
+    } else {
+        auto *tcp = new QTcpSocket(this);
+        tcp->connectToHost(m_def.localHost, m_def.localPort);
+        if (!tcp->waitForConnected(5000)) {
+            const QString message =
+                tr("Cannot connect to local %1: %2").arg(m_def.localAddress(), tcp->errorString());
+            emit errorOccurred(m_def.id, message);
+            tcp->deleteLater();
+            return false;
+        }
+        socket = tcp;
     }
 
     auto *bridge = new TunnelBridge;
@@ -110,20 +135,33 @@ bool RemoteTunnelSession::openForwardBridge(ssh_channel channel)
     bridge->socket = socket;
     m_bridges.append(bridge);
 
-    connect(socket, &QTcpSocket::readyRead, this, &RemoteTunnelSession::onBridgeSocketReadyRead);
-    connect(
-        socket, &QTcpSocket::disconnected, this, &RemoteTunnelSession::onBridgeSocketDisconnected);
+    wireBridgeSocket(socket);
     return true;
+}
+
+void RemoteTunnelSession::wireBridgeSocket(QIODevice *socket)
+{
+    connect(socket, &QIODevice::readyRead, this, &RemoteTunnelSession::onBridgeSocketReadyRead);
+
+    if (auto *tcp = qobject_cast<QTcpSocket *>(socket)) {
+        connect(
+            tcp, &QTcpSocket::disconnected, this, &RemoteTunnelSession::onBridgeSocketDisconnected);
+    } else if (auto *local = qobject_cast<QLocalSocket *>(socket)) {
+        connect(local,
+                &QLocalSocket::disconnected,
+                this,
+                &RemoteTunnelSession::onBridgeSocketDisconnected);
+    }
 }
 
 void RemoteTunnelSession::onBridgeSocketReadyRead()
 {
-    auto *socket = qobject_cast<QTcpSocket *>(sender());
-    TunnelBridge *bridge = bridgeForSocket(socket);
+    auto *device = qobject_cast<QIODevice *>(sender());
+    TunnelBridge *bridge = bridgeForSocket(device);
     if (bridge == nullptr) {
         return;
     }
-    const QByteArray data = socket->readAll();
+    const QByteArray data = device->readAll();
     if (!TunnelBridgeIo::writeSocketToChannel(bridge, data)) {
         closeBridge(bridge);
     }
@@ -131,13 +169,13 @@ void RemoteTunnelSession::onBridgeSocketReadyRead()
 
 void RemoteTunnelSession::onBridgeSocketDisconnected()
 {
-    auto *socket = qobject_cast<QTcpSocket *>(sender());
-    if (TunnelBridge *bridge = bridgeForSocket(socket)) {
+    auto *device = qobject_cast<QIODevice *>(sender());
+    if (TunnelBridge *bridge = bridgeForSocket(device)) {
         closeBridge(bridge);
     }
 }
 
-TunnelBridge *RemoteTunnelSession::bridgeForSocket(QTcpSocket *socket)
+TunnelBridge *RemoteTunnelSession::bridgeForSocket(QIODevice *socket)
 {
     if (socket == nullptr) {
         return nullptr;

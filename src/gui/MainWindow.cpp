@@ -128,6 +128,7 @@ void MainWindow::setupUi()
     m_sideBar = new SessionSideBar(this);
     m_fileExplorer = new FileExplorerWidget(m_sideBar->fileContainer());
     m_tunnelList = new TunnelListWidget(m_sideBar->tunnelContainer());
+    m_tunnelList->setSecretStore(m_secretStore);
     m_sideBar->fileContainer()->layout()->addWidget(m_fileExplorer);
     m_sideBar->tunnelContainer()->layout()->addWidget(m_tunnelList);
 

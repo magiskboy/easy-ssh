@@ -17,6 +17,7 @@
 class QAction;
 class QLabel;
 class QTableView;
+class SecretStore;
 class TunnelListModel;
 
 class TunnelListWidget final : public QWidget
@@ -26,6 +27,7 @@ class TunnelListWidget final : public QWidget
 public:
     explicit TunnelListWidget(QWidget *parent = nullptr);
 
+    void setSecretStore(SecretStore *secretStore);
     void bindSession(Session *session);
     void unbindSession();
 
@@ -52,6 +54,10 @@ private:
     void updateSessionBadge();
     std::optional<TunnelDefinition> selectedTunnel() const;
     bool isSessionConnected() const;
+    void persistSocksPassword(const TunnelDefinition &def, const QString &password, bool changed);
+    void deleteSocksPassword(const QUuid &tunnelId);
+    void startTunnelWithSecrets(TunnelDefinition def);
+    void startEnabledAuthTunnels();
 
     TunnelListModel *m_model = nullptr;
     QTableView *m_table = nullptr;
@@ -64,4 +70,5 @@ private:
     QAction *m_toggleAction = nullptr;
 
     Session *m_session = nullptr;
+    SecretStore *m_secretStore = nullptr;
 };

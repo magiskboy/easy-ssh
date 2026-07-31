@@ -23,6 +23,8 @@ QString SecretStore::keyFor(const QUuid &connectionId, Kind kind)
         return id + QStringLiteral("/gateway/password");
     case Kind::GatewayPassphrase:
         return id + QStringLiteral("/gateway/passphrase");
+    case Kind::TunnelSocksPassword:
+        return id + QStringLiteral("/tunnel/socksPassword");
     case Kind::Password:
     default:
         return id + QStringLiteral("/password");

@@ -4,6 +4,8 @@
 
 #include "CategoryDialogShell.h"
 
+#include <QAbstractItemView>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QSize>
 #include <QStackedWidget>
@@ -27,22 +29,18 @@ CategoryDialogShell::CategoryDialogShell(QWidget *parent) : QWidget(parent)
     m_tree->setUniformRowHeights(true);
     m_tree->setAnimated(false);
     m_tree->setIndentation(12);
+    m_tree->setFrameShape(QFrame::NoFrame);
+    m_tree->setFocusPolicy(Qt::StrongFocus);
+    m_tree->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_tree->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_tree->setAllColumnsShowFocus(true);
+    // Do not style ::item / ::item:selected — partial QSS on QTreeWidget fights platform
+    // styles (Breeze/Adwaita): highlighted-text becomes white while the highlight panel
+    // never fills the row, leaving unreadable selected labels.
     m_tree->setStyleSheet(QStringLiteral("QTreeWidget {"
                                          "  border: none;"
-                                         "  background: transparent;"
-                                         "  padding: 2px 0 2px 0;"
                                          "  outline: none;"
-                                         "}"
-                                         "QTreeWidget::item {"
-                                         "  padding-top: 4px;"
-                                         "  padding-bottom: 4px;"
-                                         "  padding-left: 2px;"
-                                         "  padding-right: 4px;"
-                                         "  border-radius: 3px;"
-                                         "}"
-                                         "QTreeWidget::branch {"
-                                         "  border-image: none;"
-                                         "  background: transparent;"
+                                         "  background: palette(base);"
                                          "}"));
 
     m_pages = new QStackedWidget(this);

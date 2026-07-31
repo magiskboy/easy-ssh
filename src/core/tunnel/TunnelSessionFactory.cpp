@@ -17,9 +17,7 @@ createTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *p
     case TunnelType::Remote:
         return new RemoteTunnelSession(def, session, parent);
     case TunnelType::Dynamic:
-        Q_UNUSED(session);
-        return new DynamicTunnelSession(def, parent);
+        return new DynamicTunnelSession(def, session, parent);
     }
-    Q_UNUSED(session);
-    return new DynamicTunnelSession(def, parent);
+    return new DynamicTunnelSession(def, session, parent);
 }
