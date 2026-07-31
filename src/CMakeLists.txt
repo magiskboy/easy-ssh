@@ -16,6 +16,8 @@ set(EASY_SSH_CORE_SOURCES
     core/connection/SshConfigParser.h
     core/ssh/SshWorker.cpp
     core/ssh/SshWorker.h
+    core/ssh/AgentForwardHost.cpp
+    core/ssh/AgentForwardHost.h
     core/ssh/SshKnownHosts.cpp
     core/ssh/SshKnownHosts.h
     core/ssh/SshAuth.cpp

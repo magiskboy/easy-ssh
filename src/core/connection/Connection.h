@@ -85,6 +85,8 @@ struct Connection
     int keepAliveIntervalSec = 0;
     int keepAliveCountMax = 3;
     bool compressionEnabled = false;
+    /// ForwardAgent — session option, not an authentication method (see P5).
+    bool agentForwarding = false;
     ShellCommandSetConfig shellCommands;
 
     bool usesJumpHost() const

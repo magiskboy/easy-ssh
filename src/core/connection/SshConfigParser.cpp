@@ -229,6 +229,22 @@ QString readProxyCommandForAlias(const QFileInfo &configFile, const QString &ali
     return readProxyOptionForAlias(configFile, alias, QStringLiteral("proxycommand"));
 }
 
+QString readForwardAgentForAlias(const QFileInfo &configFile, const QString &alias)
+{
+    return readProxyOptionForAlias(configFile, alias, QStringLiteral("forwardagent"));
+}
+
+/// OpenSSH ForwardAgent: yes/no; path/ask/confirm → enable (custom path is P6.x).
+bool parseForwardAgentValue(const QString &raw)
+{
+    const QString value = raw.trimmed().toLower();
+    if (value.isEmpty() || value == QLatin1String("no") || value == QLatin1String("false")) {
+        return false;
+    }
+    // yes/true/ask/confirm, or a socket path → enable forwarding.
+    return true;
+}
+
 void collectAliasesFromFile(const QString &path,
                             QStringList *aliases,
                             QSet<QString> *visited,
@@ -367,6 +383,7 @@ SshConfigHost resolveAliasWithLibssh(const QString &alias, const QString &config
                                                     : configPath);
     host.proxyJump = readProxyJumpForAlias(configInfo, alias);
     host.proxyCommand = readProxyCommandForAlias(configInfo, alias);
+    host.forwardAgent = parseForwardAgentValue(readForwardAgentForAlias(configInfo, alias));
 
     ssh_free(session);
     return host;
@@ -417,6 +434,7 @@ QList<Connection> SshConfigParser::toConnections(const QList<SshConfigHost> &hos
             host.identityFiles.isEmpty() ? QString() : host.identityFiles.first();
         connection.source = ConnectionSource::SshConfig;
         connection.configAlias = host.alias;
+        connection.agentForwarding = host.forwardAgent;
 
         const bool hasJump = !host.proxyJump.isEmpty() && !isSshNoneToken(host.proxyJump);
         const bool hasCommand = !host.proxyCommand.isEmpty() && !isSshNoneToken(host.proxyCommand);

@@ -102,6 +102,8 @@ signals:
 
     void tunnelStatusChanged(const QUuid &tunnelId, const QString &status, const QString &detail);
     void tunnelError(const QUuid &tunnelId, const QString &message);
+    /// Soft warning (e.g. ForwardAgent ON but no local agent). Must not tear down the session.
+    void agentForwardingWarning(const QString &message);
 
 private slots:
     void pollChannel();
@@ -116,11 +118,15 @@ private:
     void wireTunnelSession(ITunnelSession *session);
     void retireShell(const QUuid &shellId, bool emitClosed);
     bool openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut);
+    void tryRequestAgentForwarding(SshShell *shell);
 
     SshSession m_session;
     QHash<QUuid, SshShell *> m_shells;
     FsRemote m_fs;
     QHash<QUuid, ITunnelSession *> m_tunnelSessions;
+    class AgentForwardHost *m_agentForwardHost = nullptr;
+    bool m_agentForwarding = false;
+    bool m_agentForwardRequested = false;
     class QTimer *m_ioTimer = nullptr;
     bool m_running = false;
 

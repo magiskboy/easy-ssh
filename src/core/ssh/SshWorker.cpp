@@ -4,6 +4,7 @@
 
 #include "SshWorker.h"
 
+#include "core/ssh/AgentForwardHost.h"
 #include "core/tunnel/RemoteTunnelSession.h"
 #include "core/util/Logging.h"
 
@@ -45,6 +46,8 @@ void SshWorker::connectToHost(const Connection &connection,
     }
 
     cleanup();
+
+    m_agentForwarding = connection.agentForwarding;
 
     QString error;
     if (!m_session.establish(connection, credentials, &error)) {
@@ -123,7 +126,37 @@ bool SshWorker::openShellLocked(const QUuid &shellId, int cols, int rows, QStrin
         return false;
     }
     m_shells.insert(shellId, shell);
+    tryRequestAgentForwarding(shell);
     return true;
+}
+
+void SshWorker::tryRequestAgentForwarding(SshShell *shell)
+{
+    if (m_agentForwardRequested) {
+        return;
+    }
+    m_agentForwardRequested = true;
+
+    if (!m_agentForwarding || shell == nullptr || shell->channel() == nullptr) {
+        return;
+    }
+
+    if (!AgentForwardHost::isLocalAgentPresent()) {
+        emit agentForwardingWarning(
+            tr("Agent forwarding is enabled but no local ssh-agent is available "
+               "(SSH_AUTH_SOCK). The session remains connected."));
+        return;
+    }
+
+    auto *host = new AgentForwardHost(this);
+    QString error;
+    if (!host->start(m_session.handle(), shell->channel(), &error)) {
+        emit agentForwardingWarning(error.isEmpty() ? tr("Failed to enable agent forwarding")
+                                                    : error);
+        delete host;
+        return;
+    }
+    m_agentForwardHost = host;
 }
 
 void SshWorker::closeShell(const QUuid &shellId)
@@ -367,6 +400,9 @@ void SshWorker::pollChannel()
     }
 
     pollTunnels();
+    if (m_agentForwardHost) {
+        m_agentForwardHost->poll();
+    }
 
     bool hadActivity = false;
     const QList<QUuid> shellIds = m_shells.keys();
@@ -494,6 +530,15 @@ void SshWorker::cleanup()
     }
 
     stopAllTunnels();
+
+    // Close agent bridges while the session is still alive, but keep AgentForwardHost
+    // (and its ssh_callbacks_struct) until after ssh_free — libssh does not copy callbacks.
+    if (m_agentForwardHost) {
+        m_agentForwardHost->stop();
+    }
+    m_agentForwardRequested = false;
+    m_agentForwarding = false;
+
     m_fs.close();
     const QList<QUuid> shellIds = m_shells.keys();
     for (const QUuid &id : shellIds) {
@@ -504,6 +549,9 @@ void SshWorker::cleanup()
         }
     }
     m_session.cleanup();
+
+    delete m_agentForwardHost;
+    m_agentForwardHost = nullptr;
 }
 
 void SshWorker::startTunnel(const TunnelDefinition &def)

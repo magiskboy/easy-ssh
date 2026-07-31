@@ -21,6 +21,7 @@ struct SshConfigHost
     QStringList identityFiles;
     QString proxyJump;
     QString proxyCommand;
+    bool forwardAgent = false;
 };
 
 /**

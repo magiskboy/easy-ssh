@@ -177,7 +177,8 @@ void ConnectionListWidget::editConnectionById(const QUuid &id)
         before.proxyMode != connection.proxyMode ||
         before.usesJumpHost() != connection.usesJumpHost() ||
         before.proxyCommand != connection.proxyCommand ||
-        before.jumpHops.size() != connection.jumpHops.size();
+        before.jumpHops.size() != connection.jumpHops.size() ||
+        before.agentForwarding != connection.agentForwarding;
     emit connectionEdited(connection.id, connectivityChanged);
 }
 

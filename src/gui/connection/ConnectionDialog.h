@@ -103,6 +103,7 @@ private:
     QLineEdit *m_passphraseEdit = nullptr;
     QLabel *m_authAgentHint = nullptr;
     QLineEdit *m_startupDirEdit = nullptr;
+    QCheckBox *m_agentForwardingCheck = nullptr;
 
     QButtonGroup *m_proxyModeGroup = nullptr;
     QRadioButton *m_proxyNoneRadio = nullptr;
