@@ -104,8 +104,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/dialogs/AboutDialog.h
     gui/dialogs/SettingsDialog.cpp
     gui/dialogs/SettingsDialog.h
-    gui/dialogs/ShortcutsDialog.cpp
-    gui/dialogs/ShortcutsDialog.h
+    gui/widgets/CategoryDialogShell.cpp
+    gui/widgets/CategoryDialogShell.h
 )
 
 if(WIN32)

@@ -4,12 +4,15 @@
 
 #include "ConnectionDialog.h"
 
+#include "gui/widgets/CategoryDialogShell.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -17,7 +20,9 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSpinBox>
+#include <QTreeWidgetItem>
 #include <QVBoxLayout>
 
 ConnectionDialog::ConnectionDialog(Mode mode, QWidget *parent)
@@ -25,49 +30,78 @@ ConnectionDialog::ConnectionDialog(Mode mode, QWidget *parent)
 {
     setupUi();
     setWindowTitle(mode == Mode::Create ? tr("New Connection") : tr("Edit Connection"));
-    resize(560, 720);
+    resize(640, 480);
 }
 
 void ConnectionDialog::setupUi()
 {
-    auto *layout = new QVBoxLayout(this);
+    m_shell = new CategoryDialogShell(this);
+    m_shell->addPage(nullptr, tr("Session"), createSessionPage(), QStringLiteral("session"));
 
-    auto *targetGroup = new QGroupBox(tr("Target"), this);
+    QTreeWidgetItem *connectionItem = m_shell->addPage(
+        nullptr, tr("Connection"), createConnectionPage(), QStringLiteral("connection"));
+    m_shell->addPage(connectionItem, tr("Tunnel"), createTunnelPage(), QStringLiteral("tunnel"));
+
+    QTreeWidgetItem *environmentGroup = m_shell->addGroup(tr("Environment"));
+    m_shell->addPage(
+        environmentGroup, tr("SCP/Shell"), createScpShellPage(), QStringLiteral("scp-shell"));
+    m_shell->expandAll();
+    m_shell->selectFirst();
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &ConnectionDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    auto *layout = new QVBoxLayout(this);
+    layout->addWidget(m_shell, 1);
+    layout->addWidget(buttons);
+
+    updateAuthFieldsVisibility();
+    updateGatewayPanelVisibility();
+    updateGatewayAuthFieldsVisibility();
+}
+
+QWidget *ConnectionDialog::createSessionPage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    auto *targetGroup = new QGroupBox(tr("Target"), page);
     m_targetForm = new QFormLayout(targetGroup);
 
-    m_nameEdit = new QLineEdit(this);
-    m_hostEdit = new QLineEdit(this);
-    m_portSpin = new QSpinBox(this);
+    m_nameEdit = new QLineEdit(targetGroup);
+    m_hostEdit = new QLineEdit(targetGroup);
+    m_portSpin = new QSpinBox(targetGroup);
     m_portSpin->setRange(1, 65535);
     m_portSpin->setValue(22);
-    m_usernameEdit = new QLineEdit(this);
+    m_usernameEdit = new QLineEdit(targetGroup);
 
-    m_authTypeCombo = new QComboBox(this);
+    m_authTypeCombo = new QComboBox(targetGroup);
     m_authTypeCombo->addItem(tr("Password"), static_cast<int>(AuthType::Password));
     m_authTypeCombo->addItem(tr("Private Key"), static_cast<int>(AuthType::PrivateKey));
 
-    m_passwordEdit = new QLineEdit(this);
+    m_passwordEdit = new QLineEdit(targetGroup);
     m_passwordEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_passwordEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
-    m_privateKeyEdit = new QLineEdit(this);
-    auto *browseButton = new QPushButton(tr("Browse…"), this);
+    m_privateKeyEdit = new QLineEdit(targetGroup);
+    auto *browseButton = new QPushButton(tr("Browse…"), targetGroup);
     auto *keyLayout = new QHBoxLayout();
     keyLayout->setContentsMargins(0, 0, 0, 0);
     keyLayout->addWidget(m_privateKeyEdit, 1);
     keyLayout->addWidget(browseButton);
-    m_privateKeyRow = new QWidget(this);
+    m_privateKeyRow = new QWidget(targetGroup);
     m_privateKeyRow->setLayout(keyLayout);
 
-    m_passphraseEdit = new QLineEdit(this);
+    m_passphraseEdit = new QLineEdit(targetGroup);
     m_passphraseEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_passphraseEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
-    m_startupDirEdit = new QLineEdit(this);
+    m_startupDirEdit = new QLineEdit(targetGroup);
     m_startupDirEdit->setPlaceholderText(tr("Optional"));
 
     m_targetForm->addRow(tr("Name"), m_nameEdit);
@@ -80,21 +114,73 @@ void ConnectionDialog::setupUi()
     m_targetForm->addRow(tr("Passphrase"), m_passphraseEdit);
     m_targetForm->addRow(tr("Startup Directory"), m_startupDirEdit);
 
-    m_gatewayGroup = new QGroupBox(tr("Gateway / Jump Host"), this);
-    auto *gatewayLayout = new QVBoxLayout(m_gatewayGroup);
+    layout->addWidget(targetGroup);
+    layout->addStretch(1);
 
-    m_useGatewayCheck = new QCheckBox(tr("Connect via gateway"), this);
+    connect(m_authTypeCombo,
+            &QComboBox::currentIndexChanged,
+            this,
+            &ConnectionDialog::onAuthTypeChanged);
+    connect(browseButton, &QPushButton::clicked, this, &ConnectionDialog::browsePrivateKey);
+
+    return page;
+}
+
+QWidget *ConnectionDialog::createConnectionPage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    auto *group = new QGroupBox(tr("Connection"), page);
+    auto *form = new QFormLayout(group);
+
+    m_keepAliveIntervalSpin = new QSpinBox(group);
+    m_keepAliveIntervalSpin->setRange(0, 3600);
+    m_keepAliveIntervalSpin->setSuffix(tr(" s"));
+    m_keepAliveIntervalSpin->setSpecialValueText(tr("Disabled"));
+    m_keepAliveIntervalSpin->setValue(0);
+
+    m_keepAliveCountSpin = new QSpinBox(group);
+    m_keepAliveCountSpin->setRange(1, 10);
+    m_keepAliveCountSpin->setValue(3);
+    m_keepAliveCountSpin->setEnabled(false);
+
+    m_compressionCheck = new QCheckBox(tr("Enable SSH compression"), group);
+
+    form->addRow(tr("Keep-alive interval"), m_keepAliveIntervalSpin);
+    form->addRow(tr("Keep-alive max retries"), m_keepAliveCountSpin);
+    form->addRow(QString(), m_compressionCheck);
+
+    layout->addWidget(group);
+    layout->addStretch(1);
+
+    connect(m_keepAliveIntervalSpin, &QSpinBox::valueChanged, this, [this](int value) {
+        m_keepAliveCountSpin->setEnabled(value > 0);
+    });
+
+    return page;
+}
+
+QWidget *ConnectionDialog::createTunnelPage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    auto *gatewayGroup = new QGroupBox(tr("Gateway / Jump Host"), page);
+    auto *gatewayLayout = new QVBoxLayout(gatewayGroup);
+
+    m_useGatewayCheck = new QCheckBox(tr("Connect via gateway"), gatewayGroup);
     gatewayLayout->addWidget(m_useGatewayCheck);
 
-    auto *hint = new QLabel(tr("Route: local → gateway → target"), this);
+    auto *hint = new QLabel(tr("Route: local → gateway → target"), gatewayGroup);
     hint->setWordWrap(true);
     gatewayLayout->addWidget(hint);
 
     auto *hopButtonsLayout = new QHBoxLayout();
-    m_hopList = new QListWidget(this);
+    m_hopList = new QListWidget(gatewayGroup);
     m_hopList->setMaximumHeight(72);
-    m_addHopButton = new QPushButton(tr("Add hop"), this);
-    m_removeHopButton = new QPushButton(tr("Remove hop"), this);
+    m_addHopButton = new QPushButton(tr("Add hop"), gatewayGroup);
+    m_removeHopButton = new QPushButton(tr("Remove hop"), gatewayGroup);
     hopButtonsLayout->addWidget(m_addHopButton);
     hopButtonsLayout->addWidget(m_removeHopButton);
     hopButtonsLayout->addStretch(1);
@@ -102,34 +188,34 @@ void ConnectionDialog::setupUi()
     gatewayLayout->addLayout(hopButtonsLayout);
 
     m_gatewayForm = new QFormLayout();
-    m_gatewayHostEdit = new QLineEdit(this);
-    m_gatewayPortSpin = new QSpinBox(this);
+    m_gatewayHostEdit = new QLineEdit(gatewayGroup);
+    m_gatewayPortSpin = new QSpinBox(gatewayGroup);
     m_gatewayPortSpin->setRange(1, 65535);
     m_gatewayPortSpin->setValue(22);
-    m_gatewayUsernameEdit = new QLineEdit(this);
-    m_useTargetCredentialsCheck = new QCheckBox(tr("Use same credentials as target"), this);
+    m_gatewayUsernameEdit = new QLineEdit(gatewayGroup);
+    m_useTargetCredentialsCheck = new QCheckBox(tr("Use same credentials as target"), gatewayGroup);
     m_useTargetCredentialsCheck->setChecked(true);
 
-    m_gatewayAuthTypeCombo = new QComboBox(this);
+    m_gatewayAuthTypeCombo = new QComboBox(gatewayGroup);
     m_gatewayAuthTypeCombo->addItem(tr("Password"), static_cast<int>(AuthType::Password));
     m_gatewayAuthTypeCombo->addItem(tr("Private Key"), static_cast<int>(AuthType::PrivateKey));
 
-    m_gatewayPasswordEdit = new QLineEdit(this);
+    m_gatewayPasswordEdit = new QLineEdit(gatewayGroup);
     m_gatewayPasswordEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_gatewayPasswordEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
-    m_gatewayPrivateKeyEdit = new QLineEdit(this);
-    auto *gatewayBrowseButton = new QPushButton(tr("Browse…"), this);
+    m_gatewayPrivateKeyEdit = new QLineEdit(gatewayGroup);
+    auto *gatewayBrowseButton = new QPushButton(tr("Browse…"), gatewayGroup);
     auto *gatewayKeyLayout = new QHBoxLayout();
     gatewayKeyLayout->setContentsMargins(0, 0, 0, 0);
     gatewayKeyLayout->addWidget(m_gatewayPrivateKeyEdit, 1);
     gatewayKeyLayout->addWidget(gatewayBrowseButton);
-    m_gatewayPrivateKeyRow = new QWidget(this);
+    m_gatewayPrivateKeyRow = new QWidget(gatewayGroup);
     m_gatewayPrivateKeyRow->setLayout(gatewayKeyLayout);
 
-    m_gatewayPassphraseEdit = new QLineEdit(this);
+    m_gatewayPassphraseEdit = new QLineEdit(gatewayGroup);
     m_gatewayPassphraseEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_gatewayPassphraseEdit->setPlaceholderText(tr("Leave blank to keep existing"));
@@ -145,83 +231,9 @@ void ConnectionDialog::setupUi()
     m_gatewayForm->addRow(tr("Passphrase"), m_gatewayPassphraseEdit);
     gatewayLayout->addLayout(m_gatewayForm);
 
-    m_advancedGroup = new QGroupBox(tr("Advanced"), this);
-    auto *advancedForm = new QFormLayout(m_advancedGroup);
+    layout->addWidget(gatewayGroup);
+    layout->addStretch(1);
 
-    m_keepAliveIntervalSpin = new QSpinBox(this);
-    m_keepAliveIntervalSpin->setRange(0, 3600);
-    m_keepAliveIntervalSpin->setSuffix(tr(" s"));
-    m_keepAliveIntervalSpin->setSpecialValueText(tr("Disabled"));
-    m_keepAliveIntervalSpin->setValue(0);
-
-    m_keepAliveCountSpin = new QSpinBox(this);
-    m_keepAliveCountSpin->setRange(1, 10);
-    m_keepAliveCountSpin->setValue(3);
-    m_keepAliveCountSpin->setEnabled(false);
-
-    m_compressionCheck = new QCheckBox(tr("Enable SSH compression"), this);
-
-    advancedForm->addRow(tr("Keep-alive interval"), m_keepAliveIntervalSpin);
-    advancedForm->addRow(tr("Keep-alive max retries"), m_keepAliveCountSpin);
-    advancedForm->addRow(QString(), m_compressionCheck);
-
-    m_scpShellGroup = new QGroupBox(tr("Remote FS / SCP shell"), this);
-    auto *scpForm = new QFormLayout(m_scpShellGroup);
-
-    m_allowScpFallbackCheck =
-        new QCheckBox(tr("Allow SCP + shell fallback when SFTP is unavailable"), this);
-    m_allowScpFallbackCheck->setChecked(true);
-
-    m_shellEdit = new QLineEdit(this);
-    m_shellEdit->setPlaceholderText(tr("default login shell (e.g. /bin/bash)"));
-
-    m_listingCommandEdit = new QLineEdit(this);
-    m_listingCommandEdit->setPlaceholderText(QStringLiteral("ls -la"));
-
-    m_clearAliasesCheck = new QCheckBox(tr("Clear command aliases on connect"), this);
-    m_clearAliasesCheck->setChecked(true);
-    m_clearNationalVarsCheck = new QCheckBox(tr("Clear locale / listing variables"), this);
-    m_clearNationalVarsCheck->setChecked(true);
-    m_tryFullTimeCheck = new QCheckBox(tr("Try ls --full-time"), this);
-    m_tryFullTimeCheck->setChecked(true);
-    m_ignoreLsWarningsCheck = new QCheckBox(tr("Ignore ls warnings (exit code 1)"), this);
-
-    m_mkdirCommandEdit = new QLineEdit(this);
-    m_mkdirCommandEdit->setPlaceholderText(QStringLiteral("mkdir %1"));
-    m_removeCommandEdit = new QLineEdit(this);
-    m_removeCommandEdit->setPlaceholderText(QStringLiteral("rm -f -r %1"));
-    m_renameCommandEdit = new QLineEdit(this);
-    m_renameCommandEdit->setPlaceholderText(QStringLiteral("mv -f %1 %2"));
-    m_realpathCommandEdit = new QLineEdit(this);
-    m_realpathCommandEdit->setPlaceholderText(QStringLiteral("realpath -e %1"));
-
-    m_resetShellCommandsButton = new QPushButton(tr("Reset command set to defaults"), this);
-
-    scpForm->addRow(QString(), m_allowScpFallbackCheck);
-    scpForm->addRow(tr("Shell"), m_shellEdit);
-    scpForm->addRow(tr("Listing command"), m_listingCommandEdit);
-    scpForm->addRow(QString(), m_clearAliasesCheck);
-    scpForm->addRow(QString(), m_clearNationalVarsCheck);
-    scpForm->addRow(QString(), m_tryFullTimeCheck);
-    scpForm->addRow(QString(), m_ignoreLsWarningsCheck);
-    scpForm->addRow(tr("mkdir (%1 = path)"), m_mkdirCommandEdit);
-    scpForm->addRow(tr("remove (%1 = path)"), m_removeCommandEdit);
-    scpForm->addRow(tr("rename (%1 %2)"), m_renameCommandEdit);
-    scpForm->addRow(tr("realpath (%1 = path)"), m_realpathCommandEdit);
-    scpForm->addRow(QString(), m_resetShellCommandsButton);
-
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-
-    layout->addWidget(targetGroup);
-    layout->addWidget(m_gatewayGroup);
-    layout->addWidget(m_advancedGroup);
-    layout->addWidget(m_scpShellGroup);
-    layout->addWidget(buttons);
-
-    connect(m_authTypeCombo,
-            &QComboBox::currentIndexChanged,
-            this,
-            &ConnectionDialog::onAuthTypeChanged);
     connect(m_gatewayAuthTypeCombo,
             &QComboBox::currentIndexChanged,
             this,
@@ -235,24 +247,94 @@ void ConnectionDialog::setupUi()
             &QCheckBox::toggled,
             this,
             &ConnectionDialog::updateGatewayAuthFieldsVisibility);
-    connect(m_keepAliveIntervalSpin, &QSpinBox::valueChanged, this, [this](int value) {
-        m_keepAliveCountSpin->setEnabled(value > 0);
-    });
-    connect(browseButton, &QPushButton::clicked, this, &ConnectionDialog::browsePrivateKey);
     connect(gatewayBrowseButton,
             &QPushButton::clicked,
             this,
             &ConnectionDialog::browseGatewayPrivateKey);
-    connect(buttons, &QDialogButtonBox::accepted, this, &ConnectionDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    return page;
+}
+
+QWidget *ConnectionDialog::createScpShellPage()
+{
+    auto *page = new QWidget(this);
+    auto *outer = new QVBoxLayout(page);
+    outer->setContentsMargins(0, 0, 0, 0);
+
+    auto *scroll = new QScrollArea(page);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+
+    auto *content = new QWidget(scroll);
+    auto *layout = new QVBoxLayout(content);
+
+    auto *fallbackGroup = new QGroupBox(tr("Fallback"), content);
+    auto *fallbackLayout = new QVBoxLayout(fallbackGroup);
+    m_allowScpFallbackCheck =
+        new QCheckBox(tr("Allow SCP + shell fallback when SFTP is unavailable"), fallbackGroup);
+    m_allowScpFallbackCheck->setChecked(true);
+    fallbackLayout->addWidget(m_allowScpFallbackCheck);
+
+    auto *shellGroup = new QGroupBox(tr("Shell"), content);
+    auto *shellForm = new QFormLayout(shellGroup);
+    m_shellEdit = new QLineEdit(shellGroup);
+    m_shellEdit->setPlaceholderText(tr("default login shell (e.g. /bin/bash)"));
+    shellForm->addRow(tr("Shell"), m_shellEdit);
+
+    auto *listingGroup = new QGroupBox(tr("Directory listing"), content);
+    auto *listingForm = new QFormLayout(listingGroup);
+    m_listingCommandEdit = new QLineEdit(listingGroup);
+    m_listingCommandEdit->setPlaceholderText(QStringLiteral("ls -la"));
+    m_ignoreLsWarningsCheck = new QCheckBox(tr("Ignore ls warnings (exit code 1)"), listingGroup);
+    m_tryFullTimeCheck = new QCheckBox(tr("Try ls --full-time"), listingGroup);
+    m_tryFullTimeCheck->setChecked(true);
+    listingForm->addRow(tr("Listing command"), m_listingCommandEdit);
+    listingForm->addRow(QString(), m_ignoreLsWarningsCheck);
+    listingForm->addRow(QString(), m_tryFullTimeCheck);
+
+    auto *otherGroup = new QGroupBox(tr("Other options"), content);
+    auto *otherLayout = new QVBoxLayout(otherGroup);
+    m_clearAliasesCheck = new QCheckBox(tr("Clear command aliases on connect"), otherGroup);
+    m_clearAliasesCheck->setChecked(true);
+    m_clearNationalVarsCheck = new QCheckBox(tr("Clear locale / listing variables"), otherGroup);
+    m_clearNationalVarsCheck->setChecked(true);
+    otherLayout->addWidget(m_clearAliasesCheck);
+    otherLayout->addWidget(m_clearNationalVarsCheck);
+
+    auto *commandsGroup = new QGroupBox(tr("Command templates"), content);
+    auto *commandsForm = new QFormLayout(commandsGroup);
+    m_mkdirCommandEdit = new QLineEdit(commandsGroup);
+    m_mkdirCommandEdit->setPlaceholderText(QStringLiteral("mkdir %1"));
+    m_removeCommandEdit = new QLineEdit(commandsGroup);
+    m_removeCommandEdit->setPlaceholderText(QStringLiteral("rm -f -r %1"));
+    m_renameCommandEdit = new QLineEdit(commandsGroup);
+    m_renameCommandEdit->setPlaceholderText(QStringLiteral("mv -f %1 %2"));
+    m_realpathCommandEdit = new QLineEdit(commandsGroup);
+    m_realpathCommandEdit->setPlaceholderText(QStringLiteral("realpath -e %1"));
+    m_resetShellCommandsButton =
+        new QPushButton(tr("Reset command set to defaults"), commandsGroup);
+    commandsForm->addRow(tr("mkdir (%1 = path)"), m_mkdirCommandEdit);
+    commandsForm->addRow(tr("remove (%1 = path)"), m_removeCommandEdit);
+    commandsForm->addRow(tr("rename (%1 %2)"), m_renameCommandEdit);
+    commandsForm->addRow(tr("realpath (%1 = path)"), m_realpathCommandEdit);
+    commandsForm->addRow(QString(), m_resetShellCommandsButton);
+
+    layout->addWidget(fallbackGroup);
+    layout->addWidget(shellGroup);
+    layout->addWidget(listingGroup);
+    layout->addWidget(otherGroup);
+    layout->addWidget(commandsGroup);
+    layout->addStretch(1);
+
+    scroll->setWidget(content);
+    outer->addWidget(scroll);
+
     connect(m_resetShellCommandsButton,
             &QPushButton::clicked,
             this,
             &ConnectionDialog::resetShellCommandsToDefaults);
 
-    updateAuthFieldsVisibility();
-    updateGatewayPanelVisibility();
-    updateGatewayAuthFieldsVisibility();
+    return page;
 }
 
 void ConnectionDialog::setConnection(const Connection &connection)
@@ -443,16 +525,19 @@ bool ConnectionDialog::validate()
 {
     if (m_nameEdit->text().trimmed().isEmpty()) {
         QMessageBox::warning(this, tr("Validation"), tr("Name is required."));
+        m_shell->selectById(QStringLiteral("session"));
         m_nameEdit->setFocus();
         return false;
     }
     if (m_hostEdit->text().trimmed().isEmpty()) {
         QMessageBox::warning(this, tr("Validation"), tr("Host is required."));
+        m_shell->selectById(QStringLiteral("session"));
         m_hostEdit->setFocus();
         return false;
     }
     if (m_usernameEdit->text().trimmed().isEmpty()) {
         QMessageBox::warning(this, tr("Validation"), tr("Username is required."));
+        m_shell->selectById(QStringLiteral("session"));
         m_usernameEdit->setFocus();
         return false;
     }
@@ -460,6 +545,7 @@ bool ConnectionDialog::validate()
     const auto authType = static_cast<AuthType>(m_authTypeCombo->currentData().toInt());
     if (authType == AuthType::PrivateKey && m_privateKeyEdit->text().trimmed().isEmpty()) {
         QMessageBox::warning(this, tr("Validation"), tr("Private key path is required."));
+        m_shell->selectById(QStringLiteral("session"));
         m_privateKeyEdit->setFocus();
         return false;
     }
@@ -471,6 +557,7 @@ bool ConnectionDialog::validate()
             if (hop.host.trimmed().isEmpty()) {
                 QMessageBox::warning(
                     this, tr("Validation"), tr("Gateway host is required for hop %1.").arg(i + 1));
+                m_shell->selectById(QStringLiteral("tunnel"));
                 m_hopList->setCurrentRow(i);
                 syncHopEditorFromCurrent();
                 m_gatewayHostEdit->setFocus();
@@ -480,6 +567,7 @@ bool ConnectionDialog::validate()
                 QMessageBox::warning(this,
                                      tr("Validation"),
                                      tr("Gateway username is required for hop %1.").arg(i + 1));
+                m_shell->selectById(QStringLiteral("tunnel"));
                 m_hopList->setCurrentRow(i);
                 syncHopEditorFromCurrent();
                 m_gatewayUsernameEdit->setFocus();
@@ -492,6 +580,7 @@ bool ConnectionDialog::validate()
                 if (gatewayAuth == AuthType::PrivateKey && hop.privateKeyPath.trimmed().isEmpty()) {
                     QMessageBox::warning(
                         this, tr("Validation"), tr("Gateway private key path is required."));
+                    m_shell->selectById(QStringLiteral("tunnel"));
                     m_gatewayPrivateKeyEdit->setFocus();
                     return false;
                 }
@@ -499,6 +588,7 @@ bool ConnectionDialog::validate()
                     m_gatewayPasswordEdit->text().isEmpty()) {
                     QMessageBox::warning(
                         this, tr("Validation"), tr("Gateway password is required."));
+                    m_shell->selectById(QStringLiteral("tunnel"));
                     m_gatewayPasswordEdit->setFocus();
                     return false;
                 }

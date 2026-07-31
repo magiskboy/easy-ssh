@@ -7,37 +7,44 @@
 #pragma once
 
 #include <QDialog>
+#include <QHash>
+#include <QString>
 
+class CategoryDialogShell;
 class QCheckBox;
 class QComboBox;
 class QFontComboBox;
+class QKeySequenceEdit;
 class QLineEdit;
-class QListWidget;
 class QSpinBox;
-class QStackedWidget;
+class QTreeWidget;
 
 class SettingsDialog final : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit SettingsDialog(QWidget *parent = nullptr);
+    explicit SettingsDialog(QWidget *parent = nullptr, const QString &initialCategoryId = {});
 
 private slots:
     void apply();
     void accept() override;
     void browseDownloadDir();
     void clearDownloadDir();
+    void resetShortcutsDefaults();
 
 private:
     QWidget *createFileExplorerPage();
-    QWidget *createTerminalPage();
+    QWidget *createShellAppearancePage();
+    QWidget *createShellBehaviorPage();
     QWidget *createGeneralPage();
+    QWidget *createShortcutsPage();
     void loadFromSettings();
     void saveToSettings();
+    void loadShortcutsFromSettings();
+    void saveShortcutsToSettings();
 
-    QListWidget *m_categoryList = nullptr;
-    QStackedWidget *m_pages = nullptr;
+    CategoryDialogShell *m_shell = nullptr;
 
     // File Explorer
     QCheckBox *m_showSize = nullptr;
@@ -46,7 +53,7 @@ private:
     QCheckBox *m_showHidden = nullptr;
     QLineEdit *m_downloadDir = nullptr;
 
-    // Terminal
+    // Terminal / Shell
     QFontComboBox *m_fontCombo = nullptr;
     QSpinBox *m_fontSize = nullptr;
     QComboBox *m_colorScheme = nullptr;
@@ -58,4 +65,8 @@ private:
 
     // General
     QCheckBox *m_autoReconnect = nullptr;
+
+    // Shortcuts
+    QTreeWidget *m_shortcutsTree = nullptr;
+    QHash<QString, QKeySequenceEdit *> m_shortcutEditors;
 };

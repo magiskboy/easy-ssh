@@ -11,10 +11,10 @@
 #include <QDialog>
 #include <QList>
 
+class CategoryDialogShell;
 class QCheckBox;
 class QComboBox;
 class QFormLayout;
-class QGroupBox;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
@@ -61,6 +61,10 @@ private slots:
 
 private:
     void setupUi();
+    QWidget *createSessionPage();
+    QWidget *createConnectionPage();
+    QWidget *createTunnelPage();
+    QWidget *createScpShellPage();
     bool validate();
     void updateAuthFieldsVisibility();
     void updateGatewayAuthFieldsVisibility();
@@ -76,10 +80,9 @@ private:
     QUuid m_id;
     QList<JumpHop> m_jumpHops;
 
+    CategoryDialogShell *m_shell = nullptr;
     QFormLayout *m_targetForm = nullptr;
-    QGroupBox *m_gatewayGroup = nullptr;
-    QGroupBox *m_advancedGroup = nullptr;
-    QGroupBox *m_scpShellGroup = nullptr;
+    QFormLayout *m_gatewayForm = nullptr;
 
     QLineEdit *m_nameEdit = nullptr;
     QLineEdit *m_hostEdit = nullptr;
@@ -103,7 +106,6 @@ private:
     QLineEdit *m_gatewayPrivateKeyEdit = nullptr;
     QWidget *m_gatewayPrivateKeyRow = nullptr;
     QLineEdit *m_gatewayPassphraseEdit = nullptr;
-    QFormLayout *m_gatewayForm = nullptr;
     QPushButton *m_addHopButton = nullptr;
     QPushButton *m_removeHopButton = nullptr;
 

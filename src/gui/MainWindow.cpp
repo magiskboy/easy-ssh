@@ -14,7 +14,6 @@
 #include "gui/connection/ConnectionListWidget.h"
 #include "gui/dialogs/AboutDialog.h"
 #include "gui/dialogs/SettingsDialog.h"
-#include "gui/dialogs/ShortcutsDialog.h"
 #include "gui/explorer/FileExplorerWidget.h"
 #include "gui/models/ConnectionModel.h"
 #include "gui/session/SessionPage.h"
@@ -539,7 +538,7 @@ void MainWindow::openSettings()
 
 void MainWindow::openShortcuts()
 {
-    ShortcutsDialog dialog(this);
+    SettingsDialog dialog(this, QStringLiteral("shortcuts"));
     dialog.exec();
 }
 
