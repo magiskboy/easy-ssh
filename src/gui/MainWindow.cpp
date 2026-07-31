@@ -766,11 +766,26 @@ void MainWindow::editConnection(const QUuid &id)
     m_connectionList->editConnectionById(id);
 }
 
-void MainWindow::onConnectionEdited(const QUuid &id, bool connectivityChanged)
+void MainWindow::onConnectionEdited(const QUuid &id,
+                                    bool connectivityChanged,
+                                    bool targetSecretUpdated,
+                                    const QString &targetSecret,
+                                    bool gatewaySecretUpdated,
+                                    const QString &gatewaySecret)
 {
     if (const auto updated = m_connectionModel->connectionById(id)) {
         if (Session *session = m_sessionManager ? m_sessionManager->get(id) : nullptr) {
             session->setConnection(*updated);
+            if (targetSecretUpdated || gatewaySecretUpdated) {
+                SessionCredentials creds = session->credentials();
+                if (targetSecretUpdated) {
+                    creds.targetSecret = targetSecret;
+                }
+                if (gatewaySecretUpdated) {
+                    creds.gatewaySecret = gatewaySecret;
+                }
+                session->setCredentials(creds);
+            }
             if (connectivityChanged && (session->state() == SessionState::Connected ||
                                         session->state() == SessionState::Connecting)) {
                 const auto answer = QMessageBox::question(
@@ -780,6 +795,8 @@ void MainWindow::onConnectionEdited(const QUuid &id, bool connectivityChanged)
                     QMessageBox::Yes | QMessageBox::No,
                     QMessageBox::Yes);
                 if (answer == QMessageBox::Yes) {
+                    // Credentials already refreshed from the dialog when secrets changed;
+                    // reconnect with in-memory secrets to avoid racing the async keychain write.
                     session->reconnect();
                 }
             }

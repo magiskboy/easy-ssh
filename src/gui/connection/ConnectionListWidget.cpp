@@ -170,6 +170,9 @@ void ConnectionListWidget::editConnectionById(const QUuid &id)
     emit statusMessage(tr("Updated connection: %1").arg(connection.name),
                        ErrorNotifier::Level::Success);
 
+    const bool secretsTouched = dialog.passwordProvided() || dialog.passphraseProvided() ||
+                                dialog.gatewayPasswordProvided() ||
+                                dialog.gatewayPassphraseProvided();
     const bool connectivityChanged =
         before.host != connection.host || before.port != connection.port ||
         before.username != connection.username || before.authType != connection.authType ||
@@ -178,8 +181,39 @@ void ConnectionListWidget::editConnectionById(const QUuid &id)
         before.usesJumpHost() != connection.usesJumpHost() ||
         before.proxyCommand != connection.proxyCommand ||
         before.jumpHops.size() != connection.jumpHops.size() ||
-        before.agentForwarding != connection.agentForwarding;
-    emit connectionEdited(connection.id, connectivityChanged);
+        before.agentForwarding != connection.agentForwarding || secretsTouched;
+
+    bool targetSecretUpdated = false;
+    QString targetSecret;
+    if (connection.authType == AuthType::Password && dialog.passwordProvided()) {
+        targetSecretUpdated = true;
+        targetSecret = dialog.password();
+    } else if (connection.authType == AuthType::PrivateKey && dialog.passphraseProvided()) {
+        targetSecretUpdated = true;
+        targetSecret = dialog.passphrase();
+    }
+
+    bool gatewaySecretUpdated = false;
+    QString gatewaySecret;
+    const bool usesCustomGateway =
+        connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials;
+    if (usesCustomGateway) {
+        const AuthType gatewayAuth = connection.jumpHops.first().authType;
+        if (gatewayAuth == AuthType::Password && dialog.gatewayPasswordProvided()) {
+            gatewaySecretUpdated = true;
+            gatewaySecret = dialog.gatewayPassword();
+        } else if (gatewayAuth == AuthType::PrivateKey && dialog.gatewayPassphraseProvided()) {
+            gatewaySecretUpdated = true;
+            gatewaySecret = dialog.gatewayPassphrase();
+        }
+    }
+
+    emit connectionEdited(connection.id,
+                          connectivityChanged,
+                          targetSecretUpdated,
+                          targetSecret,
+                          gatewaySecretUpdated,
+                          gatewaySecret);
 }
 
 void ConnectionListWidget::deleteSelectedConnection()

@@ -56,7 +56,12 @@ private:
     void finishConnect(const Connection &connection, const SessionCredentials &credentials);
     void wireActiveSessionStateSync(Session *session);
     void editConnection(const QUuid &id);
-    void onConnectionEdited(const QUuid &id, bool connectivityChanged);
+    void onConnectionEdited(const QUuid &id,
+                            bool connectivityChanged,
+                            bool targetSecretUpdated,
+                            const QString &targetSecret,
+                            bool gatewaySecretUpdated,
+                            const QString &gatewaySecret);
     void deleteConnection(const QUuid &id);
     void openSettings();
     void openShortcuts();

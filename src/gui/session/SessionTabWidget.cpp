@@ -62,6 +62,8 @@ void SessionTabWidget::openSshSession(const Connection &connection,
     if (existing >= 0) {
         setCurrentIndex(existing);
         if (Session *session = m_sessionManager->get(connection.id)) {
+            session->setConnection(connection);
+            session->setCredentials(credentials);
             if (session->state() == SessionState::Disconnected ||
                 session->state() == SessionState::Failed) {
                 session->reconnect();
@@ -86,6 +88,9 @@ void SessionTabWidget::openSshSession(const Connection &connection,
     connect(page, &SessionPage::editRequested, this, [this, session]() {
         emit editConnectionRequested(session->connectionId());
     });
+    connect(page, &SessionPage::reconnectRequested, this, [this, session]() {
+        emit openConnectionRequested(session->connectionId());
+    });
     connect(session, &Session::stateChanged, this, [this, page](SessionState) {
         updateTabPresentation(page);
     });
@@ -106,9 +111,16 @@ void SessionTabWidget::disconnectCurrentSession()
 
 void SessionTabWidget::reconnectCurrentSession()
 {
-    if (Session *session = activeSession()) {
-        session->reconnect();
+    Session *session = activeSession();
+    if (!session) {
+        return;
     }
+    // Re-read secrets from the keychain so edits to password/passphrase apply.
+    if (session->state() == SessionState::Connected ||
+        session->state() == SessionState::Connecting) {
+        session->disconnectTransport();
+    }
+    emit openConnectionRequested(session->connectionId());
 }
 
 void SessionTabWidget::closeCurrentSession()
@@ -218,7 +230,9 @@ void SessionTabWidget::onTabContextMenu(const QPoint &pos)
     if (session->state() == SessionState::Connected) {
         menu.addAction(tr("Disconnect"), session, &Session::disconnectTransport);
     } else {
-        menu.addAction(tr("Reconnect"), session, [session]() { session->reconnect(); });
+        menu.addAction(tr("Reconnect"), this, [this, session]() {
+            emit openConnectionRequested(session->connectionId());
+        });
     }
     menu.addAction(tr("Close"), this, [this, index]() { onTabCloseRequested(index); });
     menu.addSeparator();

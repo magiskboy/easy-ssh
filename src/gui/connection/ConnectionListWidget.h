@@ -44,7 +44,12 @@ public:
 signals:
     void connectionActivated(const QUuid &id);
     void connectionSelected(const QUuid &id);
-    void connectionEdited(const QUuid &id, bool connectivityChanged);
+    void connectionEdited(const QUuid &id,
+                          bool connectivityChanged,
+                          bool targetSecretUpdated,
+                          const QString &targetSecret,
+                          bool gatewaySecretUpdated,
+                          const QString &gatewaySecret);
     void statusMessage(const QString &message, ErrorNotifier::Level level);
 
 private slots:

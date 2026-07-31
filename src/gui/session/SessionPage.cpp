@@ -379,11 +379,7 @@ void SessionPage::disconnectOrReconnect()
         m_session->state() == SessionState::Connecting) {
         m_session->disconnectTransport();
     } else {
-        QSize sz(kDefaultCols, kDefaultRows);
-        if (QTermWidget *term = activeTerm()) {
-            sz = readTerminalSize(term);
-        }
-        m_session->reconnect(sz.width(), sz.height());
+        emit reconnectRequested();
     }
 }
 

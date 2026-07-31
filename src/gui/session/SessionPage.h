@@ -46,6 +46,8 @@ signals:
     void editRequested();
     void closeRequested();
     void deleteRequested();
+    /// Ask the host to reconnect using freshly loaded keychain credentials.
+    void reconnectRequested();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

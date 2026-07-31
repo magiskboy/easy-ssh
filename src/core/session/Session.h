@@ -37,6 +37,8 @@ public:
     QUuid connectionId() const { return m_connection.id; }
     Connection connection() const { return m_connection; }
     void setConnection(const Connection &connection);
+    SessionCredentials credentials() const { return m_credentials; }
+    void setCredentials(const SessionCredentials &credentials);
     SessionState state() const { return m_state; }
     QDateTime connectedAt() const { return m_connectedAt; }
     QString lastError() const { return m_lastError; }

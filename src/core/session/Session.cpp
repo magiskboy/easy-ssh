@@ -61,6 +61,11 @@ void Session::setConnection(const Connection &connection)
     m_connection = connection;
 }
 
+void Session::setCredentials(const SessionCredentials &credentials)
+{
+    m_credentials = credentials;
+}
+
 QString Session::displayName() const
 {
     if (!m_connection.name.isEmpty()) {
