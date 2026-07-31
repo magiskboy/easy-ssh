@@ -20,6 +20,7 @@ struct SshConfigHost
     quint16 port = 22;
     QStringList identityFiles;
     QString proxyJump;
+    QString proxyCommand;
 };
 
 /**

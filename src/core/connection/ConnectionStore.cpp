@@ -125,6 +125,16 @@ QList<Connection> ConnectionStore::load()
         settings.endGroup();
 
         loadJumpHops(settings, connection);
+        connection.proxyCommand = settings.value(QStringLiteral("proxyCommand")).toString();
+        if (settings.contains(QStringLiteral("proxyMode"))) {
+            connection.proxyMode =
+                static_cast<SshProxyMode>(settings.value(QStringLiteral("proxyMode")).toInt());
+        } else {
+            // Migrate pre-P4 stores: non-empty jumpHops imply ProxyJump.
+            connection.proxyMode =
+                connection.jumpHops.isEmpty() ? SshProxyMode::None : SshProxyMode::ProxyJump;
+        }
+        connection.normalizeProxyFields();
 
         if (connection.id.isNull() || connection.name.isEmpty()) {
             continue;
@@ -143,7 +153,8 @@ void ConnectionStore::save(const QList<Connection> &connections)
     settings.beginWriteArray(QStringLiteral("connections"), connections.size());
 
     for (int i = 0; i < connections.size(); ++i) {
-        const Connection &connection = connections.at(i);
+        Connection connection = connections.at(i);
+        connection.normalizeProxyFields();
         settings.setArrayIndex(i);
         settings.setValue(QStringLiteral("id"), connection.id.toString(QUuid::WithoutBraces));
         settings.setValue(QStringLiteral("name"), connection.name);
@@ -156,6 +167,8 @@ void ConnectionStore::save(const QList<Connection> &connections)
         settings.setValue(QStringLiteral("keepAliveIntervalSec"), connection.keepAliveIntervalSec);
         settings.setValue(QStringLiteral("keepAliveCountMax"), connection.keepAliveCountMax);
         settings.setValue(QStringLiteral("compressionEnabled"), connection.compressionEnabled);
+        settings.setValue(QStringLiteral("proxyMode"), static_cast<int>(connection.proxyMode));
+        settings.setValue(QStringLiteral("proxyCommand"), connection.proxyCommand);
 
         settings.beginGroup(QStringLiteral("shellCommands"));
         settings.setValue(QStringLiteral("shell"), connection.shellCommands.shell);

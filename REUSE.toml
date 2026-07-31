@@ -54,3 +54,9 @@ SPDX-License-Identifier = "GPL-3.0-only"
 path = [".ai/**"]
 SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
 SPDX-License-Identifier = "GPL-3.0-only"
+
+# Local integration sandbox (compose lab, fixtures, test-only keys)
+[[annotations]]
+path = ["sandbox/**"]
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"

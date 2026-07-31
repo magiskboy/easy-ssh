@@ -1,0 +1,11 @@
+# Test-only key material
+
+These keys are **intentionally public** so the compose lab is turnkey under
+rootless Podman/Docker. Password for every lab user remains `easy`.
+
+| File | Passphrase |
+|------|------------|
+| `id_ed25519` | _(none)_ |
+| `id_ed25519_passphrase` | `lab-passphrase` |
+
+Never use these keys on a real host.

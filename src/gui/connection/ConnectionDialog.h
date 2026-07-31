@@ -12,12 +12,15 @@
 #include <QList>
 
 class CategoryDialogShell;
+class QButtonGroup;
 class QCheckBox;
 class QComboBox;
 class QFormLayout;
+class QGroupBox;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QRadioButton;
 class QSpinBox;
 class QWidget;
 
@@ -50,7 +53,7 @@ public:
 private slots:
     void onAuthTypeChanged(int index);
     void onGatewayAuthTypeChanged(int index);
-    void onUseGatewayToggled(bool enabled);
+    void onProxyModeButtonClicked(int id);
     void onHopSelectionChanged();
     void onAddHop();
     void onRemoveHop();
@@ -63,12 +66,15 @@ private:
     void setupUi();
     QWidget *createSessionPage();
     QWidget *createConnectionPage();
-    QWidget *createTunnelPage();
+    QWidget *createProxyPage();
     QWidget *createScpShellPage();
     bool validate();
     void updateAuthFieldsVisibility();
     void updateGatewayAuthFieldsVisibility();
-    void updateGatewayPanelVisibility();
+    void updateProxyPanelVisibility();
+    void setProxyMode(SshProxyMode mode, bool confirmClear);
+    bool proxyJumpHasData() const;
+    bool proxyCommandHasData() const;
     void syncHopEditorFromCurrent();
     void syncCurrentHopFromEditor();
     void refreshHopList();
@@ -79,9 +85,10 @@ private:
     Mode m_mode;
     QUuid m_id;
     QList<JumpHop> m_jumpHops;
+    SshProxyMode m_proxyMode = SshProxyMode::None;
 
     CategoryDialogShell *m_shell = nullptr;
-    QFormLayout *m_targetForm = nullptr;
+    QFormLayout *m_authForm = nullptr;
     QFormLayout *m_gatewayForm = nullptr;
 
     QLineEdit *m_nameEdit = nullptr;
@@ -95,7 +102,13 @@ private:
     QLineEdit *m_passphraseEdit = nullptr;
     QLineEdit *m_startupDirEdit = nullptr;
 
-    QCheckBox *m_useGatewayCheck = nullptr;
+    QButtonGroup *m_proxyModeGroup = nullptr;
+    QRadioButton *m_proxyNoneRadio = nullptr;
+    QRadioButton *m_proxyJumpRadio = nullptr;
+    QRadioButton *m_proxyCommandRadio = nullptr;
+    QGroupBox *m_jumpPanel = nullptr;
+    QGroupBox *m_commandPanel = nullptr;
+    QLineEdit *m_proxyCommandEdit = nullptr;
     QListWidget *m_hopList = nullptr;
     QLineEdit *m_gatewayHostEdit = nullptr;
     QSpinBox *m_gatewayPortSpin = nullptr;

@@ -1,0 +1,68 @@
+# Sample OpenSSH config mirroring the compose lab.
+# Import into easy-ssh (SshConfig) or use with stock ssh(1):
+#   ssh -F sandbox/fixtures/ssh-config.sample lab-via-bastion
+#
+# Paths below assume the process cwd is the repo root.
+
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    GlobalKnownHostsFile /dev/null
+    IdentityFile sandbox/fixtures/lab-keys/id_ed25519
+    IdentitiesOnly yes
+
+Host lab-target
+    HostName 127.0.0.1
+    Port 2200
+    User easy
+
+Host lab-target-key
+    HostName 127.0.0.1
+    Port 2200
+    User keyuser
+
+Host lab-sftp-off
+    HostName 127.0.0.1
+    Port 2201
+    User easy
+
+Host lab-auth-pass
+    HostName 127.0.0.1
+    Port 2202
+    User passonly
+
+Host lab-auth-key
+    HostName 127.0.0.1
+    Port 2202
+    User keyonly
+
+Host lab-auth-kbdint
+    HostName 127.0.0.1
+    Port 2202
+    User kbdint
+    PreferredAuthentications keyboard-interactive
+
+Host lab-bastion
+    HostName 127.0.0.1
+    Port 2222
+    User keyuser
+
+# ProxyJump: final host name "target" is resolved by the bastion (compose DNS).
+Host lab-via-bastion
+    HostName target
+    Port 22
+    User keyuser
+    ProxyJump lab-bastion
+
+Host lab-via-double-jump
+    HostName target
+    Port 22
+    User keyuser
+    ProxyJump keyuser@127.0.0.1:2222,keyuser@bastion2:22
+
+# ProxyCommand example (P4) — equivalent to a direct TCP path to target SSH.
+Host lab-via-proxycommand
+    HostName 127.0.0.1
+    Port 2200
+    User easy
+    ProxyCommand nc %h %p
