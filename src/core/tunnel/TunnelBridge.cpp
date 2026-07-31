@@ -43,17 +43,21 @@ bool pollChannelToSocket(TunnelBridge *bridge)
         return false;
     }
 
-    if (!ssh_channel_is_open(bridge->channel) || ssh_channel_is_eof(bridge->channel)) {
-        return true;
-    }
-
+    // Drain channel data before acting on EOF — unread buffered bytes would otherwise be lost.
     char buffer[8192];
+    bool sawEof = false;
+    bool hardError = false;
     while (true) {
         const int nbytes = ssh_channel_read_nonblocking(bridge->channel, buffer, sizeof(buffer), 0);
-        if (nbytes == SSH_EOF || nbytes < 0) {
-            return true;
+        if (nbytes == SSH_AGAIN || nbytes == 0) {
+            break;
         }
-        if (nbytes == 0) {
+        if (nbytes == SSH_EOF) {
+            sawEof = true;
+            break;
+        }
+        if (nbytes < 0) {
+            hardError = true;
             break;
         }
         const qint64 written = bridge->socket->write(buffer, nbytes);
@@ -61,7 +65,25 @@ bool pollChannelToSocket(TunnelBridge *bridge)
             return true;
         }
     }
-    return false;
+
+    const bool channelDone = hardError || sawEof || !ssh_channel_is_open(bridge->channel) ||
+                             ssh_channel_is_eof(bridge->channel);
+    if (!channelDone) {
+        return false;
+    }
+
+    // Push any Qt-buffered response to the OS before the bridge is torn down.
+    if (auto *abstract = qobject_cast<QAbstractSocket *>(bridge->socket)) {
+        if (abstract->bytesToWrite() > 0) {
+            abstract->flush();
+        }
+    } else if (auto *local = qobject_cast<QLocalSocket *>(bridge->socket)) {
+        if (local->bytesToWrite() > 0) {
+            local->flush();
+        }
+    }
+
+    return true;
 }
 
 void closeBridge(TunnelBridge *bridge, QObject *socketSignalContext)
@@ -75,10 +97,34 @@ void closeBridge(TunnelBridge *bridge, QObject *socketSignalContext)
         if (socketSignalContext) {
             QObject::disconnect(bridge->socket, nullptr, socketSignalContext, nullptr);
         }
+        // Graceful close: flush + disconnectFromHost. abort() discards the write buffer and
+        // causes curl "Empty reply" when the SSH channel EOFs in the same poll as the response.
         if (auto *abstract = qobject_cast<QAbstractSocket *>(bridge->socket)) {
-            abstract->abort();
+            if (abstract->bytesToWrite() > 0) {
+                abstract->flush();
+            }
+            if (abstract->state() != QAbstractSocket::UnconnectedState) {
+                abstract->disconnectFromHost();
+                if (abstract->bytesToWrite() > 0) {
+                    abstract->waitForBytesWritten(1000);
+                }
+                if (abstract->state() != QAbstractSocket::UnconnectedState) {
+                    abstract->waitForDisconnected(1000);
+                }
+            }
         } else if (auto *local = qobject_cast<QLocalSocket *>(bridge->socket)) {
-            local->abort();
+            if (local->bytesToWrite() > 0) {
+                local->flush();
+            }
+            if (local->state() != QLocalSocket::UnconnectedState) {
+                local->disconnectFromServer();
+                if (local->bytesToWrite() > 0) {
+                    local->waitForBytesWritten(1000);
+                }
+                if (local->state() != QLocalSocket::UnconnectedState) {
+                    local->waitForDisconnected(1000);
+                }
+            }
         } else {
             bridge->socket->close();
         }
