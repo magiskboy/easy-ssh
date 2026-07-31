@@ -94,8 +94,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/connection/ConnectionDialog.h
     gui/connection/WelcomeWidget.cpp
     gui/connection/WelcomeWidget.h
-    gui/sftp/FileExplorerWidget.cpp
-    gui/sftp/FileExplorerWidget.h
+    gui/explorer/FileExplorerWidget.cpp
+    gui/explorer/FileExplorerWidget.h
     gui/tunnel/TunnelListWidget.cpp
     gui/tunnel/TunnelListWidget.h
     gui/tunnel/TunnelDialog.cpp
