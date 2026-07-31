@@ -1,0 +1,164 @@
+# easy-ssh integration lab — Ubuntu LTS hosts for shell / SFTP / tunnels / jump / auth.
+#
+# Usage:
+#   ./scripts/prepare.sh
+#   podman compose -f compose.yaml up -d --build
+#   # or: docker compose -f compose.yaml up -d --build
+#
+# prepare.sh generates client + host keys under fixtures/ (gitignored).
+# All published ports bind to 127.0.0.1 only.
+# Volume flag :z shares the SELinux label across lab containers (Podman).
+# Docker typically ignores it. Keys are also baked into the image at
+# /opt/lab/keys so pubkey auth works even if the bind mount is unreadable.
+
+name: easy-ssh-lab
+
+services:
+  bastion:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: easy-ssh-lab:local
+    hostname: bastion
+    environment:
+      ROLE: bastion
+      LAB_PASSWORD: ${LAB_PASSWORD:-easy}
+    volumes:
+      - ./keys:/keys:ro,z
+    ports:
+      - "127.0.0.1:2222:22"
+    networks:
+      lab:
+        aliases: [bastion]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  bastion2:
+    image: easy-ssh-lab:local
+    depends_on:
+      bastion:
+        condition: service_healthy
+    hostname: bastion2
+    environment:
+      ROLE: bastion2
+      LAB_PASSWORD: ${LAB_PASSWORD:-easy}
+    volumes:
+      - ./keys:/keys:ro,z
+    networks:
+      lab:
+        aliases: [bastion2]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  target:
+    image: easy-ssh-lab:local
+    depends_on:
+      bastion:
+        condition: service_started
+    hostname: target
+    environment:
+      ROLE: target
+      LAB_PASSWORD: ${LAB_PASSWORD:-easy}
+    volumes:
+      - ./keys:/keys:ro,z
+    ports:
+      - "127.0.0.1:2200:22"
+      - "127.0.0.1:18080:8080"
+    networks:
+      lab:
+        aliases: [target]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pgrep -x sshd >/dev/null && curl -fsS http://127.0.0.1:8080/ >/dev/null",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 8s
+    restart: unless-stopped
+
+  target-sftp-off:
+    image: easy-ssh-lab:local
+    depends_on:
+      bastion:
+        condition: service_started
+    hostname: target-sftp-off
+    environment:
+      ROLE: sftp-off
+      LAB_PASSWORD: ${LAB_PASSWORD:-easy}
+    volumes:
+      - ./keys:/keys:ro,z
+    ports:
+      - "127.0.0.1:2201:22"
+    networks:
+      lab:
+        aliases: [target-sftp-off]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  target-auth:
+    image: easy-ssh-lab:local
+    depends_on:
+      bastion:
+        condition: service_started
+    hostname: target-auth
+    environment:
+      ROLE: auth
+      LAB_PASSWORD: ${LAB_PASSWORD:-easy}
+    volumes:
+      - ./keys:/keys:ro,z
+    ports:
+      - "127.0.0.1:2202:22"
+    networks:
+      lab:
+        aliases: [target-auth]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  http-backend:
+    image: easy-ssh-lab:local
+    depends_on:
+      bastion:
+        condition: service_started
+    hostname: http-backend
+    environment:
+      ROLE: http
+    ports:
+      - "127.0.0.1:18081:8080"
+    networks:
+      lab:
+        aliases: [http-backend]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
+
+networks:
+  lab:
+    driver: bridge
+    name: easy-ssh-lab

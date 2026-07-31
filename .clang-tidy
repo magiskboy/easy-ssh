@@ -16,7 +16,7 @@ Checks: >
   readability-misleading-indentation,
   readability-redundant-control-flow
 
-HeaderFilterRegex: 'src/.*'
+HeaderFilterRegex: '/src/'
 
 WarningsAsErrors: 'bugprone-easily-swappable-parameters'
 FormatStyle: file

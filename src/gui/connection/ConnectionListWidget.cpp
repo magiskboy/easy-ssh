@@ -174,7 +174,10 @@ void ConnectionListWidget::editConnectionById(const QUuid &id)
         before.host != connection.host || before.port != connection.port ||
         before.username != connection.username || before.authType != connection.authType ||
         before.privateKeyPath != connection.privateKeyPath ||
-        before.usesJumpHost() != connection.usesJumpHost();
+        before.proxyMode != connection.proxyMode ||
+        before.usesJumpHost() != connection.usesJumpHost() ||
+        before.proxyCommand != connection.proxyCommand ||
+        before.jumpHops.size() != connection.jumpHops.size();
     emit connectionEdited(connection.id, connectivityChanged);
 }
 

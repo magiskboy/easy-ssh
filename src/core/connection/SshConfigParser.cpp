@@ -157,7 +157,8 @@ QStringList expandIncludePattern(const QString &pattern, const QDir &relativeToD
     return paths;
 }
 
-QString readProxyJumpForAlias(const QFileInfo &configFile, const QString &alias)
+QString
+readProxyOptionForAlias(const QFileInfo &configFile, const QString &alias, const QString &optionKey)
 {
     const QString normalized = normalizeConfigPath(configFile.filePath(), QDir::home());
     QFile file(normalized);
@@ -167,7 +168,7 @@ QString readProxyJumpForAlias(const QFileInfo &configFile, const QString &alias)
 
     const QDir baseDir(QFileInfo(normalized).absolutePath());
     bool inMatchingBlock = false;
-    QString proxyJump;
+    QString value;
 
     QTextStream stream(&file);
     while (!stream.atEnd()) {
@@ -199,22 +200,33 @@ QString readProxyJumpForAlias(const QFileInfo &configFile, const QString &alias)
             continue;
         }
 
-        if (key == QLatin1String("proxyjump") && tokens.size() >= 2) {
-            proxyJump = tokens.mid(1).join(QLatin1Char(' '));
+        if (key == optionKey && tokens.size() >= 2) {
+            value = tokens.mid(1).join(QLatin1Char(' '));
         } else if (key == QLatin1String("include")) {
             for (int i = 1; i < tokens.size(); ++i) {
                 const QStringList included = expandIncludePattern(tokens.at(i), baseDir);
                 for (const QString &includedPath : included) {
-                    const QString nested = readProxyJumpForAlias(QFileInfo(includedPath), alias);
+                    const QString nested =
+                        readProxyOptionForAlias(QFileInfo(includedPath), alias, optionKey);
                     if (!nested.isEmpty()) {
-                        proxyJump = nested;
+                        value = nested;
                     }
                 }
             }
         }
     }
 
-    return proxyJump;
+    return value;
+}
+
+QString readProxyJumpForAlias(const QFileInfo &configFile, const QString &alias)
+{
+    return readProxyOptionForAlias(configFile, alias, QStringLiteral("proxyjump"));
+}
+
+QString readProxyCommandForAlias(const QFileInfo &configFile, const QString &alias)
+{
+    return readProxyOptionForAlias(configFile, alias, QStringLiteral("proxycommand"));
 }
 
 void collectAliasesFromFile(const QString &path,
@@ -351,8 +363,10 @@ SshConfigHost resolveAliasWithLibssh(const QString &alias, const QString &config
         host.identityFiles.append(expandTilde(path));
     }
 
-    host.proxyJump = readProxyJumpForAlias(
-        QFileInfo(configPath.isEmpty() ? SshConfigParser::defaultConfigPath() : configPath), alias);
+    const QFileInfo configInfo(configPath.isEmpty() ? SshConfigParser::defaultConfigPath()
+                                                    : configPath);
+    host.proxyJump = readProxyJumpForAlias(configInfo, alias);
+    host.proxyCommand = readProxyCommandForAlias(configInfo, alias);
 
     ssh_free(session);
     return host;
@@ -403,9 +417,24 @@ QList<Connection> SshConfigParser::toConnections(const QList<SshConfigHost> &hos
             host.identityFiles.isEmpty() ? QString() : host.identityFiles.first();
         connection.source = ConnectionSource::SshConfig;
         connection.configAlias = host.alias;
-        if (!host.proxyJump.isEmpty()) {
+
+        const bool hasJump = !host.proxyJump.isEmpty() && !isSshNoneToken(host.proxyJump);
+        const bool hasCommand = !host.proxyCommand.isEmpty() && !isSshNoneToken(host.proxyCommand);
+        // OpenSSH forbids both; prefer ProxyJump when both appear (misconfig).
+        if (hasJump) {
+            connection.proxyMode = SshProxyMode::ProxyJump;
             connection.jumpHops = SshConfigParser::parseProxyJumpHops(host.proxyJump);
+            connection.proxyCommand.clear();
+        } else if (hasCommand) {
+            connection.proxyMode = SshProxyMode::ProxyCommand;
+            connection.proxyCommand = host.proxyCommand.trimmed();
+            connection.jumpHops.clear();
+        } else {
+            connection.proxyMode = SshProxyMode::None;
+            connection.jumpHops.clear();
+            connection.proxyCommand.clear();
         }
+
         connections.append(connection);
     }
 

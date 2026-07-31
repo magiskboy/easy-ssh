@@ -101,9 +101,14 @@ bool SshSession::establish(const Connection &connection,
     m_credentials = credentials;
     configureKeepAlive(connection.keepAliveIntervalSec, connection.keepAliveCountMax);
 
+    const char *via = "(direct)";
+    if (connection.usesJumpHost()) {
+        via = "(via gateway)";
+    } else if (connection.usesProxyCommand()) {
+        via = "(via ProxyCommand)";
+    }
     qCWarning(lcSsh) << "Connecting to" << connection.username + QLatin1Char('@') + connection.host
-                     << "port" << connection.port
-                     << (connection.usesJumpHost() ? "(via gateway)" : "(direct)");
+                     << "port" << connection.port << via;
 
     m_session = ssh_new();
     if (m_session == nullptr) {
@@ -126,6 +131,8 @@ bool SshSession::establish(const Connection &connection,
         QString err = connectError.isEmpty() ? sessionError() : connectError;
         if (connection.usesJumpHost()) {
             err = trSession("Gateway: %1").arg(err);
+        } else if (connection.usesProxyCommand()) {
+            err = trSession("ProxyCommand failed: %1").arg(err);
         }
         qCWarning(lcSsh) << "Connection failed:" << err;
         if (errorOut) {
@@ -185,7 +192,9 @@ bool SshSession::applyConnectionOptions(const Connection &connection)
         const int processConfig = 0;
         ssh_options_set(m_session, SSH_OPTIONS_PROCESS_CONFIG, &processConfig);
 
-        if (connection.usesJumpHost()) {
+        // OpenSSH mutual exclusion: set exactly one of PROXYJUMP / PROXYCOMMAND (or neither).
+        switch (connection.proxyMode) {
+        case SshProxyMode::ProxyJump: {
             const QByteArray proxyJump = connection.proxyJumpString().toUtf8();
             if (proxyJump.isEmpty()) {
                 qCWarning(lcSsh) << "ProxyJump string is empty despite configured hops";
@@ -196,6 +205,24 @@ bool SshSession::applyConnectionOptions(const Connection &connection)
                 return false;
             }
             registerJumpCallbacks(connection);
+            break;
+        }
+        case SshProxyMode::ProxyCommand: {
+            const QString command = connection.proxyCommand.trimmed();
+            if (command.isEmpty() || isSshNoneToken(command)) {
+                qCWarning(lcSsh) << "ProxyCommand is empty despite ProxyCommand mode";
+                return false;
+            }
+            const QByteArray proxyCommand = command.toUtf8();
+            if (ssh_options_set(m_session, SSH_OPTIONS_PROXYCOMMAND, proxyCommand.constData()) !=
+                0) {
+                qCWarning(lcSsh) << "Failed to set ProxyCommand:" << sessionErrorOf(m_session);
+                return false;
+            }
+            break;
+        }
+        case SshProxyMode::None:
+            break;
         }
 
         applyAdvancedOptions(connection);

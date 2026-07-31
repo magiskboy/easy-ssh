@@ -6,6 +6,8 @@
 
 #include "gui/widgets/CategoryDialogShell.h"
 
+#include <QAbstractButton>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -20,7 +22,9 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -30,7 +34,7 @@ ConnectionDialog::ConnectionDialog(Mode mode, QWidget *parent)
 {
     setupUi();
     setWindowTitle(mode == Mode::Create ? tr("New Connection") : tr("Edit Connection"));
-    resize(640, 480);
+    resize(640, 520);
 }
 
 void ConnectionDialog::setupUi()
@@ -39,9 +43,9 @@ void ConnectionDialog::setupUi()
     m_shell->addPage(nullptr, tr("Session"), createSessionPage(), QStringLiteral("session"));
     m_shell->addPage(
         nullptr, tr("Connection"), createConnectionPage(), QStringLiteral("connection"));
-    // Gateway / Jump Host (ProxyJump) — not port-forward tunnels (those live in the session
+    // SSH Proxy (ProxyJump / ProxyCommand) — not port-forward tunnels (those live in the session
     // sidebar).
-    m_shell->addPage(nullptr, tr("Gateway"), createTunnelPage(), QStringLiteral("gateway"));
+    m_shell->addPage(nullptr, tr("SSH Proxy"), createProxyPage(), QStringLiteral("ssh-proxy"));
 
     QTreeWidgetItem *environmentGroup = m_shell->addGroup(tr("Environment"));
     m_shell->addPage(
@@ -58,7 +62,7 @@ void ConnectionDialog::setupUi()
     layout->addWidget(buttons);
 
     updateAuthFieldsVisibility();
-    updateGatewayPanelVisibility();
+    updateProxyPanelVisibility();
     updateGatewayAuthFieldsVisibility();
 }
 
@@ -68,7 +72,7 @@ QWidget *ConnectionDialog::createSessionPage()
     auto *layout = new QVBoxLayout(page);
 
     auto *targetGroup = new QGroupBox(tr("Target"), page);
-    m_targetForm = new QFormLayout(targetGroup);
+    auto *targetForm = new QFormLayout(targetGroup);
 
     m_nameEdit = new QLineEdit(targetGroup);
     m_hostEdit = new QLineEdit(targetGroup);
@@ -76,46 +80,50 @@ QWidget *ConnectionDialog::createSessionPage()
     m_portSpin->setRange(1, 65535);
     m_portSpin->setValue(22);
     m_usernameEdit = new QLineEdit(targetGroup);
+    m_startupDirEdit = new QLineEdit(targetGroup);
+    m_startupDirEdit->setPlaceholderText(tr("Optional"));
 
-    m_authTypeCombo = new QComboBox(targetGroup);
+    targetForm->addRow(tr("Name"), m_nameEdit);
+    targetForm->addRow(tr("Host"), m_hostEdit);
+    targetForm->addRow(tr("Port"), m_portSpin);
+    targetForm->addRow(tr("Username"), m_usernameEdit);
+    targetForm->addRow(tr("Startup Directory"), m_startupDirEdit);
+
+    auto *authGroup = new QGroupBox(tr("SSH Authentication"), page);
+    m_authForm = new QFormLayout(authGroup);
+
+    m_authTypeCombo = new QComboBox(authGroup);
     m_authTypeCombo->addItem(tr("Password"), static_cast<int>(AuthType::Password));
     m_authTypeCombo->addItem(tr("Private Key"), static_cast<int>(AuthType::PrivateKey));
 
-    m_passwordEdit = new QLineEdit(targetGroup);
+    m_passwordEdit = new QLineEdit(authGroup);
     m_passwordEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_passwordEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
-    m_privateKeyEdit = new QLineEdit(targetGroup);
-    auto *browseButton = new QPushButton(tr("Browse…"), targetGroup);
+    m_privateKeyEdit = new QLineEdit(authGroup);
+    auto *browseButton = new QPushButton(tr("Browse…"), authGroup);
     auto *keyLayout = new QHBoxLayout();
     keyLayout->setContentsMargins(0, 0, 0, 0);
     keyLayout->addWidget(m_privateKeyEdit, 1);
     keyLayout->addWidget(browseButton);
-    m_privateKeyRow = new QWidget(targetGroup);
+    m_privateKeyRow = new QWidget(authGroup);
     m_privateKeyRow->setLayout(keyLayout);
 
-    m_passphraseEdit = new QLineEdit(targetGroup);
+    m_passphraseEdit = new QLineEdit(authGroup);
     m_passphraseEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_passphraseEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
-    m_startupDirEdit = new QLineEdit(targetGroup);
-    m_startupDirEdit->setPlaceholderText(tr("Optional"));
-
-    m_targetForm->addRow(tr("Name"), m_nameEdit);
-    m_targetForm->addRow(tr("Host"), m_hostEdit);
-    m_targetForm->addRow(tr("Port"), m_portSpin);
-    m_targetForm->addRow(tr("Username"), m_usernameEdit);
-    m_targetForm->addRow(tr("Authentication"), m_authTypeCombo);
-    m_targetForm->addRow(tr("Password"), m_passwordEdit);
-    m_targetForm->addRow(tr("Private Key"), m_privateKeyRow);
-    m_targetForm->addRow(tr("Passphrase"), m_passphraseEdit);
-    m_targetForm->addRow(tr("Startup Directory"), m_startupDirEdit);
+    m_authForm->addRow(tr("Authentication"), m_authTypeCombo);
+    m_authForm->addRow(tr("Password"), m_passwordEdit);
+    m_authForm->addRow(tr("Private Key"), m_privateKeyRow);
+    m_authForm->addRow(tr("Passphrase"), m_passphraseEdit);
 
     layout->addWidget(targetGroup);
+    layout->addWidget(authGroup);
     layout->addStretch(1);
 
     connect(m_authTypeCombo,
@@ -162,26 +170,40 @@ QWidget *ConnectionDialog::createConnectionPage()
     return page;
 }
 
-QWidget *ConnectionDialog::createTunnelPage()
+QWidget *ConnectionDialog::createProxyPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
 
-    auto *gatewayGroup = new QGroupBox(tr("Gateway / Jump Host"), page);
-    auto *gatewayLayout = new QVBoxLayout(gatewayGroup);
+    auto *modeGroup = new QGroupBox(tr("Mode"), page);
+    auto *modeLayout = new QHBoxLayout(modeGroup);
+    m_proxyNoneRadio = new QRadioButton(tr("None"), modeGroup);
+    m_proxyJumpRadio = new QRadioButton(tr("ProxyJump"), modeGroup);
+    m_proxyCommandRadio = new QRadioButton(tr("ProxyCommand"), modeGroup);
+    m_proxyNoneRadio->setChecked(true);
 
-    m_useGatewayCheck = new QCheckBox(tr("Connect via gateway"), gatewayGroup);
-    gatewayLayout->addWidget(m_useGatewayCheck);
+    m_proxyModeGroup = new QButtonGroup(page);
+    m_proxyModeGroup->addButton(m_proxyNoneRadio, static_cast<int>(SshProxyMode::None));
+    m_proxyModeGroup->addButton(m_proxyJumpRadio, static_cast<int>(SshProxyMode::ProxyJump));
+    m_proxyModeGroup->addButton(m_proxyCommandRadio, static_cast<int>(SshProxyMode::ProxyCommand));
 
-    auto *hint = new QLabel(tr("Route: local → gateway → target"), gatewayGroup);
+    modeLayout->addWidget(m_proxyNoneRadio);
+    modeLayout->addWidget(m_proxyJumpRadio);
+    modeLayout->addWidget(m_proxyCommandRadio);
+    modeLayout->addStretch(1);
+
+    m_jumpPanel = new QGroupBox(tr("ProxyJump"), page);
+    auto *gatewayLayout = new QVBoxLayout(m_jumpPanel);
+
+    auto *hint = new QLabel(tr("Route: local → gateway → target"), m_jumpPanel);
     hint->setWordWrap(true);
     gatewayLayout->addWidget(hint);
 
     auto *hopButtonsLayout = new QHBoxLayout();
-    m_hopList = new QListWidget(gatewayGroup);
+    m_hopList = new QListWidget(m_jumpPanel);
     m_hopList->setMaximumHeight(72);
-    m_addHopButton = new QPushButton(tr("Add hop"), gatewayGroup);
-    m_removeHopButton = new QPushButton(tr("Remove hop"), gatewayGroup);
+    m_addHopButton = new QPushButton(tr("Add hop"), m_jumpPanel);
+    m_removeHopButton = new QPushButton(tr("Remove hop"), m_jumpPanel);
     hopButtonsLayout->addWidget(m_addHopButton);
     hopButtonsLayout->addWidget(m_removeHopButton);
     hopButtonsLayout->addStretch(1);
@@ -189,34 +211,34 @@ QWidget *ConnectionDialog::createTunnelPage()
     gatewayLayout->addLayout(hopButtonsLayout);
 
     m_gatewayForm = new QFormLayout();
-    m_gatewayHostEdit = new QLineEdit(gatewayGroup);
-    m_gatewayPortSpin = new QSpinBox(gatewayGroup);
+    m_gatewayHostEdit = new QLineEdit(m_jumpPanel);
+    m_gatewayPortSpin = new QSpinBox(m_jumpPanel);
     m_gatewayPortSpin->setRange(1, 65535);
     m_gatewayPortSpin->setValue(22);
-    m_gatewayUsernameEdit = new QLineEdit(gatewayGroup);
-    m_useTargetCredentialsCheck = new QCheckBox(tr("Use same credentials as target"), gatewayGroup);
+    m_gatewayUsernameEdit = new QLineEdit(m_jumpPanel);
+    m_useTargetCredentialsCheck = new QCheckBox(tr("Use same credentials as target"), m_jumpPanel);
     m_useTargetCredentialsCheck->setChecked(true);
 
-    m_gatewayAuthTypeCombo = new QComboBox(gatewayGroup);
+    m_gatewayAuthTypeCombo = new QComboBox(m_jumpPanel);
     m_gatewayAuthTypeCombo->addItem(tr("Password"), static_cast<int>(AuthType::Password));
     m_gatewayAuthTypeCombo->addItem(tr("Private Key"), static_cast<int>(AuthType::PrivateKey));
 
-    m_gatewayPasswordEdit = new QLineEdit(gatewayGroup);
+    m_gatewayPasswordEdit = new QLineEdit(m_jumpPanel);
     m_gatewayPasswordEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_gatewayPasswordEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
-    m_gatewayPrivateKeyEdit = new QLineEdit(gatewayGroup);
-    auto *gatewayBrowseButton = new QPushButton(tr("Browse…"), gatewayGroup);
+    m_gatewayPrivateKeyEdit = new QLineEdit(m_jumpPanel);
+    auto *gatewayBrowseButton = new QPushButton(tr("Browse…"), m_jumpPanel);
     auto *gatewayKeyLayout = new QHBoxLayout();
     gatewayKeyLayout->setContentsMargins(0, 0, 0, 0);
     gatewayKeyLayout->addWidget(m_gatewayPrivateKeyEdit, 1);
     gatewayKeyLayout->addWidget(gatewayBrowseButton);
-    m_gatewayPrivateKeyRow = new QWidget(gatewayGroup);
+    m_gatewayPrivateKeyRow = new QWidget(m_jumpPanel);
     m_gatewayPrivateKeyRow->setLayout(gatewayKeyLayout);
 
-    m_gatewayPassphraseEdit = new QLineEdit(gatewayGroup);
+    m_gatewayPassphraseEdit = new QLineEdit(m_jumpPanel);
     m_gatewayPassphraseEdit->setEchoMode(QLineEdit::Password);
     if (m_mode == Mode::Edit) {
         m_gatewayPassphraseEdit->setPlaceholderText(tr("Leave blank to keep existing"));
@@ -232,14 +254,34 @@ QWidget *ConnectionDialog::createTunnelPage()
     m_gatewayForm->addRow(tr("Passphrase"), m_gatewayPassphraseEdit);
     gatewayLayout->addLayout(m_gatewayForm);
 
-    layout->addWidget(gatewayGroup);
+    m_commandPanel = new QGroupBox(tr("ProxyCommand"), page);
+    auto *commandLayout = new QVBoxLayout(m_commandPanel);
+    m_proxyCommandEdit = new QLineEdit(m_commandPanel);
+    m_proxyCommandEdit->setPlaceholderText(QStringLiteral("nc -X connect -x 127.0.0.1:9050 %h %p"));
+    auto *tokenHint = new QLabel(
+        tr("Tokens (expanded by libssh): %%h host, %%p port, %%r user, %%n original host"),
+        m_commandPanel);
+    tokenHint->setWordWrap(true);
+    auto *securityHint = new QLabel(
+        tr("Warning: this command runs locally with your user privileges."), m_commandPanel);
+    securityHint->setWordWrap(true);
+    commandLayout->addWidget(m_proxyCommandEdit);
+    commandLayout->addWidget(tokenHint);
+    commandLayout->addWidget(securityHint);
+
+    layout->addWidget(modeGroup);
+    layout->addWidget(m_jumpPanel);
+    layout->addWidget(m_commandPanel);
     layout->addStretch(1);
 
+    connect(m_proxyModeGroup,
+            &QButtonGroup::idClicked,
+            this,
+            &ConnectionDialog::onProxyModeButtonClicked);
     connect(m_gatewayAuthTypeCombo,
             &QComboBox::currentIndexChanged,
             this,
             &ConnectionDialog::onGatewayAuthTypeChanged);
-    connect(m_useGatewayCheck, &QCheckBox::toggled, this, &ConnectionDialog::onUseGatewayToggled);
     connect(
         m_hopList, &QListWidget::currentRowChanged, this, &ConnectionDialog::onHopSelectionChanged);
     connect(m_addHopButton, &QPushButton::clicked, this, &ConnectionDialog::onAddHop);
@@ -252,6 +294,12 @@ QWidget *ConnectionDialog::createTunnelPage()
             &QPushButton::clicked,
             this,
             &ConnectionDialog::browseGatewayPrivateKey);
+
+    m_jumpHops.append(JumpHop{});
+    refreshHopList();
+    if (m_hopList->count() > 0) {
+        m_hopList->setCurrentRow(0);
+    }
 
     return page;
 }
@@ -357,11 +405,12 @@ void ConnectionDialog::setConnection(const Connection &connection)
     m_passphraseEdit->clear();
 
     m_jumpHops = connection.jumpHops;
-    m_useGatewayCheck->setChecked(!m_jumpHops.isEmpty());
     if (m_jumpHops.isEmpty()) {
-        JumpHop defaultHop;
-        m_jumpHops.append(defaultHop);
+        m_jumpHops.append(JumpHop{});
     }
+    m_proxyCommandEdit->setText(connection.proxyCommand);
+    setProxyMode(connection.proxyMode, false);
+
     refreshHopList();
     if (m_hopList->count() > 0) {
         m_hopList->setCurrentRow(0);
@@ -374,7 +423,7 @@ void ConnectionDialog::setConnection(const Connection &connection)
     applyShellCommandsToForm(connection.shellCommands);
 
     updateAuthFieldsVisibility();
-    updateGatewayPanelVisibility();
+    updateProxyPanelVisibility();
     updateGatewayAuthFieldsVisibility();
 }
 
@@ -390,12 +439,17 @@ Connection ConnectionDialog::connection() const
     connection.privateKeyPath = m_privateKeyEdit->text().trimmed();
     connection.startupDirectory = m_startupDirEdit->text().trimmed();
 
+    connection.proxyMode = m_proxyMode;
     connection.jumpHops.clear();
-    if (m_useGatewayCheck->isChecked()) {
+    connection.proxyCommand.clear();
+    if (m_proxyMode == SshProxyMode::ProxyJump) {
         ConnectionDialog *mutableThis = const_cast<ConnectionDialog *>(this);
         mutableThis->syncCurrentHopFromEditor();
         connection.jumpHops = m_jumpHops;
+    } else if (m_proxyMode == SshProxyMode::ProxyCommand) {
+        connection.proxyCommand = m_proxyCommandEdit->text().trimmed();
     }
+    connection.normalizeProxyFields();
 
     connection.keepAliveIntervalSec = m_keepAliveIntervalSpin->value();
     connection.keepAliveCountMax = m_keepAliveCountSpin->value();
@@ -451,16 +505,85 @@ void ConnectionDialog::onGatewayAuthTypeChanged(int index)
     updateGatewayAuthFieldsVisibility();
 }
 
-void ConnectionDialog::onUseGatewayToggled(bool enabled)
+void ConnectionDialog::onProxyModeButtonClicked(int id)
 {
-    Q_UNUSED(enabled);
-    if (m_useGatewayCheck->isChecked() && m_jumpHops.isEmpty()) {
+    setProxyMode(static_cast<SshProxyMode>(id), true);
+}
+
+bool ConnectionDialog::proxyJumpHasData() const
+{
+    for (const JumpHop &hop : m_jumpHops) {
+        if (!hop.host.trimmed().isEmpty() || !hop.username.trimmed().isEmpty() ||
+            !hop.privateKeyPath.trimmed().isEmpty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ConnectionDialog::proxyCommandHasData() const
+{
+    return !m_proxyCommandEdit->text().trimmed().isEmpty();
+}
+
+void ConnectionDialog::setProxyMode(SshProxyMode mode, bool confirmClear)
+{
+    if (confirmClear && mode != m_proxyMode) {
+        const bool clearingJump = m_proxyMode == SshProxyMode::ProxyJump &&
+                                  mode != SshProxyMode::ProxyJump && proxyJumpHasData();
+        const bool clearingCommand = m_proxyMode == SshProxyMode::ProxyCommand &&
+                                     mode != SshProxyMode::ProxyCommand && proxyCommandHasData();
+
+        if (clearingJump || clearingCommand) {
+            const QString message =
+                clearingJump ? tr("Switching mode will clear the configured jump hops. Continue?")
+                             : tr("Switching mode will clear the ProxyCommand. Continue?");
+            const auto reply = QMessageBox::question(this,
+                                                     tr("Change SSH Proxy mode"),
+                                                     message,
+                                                     QMessageBox::Yes | QMessageBox::No,
+                                                     QMessageBox::No);
+            if (reply != QMessageBox::Yes) {
+                const QSignalBlocker blocker(m_proxyModeGroup);
+                if (QAbstractButton *button =
+                        m_proxyModeGroup->button(static_cast<int>(m_proxyMode))) {
+                    button->setChecked(true);
+                }
+                return;
+            }
+
+            if (clearingJump) {
+                syncCurrentHopFromEditor();
+                m_jumpHops.clear();
+                m_jumpHops.append(JumpHop{});
+                refreshHopList();
+                if (m_hopList->count() > 0) {
+                    m_hopList->setCurrentRow(0);
+                }
+                syncHopEditorFromCurrent();
+            }
+            if (clearingCommand) {
+                m_proxyCommandEdit->clear();
+            }
+        }
+    }
+
+    m_proxyMode = mode;
+    {
+        const QSignalBlocker blocker(m_proxyModeGroup);
+        if (QAbstractButton *button = m_proxyModeGroup->button(static_cast<int>(mode))) {
+            button->setChecked(true);
+        }
+    }
+
+    if (mode == SshProxyMode::ProxyJump && m_jumpHops.isEmpty()) {
         m_jumpHops.append(JumpHop{});
         refreshHopList();
         m_hopList->setCurrentRow(0);
         syncHopEditorFromCurrent();
     }
-    updateGatewayPanelVisibility();
+
+    updateProxyPanelVisibility();
 }
 
 void ConnectionDialog::onHopSelectionChanged()
@@ -551,14 +674,14 @@ bool ConnectionDialog::validate()
         return false;
     }
 
-    if (m_useGatewayCheck->isChecked()) {
+    if (m_proxyMode == SshProxyMode::ProxyJump) {
         syncCurrentHopFromEditor();
         for (int i = 0; i < m_jumpHops.size(); ++i) {
             const JumpHop &hop = m_jumpHops.at(i);
             if (hop.host.trimmed().isEmpty()) {
                 QMessageBox::warning(
                     this, tr("Validation"), tr("Gateway host is required for hop %1.").arg(i + 1));
-                m_shell->selectById(QStringLiteral("tunnel"));
+                m_shell->selectById(QStringLiteral("ssh-proxy"));
                 m_hopList->setCurrentRow(i);
                 syncHopEditorFromCurrent();
                 m_gatewayHostEdit->setFocus();
@@ -568,7 +691,7 @@ bool ConnectionDialog::validate()
                 QMessageBox::warning(this,
                                      tr("Validation"),
                                      tr("Gateway username is required for hop %1.").arg(i + 1));
-                m_shell->selectById(QStringLiteral("tunnel"));
+                m_shell->selectById(QStringLiteral("ssh-proxy"));
                 m_hopList->setCurrentRow(i);
                 syncHopEditorFromCurrent();
                 m_gatewayUsernameEdit->setFocus();
@@ -581,7 +704,7 @@ bool ConnectionDialog::validate()
                 if (gatewayAuth == AuthType::PrivateKey && hop.privateKeyPath.trimmed().isEmpty()) {
                     QMessageBox::warning(
                         this, tr("Validation"), tr("Gateway private key path is required."));
-                    m_shell->selectById(QStringLiteral("tunnel"));
+                    m_shell->selectById(QStringLiteral("ssh-proxy"));
                     m_gatewayPrivateKeyEdit->setFocus();
                     return false;
                 }
@@ -589,11 +712,19 @@ bool ConnectionDialog::validate()
                     m_gatewayPasswordEdit->text().isEmpty()) {
                     QMessageBox::warning(
                         this, tr("Validation"), tr("Gateway password is required."));
-                    m_shell->selectById(QStringLiteral("tunnel"));
+                    m_shell->selectById(QStringLiteral("ssh-proxy"));
                     m_gatewayPasswordEdit->setFocus();
                     return false;
                 }
             }
+        }
+    } else if (m_proxyMode == SshProxyMode::ProxyCommand) {
+        const QString command = m_proxyCommandEdit->text().trimmed();
+        if (command.isEmpty() || isSshNoneToken(command)) {
+            QMessageBox::warning(this, tr("Validation"), tr("ProxyCommand is required."));
+            m_shell->selectById(QStringLiteral("ssh-proxy"));
+            m_proxyCommandEdit->setFocus();
+            return false;
         }
     }
 
@@ -605,21 +736,21 @@ void ConnectionDialog::updateAuthFieldsVisibility()
     const auto authType = static_cast<AuthType>(m_authTypeCombo->currentData().toInt());
     const bool usePassword = authType == AuthType::Password;
 
-    if (!m_targetForm) {
+    if (!m_authForm) {
         return;
     }
 
-    for (int i = 0; i < m_targetForm->rowCount(); ++i) {
-        QLayoutItem *fieldItem = m_targetForm->itemAt(i, QFormLayout::FieldRole);
+    for (int i = 0; i < m_authForm->rowCount(); ++i) {
+        QLayoutItem *fieldItem = m_authForm->itemAt(i, QFormLayout::FieldRole);
         if (!fieldItem || !fieldItem->widget()) {
             continue;
         }
         QWidget *field = fieldItem->widget();
 
         if (field == m_passwordEdit) {
-            m_targetForm->setRowVisible(i, usePassword);
+            m_authForm->setRowVisible(i, usePassword);
         } else if (field == m_privateKeyRow || field == m_passphraseEdit) {
-            m_targetForm->setRowVisible(i, !usePassword);
+            m_authForm->setRowVisible(i, !usePassword);
         }
     }
 }
@@ -655,18 +786,16 @@ void ConnectionDialog::updateGatewayAuthFieldsVisibility()
     }
 }
 
-void ConnectionDialog::updateGatewayPanelVisibility()
+void ConnectionDialog::updateProxyPanelVisibility()
 {
-    const bool enabled = m_useGatewayCheck->isChecked();
-    m_hopList->setEnabled(enabled);
-    m_addHopButton->setEnabled(enabled);
-    m_removeHopButton->setEnabled(enabled && m_jumpHops.size() > 1);
+    const bool jump = m_proxyMode == SshProxyMode::ProxyJump;
+    const bool command = m_proxyMode == SshProxyMode::ProxyCommand;
 
-    for (int i = 0; i < m_gatewayForm->rowCount(); ++i) {
-        m_gatewayForm->setRowVisible(i, enabled);
-    }
+    m_jumpPanel->setVisible(jump);
+    m_commandPanel->setVisible(command);
 
-    if (enabled) {
+    if (jump) {
+        m_removeHopButton->setEnabled(m_jumpHops.size() > 1);
         updateGatewayAuthFieldsVisibility();
     }
 }
@@ -726,7 +855,7 @@ void ConnectionDialog::refreshHopList()
     if (m_hopList->count() > 0) {
         m_hopList->setCurrentRow(qBound(0, previousRow, m_hopList->count() - 1));
     }
-    m_removeHopButton->setEnabled(m_useGatewayCheck->isChecked() && m_jumpHops.size() > 1);
+    m_removeHopButton->setEnabled(m_proxyMode == SshProxyMode::ProxyJump && m_jumpHops.size() > 1);
 }
 
 int ConnectionDialog::currentHopIndex() const
