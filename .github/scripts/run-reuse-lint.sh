@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
 # Verify the tree against the REUSE Specification (SPDX headers / REUSE.toml).
+# sandbox/ is a local lab fixture tree and is intentionally out of scope.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,4 +17,10 @@ if ! command -v reuse >/dev/null 2>&1; then
   exit 1
 fi
 
-reuse lint
+mapfile -t files < <(git ls-files | grep -v '^sandbox/')
+if [[ ${#files[@]} -eq 0 ]]; then
+  echo "error: no files to lint" >&2
+  exit 1
+fi
+
+reuse lint-file "${files[@]}"
