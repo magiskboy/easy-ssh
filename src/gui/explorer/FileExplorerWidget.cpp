@@ -1177,13 +1177,16 @@ QString FileExplorerWidget::formatByteSize(qint64 bytes)
     constexpr qint64 kMb = 1024 * kKb;
     constexpr qint64 kGb = 1024 * kMb;
     if (bytes >= kGb) {
-        return QStringLiteral("%1 GB").arg(bytes / static_cast<double>(kGb), 0, 'f', 2);
+        return QStringLiteral("%1 GB").arg(
+            static_cast<double>(bytes) / static_cast<double>(kGb), 0, 'f', 2);
     }
     if (bytes >= kMb) {
-        return QStringLiteral("%1 MB").arg(bytes / static_cast<double>(kMb), 0, 'f', 1);
+        return QStringLiteral("%1 MB").arg(
+            static_cast<double>(bytes) / static_cast<double>(kMb), 0, 'f', 1);
     }
     if (bytes >= kKb) {
-        return QStringLiteral("%1 KB").arg(bytes / static_cast<double>(kKb), 0, 'f', 0);
+        return QStringLiteral("%1 KB").arg(
+            static_cast<double>(bytes) / static_cast<double>(kKb), 0, 'f', 0);
     }
     return QStringLiteral("%1 B").arg(bytes);
 }

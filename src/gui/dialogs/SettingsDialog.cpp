@@ -5,6 +5,7 @@
 #include "SettingsDialog.h"
 
 #include "core/settings/AppSettings.h"
+#include "gui/widgets/CategoryDialogShell.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -14,35 +15,44 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHeaderView>
+#include <QKeySequenceEdit>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QStackedWidget>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 #include <QVBoxLayout>
 
 #include <qtermwidget.h>
 
-SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
+SettingsDialog::SettingsDialog(QWidget *parent, const QString &initialCategoryId) : QDialog(parent)
 {
     setWindowTitle(tr("Settings"));
-    resize(640, 420);
+    resize(720, 480);
 
-    m_categoryList = new QListWidget(this);
-    m_categoryList->setFixedWidth(140);
-    m_categoryList->addItem(tr("File Explorer"));
-    m_categoryList->addItem(tr("Shell"));
-    m_categoryList->addItem(tr("General"));
-    m_categoryList->setCurrentRow(0);
+    m_shell = new CategoryDialogShell(this);
+    m_shell->addPage(nullptr, tr("General"), createGeneralPage(), QStringLiteral("general"));
+    m_shell->addPage(
+        nullptr, tr("File Explorer"), createFileExplorerPage(), QStringLiteral("file-explorer"));
 
-    m_pages = new QStackedWidget(this);
-    m_pages->addWidget(createFileExplorerPage());
-    m_pages->addWidget(createTerminalPage());
-    m_pages->addWidget(createGeneralPage());
+    QTreeWidgetItem *shellGroup = m_shell->addGroup(tr("Shell"));
+    m_shell->addPage(shellGroup,
+                     tr("Appearance"),
+                     createShellAppearancePage(),
+                     QStringLiteral("shell-appearance"));
+    m_shell->addPage(
+        shellGroup, tr("Behavior"), createShellBehaviorPage(), QStringLiteral("shell-behavior"));
 
-    connect(
-        m_categoryList, &QListWidget::currentRowChanged, m_pages, &QStackedWidget::setCurrentIndex);
+    m_shell->addPage(nullptr, tr("Shortcuts"), createShortcutsPage(), QStringLiteral("shortcuts"));
+    m_shell->expandAll();
+
+    if (!initialCategoryId.isEmpty()) {
+        m_shell->selectById(initialCategoryId);
+    } else {
+        m_shell->selectFirst();
+    }
 
     auto *buttonBox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Apply, this);
@@ -53,12 +63,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
             this,
             &SettingsDialog::apply);
 
-    auto *contentLayout = new QHBoxLayout;
-    contentLayout->addWidget(m_categoryList);
-    contentLayout->addWidget(m_pages, 1);
-
     auto *root = new QVBoxLayout(this);
-    root->addLayout(contentLayout, 1);
+    root->addWidget(m_shell, 1);
     root->addWidget(buttonBox);
 
     loadFromSettings();
@@ -102,18 +108,27 @@ QWidget *SettingsDialog::createFileExplorerPage()
     return page;
 }
 
-QWidget *SettingsDialog::createTerminalPage()
+QWidget *SettingsDialog::createShellAppearancePage()
 {
     auto *page = new QWidget(this);
-    auto *layout = new QFormLayout(page);
+    auto *layout = new QVBoxLayout(page);
 
-    m_fontCombo = new QFontComboBox(page);
+    auto *fontGroup = new QGroupBox(tr("Font"), page);
+    auto *fontForm = new QFormLayout(fontGroup);
+
+    m_fontCombo = new QFontComboBox(fontGroup);
     m_fontCombo->setFontFilters(QFontComboBox::MonospacedFonts);
 
-    m_fontSize = new QSpinBox(page);
+    m_fontSize = new QSpinBox(fontGroup);
     m_fontSize->setRange(8, 48);
 
-    m_colorScheme = new QComboBox(page);
+    fontForm->addRow(tr("Font"), m_fontCombo);
+    fontForm->addRow(tr("Font size"), m_fontSize);
+
+    auto *colorGroup = new QGroupBox(tr("Colors"), page);
+    auto *colorForm = new QFormLayout(colorGroup);
+
+    m_colorScheme = new QComboBox(colorGroup);
     QStringList schemes = QTermWidget::availableColorSchemes();
     schemes.sort(Qt::CaseInsensitive);
     if (schemes.isEmpty()) {
@@ -125,32 +140,58 @@ QWidget *SettingsDialog::createTerminalPage()
     } else {
         m_colorScheme->addItems(schemes);
     }
+    colorForm->addRow(tr("Color scheme"), m_colorScheme);
 
-    m_historySize = new QSpinBox(page);
-    m_historySize->setRange(-1, 1000000);
-    m_historySize->setSpecialValueText(tr("Unlimited"));
-    m_historySize->setToolTip(tr("Use -1 for unlimited scrollback"));
+    auto *cursorGroup = new QGroupBox(tr("Cursor"), page);
+    auto *cursorForm = new QFormLayout(cursorGroup);
 
-    m_cursorShape = new QComboBox(page);
+    m_cursorShape = new QComboBox(cursorGroup);
     m_cursorShape->addItem(tr("Block"), 0);
     m_cursorShape->addItem(tr("Underline"), 1);
     m_cursorShape->addItem(tr("I-Beam"), 2);
+    m_cursorBlink = new QCheckBox(tr("Blink cursor"), cursorGroup);
 
-    m_cursorBlink = new QCheckBox(tr("Blink cursor"), page);
-    m_confirmMultilinePaste = new QCheckBox(tr("Warn before multiline paste"), page);
-    m_smartLayout = new QCheckBox(tr("Smart layout for new shells"), page);
+    cursorForm->addRow(tr("Cursor shape"), m_cursorShape);
+    cursorForm->addRow(QString(), m_cursorBlink);
+
+    layout->addWidget(fontGroup);
+    layout->addWidget(colorGroup);
+    layout->addWidget(cursorGroup);
+    layout->addStretch(1);
+    return page;
+}
+
+QWidget *SettingsDialog::createShellBehaviorPage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    auto *scrollGroup = new QGroupBox(tr("Scrollback"), page);
+    auto *scrollForm = new QFormLayout(scrollGroup);
+
+    m_historySize = new QSpinBox(scrollGroup);
+    m_historySize->setRange(-1, 1000000);
+    m_historySize->setSpecialValueText(tr("Unlimited"));
+    m_historySize->setToolTip(tr("Use -1 for unlimited scrollback"));
+    scrollForm->addRow(tr("Scrollback lines"), m_historySize);
+
+    auto *inputGroup = new QGroupBox(tr("Input"), page);
+    auto *inputLayout = new QVBoxLayout(inputGroup);
+    m_confirmMultilinePaste = new QCheckBox(tr("Warn before multiline paste"), inputGroup);
+    inputLayout->addWidget(m_confirmMultilinePaste);
+
+    auto *layoutGroup = new QGroupBox(tr("Layout"), page);
+    auto *layoutLayout = new QVBoxLayout(layoutGroup);
+    m_smartLayout = new QCheckBox(tr("Smart layout for new shells"), layoutGroup);
     m_smartLayout->setToolTip(
         tr("Automatically tile newly created shells next to the focused pane "
            "(alternating right / bottom). Drag from the sidebar to place manually."));
+    layoutLayout->addWidget(m_smartLayout);
 
-    layout->addRow(tr("Font"), m_fontCombo);
-    layout->addRow(tr("Font size"), m_fontSize);
-    layout->addRow(tr("Color scheme"), m_colorScheme);
-    layout->addRow(tr("Scrollback lines"), m_historySize);
-    layout->addRow(tr("Cursor shape"), m_cursorShape);
-    layout->addRow(QString(), m_cursorBlink);
-    layout->addRow(QString(), m_confirmMultilinePaste);
-    layout->addRow(QString(), m_smartLayout);
+    layout->addWidget(scrollGroup);
+    layout->addWidget(inputGroup);
+    layout->addWidget(layoutGroup);
+    layout->addStretch(1);
     return page;
 }
 
@@ -170,6 +211,31 @@ QWidget *SettingsDialog::createGeneralPage()
 
     layout->addWidget(sessionGroup);
     layout->addStretch(1);
+    return page;
+}
+
+QWidget *SettingsDialog::createShortcutsPage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    m_shortcutsTree = new QTreeWidget(page);
+    m_shortcutsTree->setColumnCount(2);
+    m_shortcutsTree->setHeaderLabels({tr("Action"), tr("Shortcut")});
+    m_shortcutsTree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_shortcutsTree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_shortcutsTree->setRootIsDecorated(true);
+    m_shortcutsTree->setUniformRowHeights(true);
+
+    auto *resetButton = new QPushButton(tr("Reset Defaults"), page);
+    connect(resetButton, &QPushButton::clicked, this, &SettingsDialog::resetShortcutsDefaults);
+
+    auto *buttonRow = new QHBoxLayout;
+    buttonRow->addWidget(resetButton);
+    buttonRow->addStretch(1);
+
+    layout->addWidget(m_shortcutsTree, 1);
+    layout->addLayout(buttonRow);
     return page;
 }
 
@@ -203,6 +269,8 @@ void SettingsDialog::loadFromSettings()
     m_smartLayout->setChecked(s.smartLayout());
 
     m_autoReconnect->setChecked(s.autoReconnect());
+
+    loadShortcutsFromSettings();
 }
 
 void SettingsDialog::saveToSettings()
@@ -229,6 +297,54 @@ void SettingsDialog::saveToSettings()
     s.setSmartLayout(m_smartLayout->isChecked());
 
     s.setAutoReconnect(m_autoReconnect->isChecked());
+
+    saveShortcutsToSettings();
+}
+
+void SettingsDialog::loadShortcutsFromSettings()
+{
+    m_shortcutsTree->clear();
+    m_shortcutEditors.clear();
+
+    QHash<QString, QTreeWidgetItem *> groupItems;
+    auto &settings = AppSettings::instance();
+
+    for (const QString &actionId : AppSettings::shortcutActionIds()) {
+        const QString group = AppSettings::shortcutGroup(actionId);
+        QTreeWidgetItem *groupItem = groupItems.value(group);
+        if (!groupItem) {
+            groupItem = new QTreeWidgetItem(m_shortcutsTree);
+            groupItem->setText(0, group);
+            groupItem->setFlags(Qt::ItemIsEnabled);
+            groupItems.insert(group, groupItem);
+        }
+
+        auto *row = new QTreeWidgetItem(groupItem);
+        row->setText(0, AppSettings::shortcutLabel(actionId));
+        row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+
+        auto *editor = new QKeySequenceEdit(settings.shortcut(actionId), m_shortcutsTree);
+        m_shortcutsTree->setItemWidget(row, 1, editor);
+        m_shortcutEditors.insert(actionId, editor);
+    }
+
+    m_shortcutsTree->expandAll();
+}
+
+void SettingsDialog::saveShortcutsToSettings()
+{
+    auto &settings = AppSettings::instance();
+    for (auto it = m_shortcutEditors.cbegin(); it != m_shortcutEditors.cend(); ++it) {
+        settings.setShortcut(it.key(), it.value()->keySequence());
+    }
+}
+
+void SettingsDialog::resetShortcutsDefaults()
+{
+    AppSettings::instance().resetShortcutsToDefaults();
+    for (auto it = m_shortcutEditors.begin(); it != m_shortcutEditors.end(); ++it) {
+        it.value()->setKeySequence(AppSettings::defaultShortcut(it.key()));
+    }
 }
 
 void SettingsDialog::apply()
