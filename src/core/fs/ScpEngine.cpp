@@ -17,6 +17,12 @@
 #define S_IWUSR 00200u
 #define S_IXUSR 00100u
 #define S_IRWXU (S_IRUSR | S_IWUSR | S_IXUSR)
+#define S_IRGRP 00040u
+#define S_IWGRP 00020u
+#define S_IXGRP 00010u
+#define S_IROTH 00004u
+#define S_IWOTH 00002u
+#define S_IXOTH 00001u
 #endif
 
 namespace
