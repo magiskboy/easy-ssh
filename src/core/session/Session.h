@@ -42,6 +42,8 @@ public:
     QString lastError() const { return m_lastError; }
     QString displayName() const;
     bool isSftpAvailable() const { return m_file.available; }
+    bool isRemoteFsAvailable() const { return m_file.available; }
+    FsBackend fileBackend() const { return m_file.backend; }
     QString sftpUnavailableReason() const { return m_file.unavailableReason; }
 
     QList<ShellChannelState> shells() const;

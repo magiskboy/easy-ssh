@@ -63,15 +63,19 @@ void SshWorker::connectToHost(const Connection &connection,
     }
 
     QString sftpFailure;
-    const bool sftpReady = m_fs.open(m_session.handle(), &sftpFailure);
+    m_fs.setShellCommands(connection.shellCommands);
+    const bool fsReady = m_fs.open(m_session.handle(), &sftpFailure);
 
     m_running = true;
-    qCWarning(lcSsh) << "Connected to" << connection.host << "sftp:" << (sftpReady ? "yes" : "no");
+    qCWarning(lcSsh) << "Connected to" << connection.host << "fs:"
+                     << (fsReady ? (m_fs.backend() == FsBackend::Scp ? "scp" : "sftp") : "no");
     emit connected(initialShellId);
     emit shellOpened(initialShellId);
 
-    if (!sftpReady) {
-        qCWarning(lcSsh) << "SFTP unavailable:" << sftpFailure;
+    if (fsReady) {
+        emit remoteFsOpened(static_cast<int>(m_fs.backend()));
+    } else {
+        qCWarning(lcSsh) << "Remote FS unavailable:" << sftpFailure;
         emit sftpUnavailable(sftpFailure);
     }
 

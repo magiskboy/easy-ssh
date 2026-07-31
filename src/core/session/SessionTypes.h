@@ -35,6 +35,13 @@ enum class TunnelRunStatus
     Error,
 };
 
+enum class FsBackend
+{
+    None = 0,
+    Sftp = 1,
+    Scp = 2,
+};
+
 struct ShellChannelState
 {
     QUuid id;
@@ -49,6 +56,7 @@ struct ShellChannelState
 struct FileChannelState
 {
     bool available = false;
+    FsBackend backend = FsBackend::None;
     ChannelState state = ChannelState::Closed;
     QString cwd;
     QString unavailableReason;
@@ -64,6 +72,7 @@ struct TunnelChannelState
 Q_DECLARE_METATYPE(SessionState)
 Q_DECLARE_METATYPE(ChannelState)
 Q_DECLARE_METATYPE(TunnelRunStatus)
+Q_DECLARE_METATYPE(FsBackend)
 Q_DECLARE_METATYPE(ShellChannelState)
 Q_DECLARE_METATYPE(FileChannelState)
 Q_DECLARE_METATYPE(TunnelChannelState)
