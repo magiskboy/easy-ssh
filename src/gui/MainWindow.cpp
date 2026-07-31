@@ -810,10 +810,7 @@ void MainWindow::deleteConnection(const QUuid &id)
     if (answer != QMessageBox::Yes) {
         return;
     }
-    if (m_sessionManager) {
-        m_sessionManager->close(id);
-    }
-    // Close UI tab if present
+
     for (int i = 0; i < m_sessionTabs->count(); ++i) {
         if (SessionPage *page = qobject_cast<SessionPage *>(m_sessionTabs->widget(i))) {
             if (page->session() && page->session()->connectionId() == id) {
@@ -822,6 +819,9 @@ void MainWindow::deleteConnection(const QUuid &id)
                 break;
             }
         }
+    }
+    if (m_sessionManager && m_sessionManager->get(id) != nullptr) {
+        m_sessionManager->close(id);
     }
     m_connectionModel->removeById(id);
     rebuildConnectionsListMenu();

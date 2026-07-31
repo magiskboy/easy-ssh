@@ -446,8 +446,12 @@ int SshSession::handleJumpAuthenticate(ssh_session session, int hopIndex)
     const JumpHop &hop = m_connection.jumpHops.at(hopIndex);
     Connection authProfile = m_connection;
     authProfile.username = hop.username;
-    authProfile.authType = hop.authType;
-    authProfile.privateKeyPath = hop.privateKeyPath;
+    // Same credentials as target: keep target auth method + key path; only the
+    // gateway username (and secret selection below) come from the hop.
+    if (!hop.useTargetCredentials) {
+        authProfile.authType = hop.authType;
+        authProfile.privateKeyPath = hop.privateKeyPath;
+    }
 
     QString secret;
     if (hop.useTargetCredentials || hopIndex > 0) {

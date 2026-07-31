@@ -24,18 +24,32 @@ struct SshConfigHost
     bool forwardAgent = false;
 };
 
+struct ProxyJumpParseRequest
+{
+    QString proxyJump;
+    QString configPath;
+};
+
 /**
- * Discovers concrete Host aliases from OpenSSH config (including Include),
- * then resolves HostName/User/Port/Identity via libssh ssh_options_parse_config.
+ * OpenSSH config → Connection materialization.
  *
- * libssh cannot enumerate Host blocks; alias collection remains a thin scan.
+ * libssh cannot enumerate Host blocks, so alias discovery remains a thin file
+ * scan (including Include). All resolvable options (HostName, User, Port,
+ * IdentityFile, ProxyCommand) come from ssh_options_parse_config.
+ *
+ * ProxyJump and ForwardAgent are not readable via ssh_options_get (ProxyJump is
+ * write-only; ForwardAgent is unsupported by libssh's config parser). Those two
+ * keywords use an Include-correct keyword scan only, then ProxyJump hop hosts
+ * are expanded again through libssh so aliases like `lab-bastion` become
+ * concrete HostName/User/Port/Identity values for App connections after import.
  */
 class SshConfigParser
 {
 public:
     static QString defaultConfigPath();
     static QList<SshConfigHost> load(const QString &path = {});
-    static QList<Connection> toConnections(const QList<SshConfigHost> &hosts);
+    static QList<Connection> toConnections(const QList<SshConfigHost> &hosts,
+                                           const QString &configPath = {});
     static QUuid stableIdForAlias(const QString &alias);
-    static QList<JumpHop> parseProxyJumpHops(const QString &proxyJump);
+    static QList<JumpHop> parseProxyJumpHops(const ProxyJumpParseRequest &request);
 };

@@ -11,6 +11,8 @@
 #include <QSet>
 #include <QTextStream>
 
+#include <cstdint>
+
 #include <libssh/libssh.h>
 
 namespace
@@ -99,38 +101,6 @@ QString normalizeConfigPath(const QString &path, const QDir &relativeToDir)
                : QFileInfo(expanded).canonicalFilePath();
 }
 
-JumpHop parseProxyJumpEntry(const QString &entry)
-{
-    JumpHop hop;
-    hop.useTargetCredentials = true;
-
-    QString trimmed = entry.trimmed();
-    if (trimmed.isEmpty()) {
-        return hop;
-    }
-
-    QString user;
-    const int at = trimmed.indexOf(QLatin1Char('@'));
-    if (at >= 0) {
-        user = trimmed.left(at);
-        trimmed = trimmed.mid(at + 1);
-    }
-
-    const int colon = trimmed.lastIndexOf(QLatin1Char(':'));
-    if (colon > 0) {
-        bool ok = false;
-        const uint port = trimmed.mid(colon + 1).toUInt(&ok);
-        if (ok && port > 0 && port <= 65535) {
-            hop.port = static_cast<quint16>(port);
-            trimmed = trimmed.left(colon);
-        }
-    }
-
-    hop.host = trimmed;
-    hop.username = user.isEmpty() ? defaultUsername() : user;
-    return hop;
-}
-
 QStringList expandIncludePattern(const QString &pattern, const QDir &relativeToDir)
 {
     const QString expanded = expandTilde(pattern);
@@ -157,17 +127,95 @@ QStringList expandIncludePattern(const QString &pattern, const QDir &relativeToD
     return paths;
 }
 
-QString
-readProxyOptionForAlias(const QFileInfo &configFile, const QString &alias, const QString &optionKey)
+struct ParsedJumpEntry
 {
-    const QString normalized = normalizeConfigPath(configFile.filePath(), QDir::home());
+    JumpHop hop;
+    bool explicitUser = false;
+    bool explicitPort = false;
+};
+
+ParsedJumpEntry parseProxyJumpEntry(const QString &entry)
+{
+    ParsedJumpEntry parsed;
+    parsed.hop.useTargetCredentials = true;
+
+    QString trimmed = entry.trimmed();
+    if (trimmed.isEmpty()) {
+        return parsed;
+    }
+
+    QString user;
+    const int at = trimmed.indexOf(QLatin1Char('@'));
+    if (at >= 0) {
+        user = trimmed.left(at);
+        trimmed = trimmed.mid(at + 1);
+        parsed.explicitUser = !user.isEmpty();
+    }
+
+    const int colon = trimmed.lastIndexOf(QLatin1Char(':'));
+    if (colon > 0) {
+        bool ok = false;
+        const uint port = trimmed.mid(colon + 1).toUInt(&ok);
+        if (ok && port > 0 && port <= 65535) {
+            parsed.hop.port = static_cast<quint16>(port);
+            trimmed = trimmed.left(colon);
+            parsed.explicitPort = true;
+        }
+    }
+
+    parsed.hop.host = trimmed;
+    parsed.hop.username = parsed.explicitUser ? user : defaultUsername();
+    return parsed;
+}
+
+enum class OpaqueSshKeyword : std::uint8_t
+{
+    ProxyJump,
+    ForwardAgent,
+};
+
+struct OpaqueKeywordQuery
+{
+    QString configPath;
+    QString alias;
+    OpaqueSshKeyword keyword = OpaqueSshKeyword::ProxyJump;
+};
+
+QString opaqueKeywordName(OpaqueSshKeyword keyword)
+{
+    switch (keyword) {
+    case OpaqueSshKeyword::ProxyJump:
+        return QStringLiteral("proxyjump");
+    case OpaqueSshKeyword::ForwardAgent:
+        return QStringLiteral("forwardagent");
+    }
+    return {};
+}
+
+/// OpenSSH-style keyword lookup for options libssh cannot export via ssh_options_get.
+/// Preamble (before the first Host) and matching Host blocks are active; Include is
+/// followed whenever the current section is active (including top-level Includes).
+QString readLibsshOpaqueKeyword(const OpaqueKeywordQuery &query, int depth, QSet<QString> *visited)
+{
+    if (visited == nullptr || depth > kMaxIncludeDepth) {
+        return {};
+    }
+
+    const QString normalized = normalizeConfigPath(query.configPath, QDir::home());
+    if (normalized.isEmpty() || visited->contains(normalized)) {
+        return {};
+    }
+    visited->insert(normalized);
+
     QFile file(normalized);
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return {};
     }
 
     const QDir baseDir(QFileInfo(normalized).absolutePath());
-    bool inMatchingBlock = false;
+    const QString optionKey = opaqueKeywordName(query.keyword);
+    // Before the first Host stanza, directives apply to every alias (OpenSSH preamble).
+    bool sectionActive = true;
     QString value;
 
     QTextStream stream(&file);
@@ -192,46 +240,51 @@ readProxyOptionForAlias(const QFileInfo &configFile, const QString &alias, const
 
         const QString key = tokens.first().toLower();
         if (key == QLatin1String("host")) {
-            inMatchingBlock = tokens.size() == 2 && tokens.at(1) == alias;
+            // Match our enumeration policy: only single concrete Host tokens.
+            sectionActive = tokens.size() == 2 && tokens.at(1) == query.alias;
             continue;
         }
 
-        if (!inMatchingBlock) {
+        if (key == QLatin1String("match")) {
+            // Match is not evaluated here; disable until the next Host.
+            sectionActive = false;
             continue;
         }
 
-        if (key == optionKey && tokens.size() >= 2) {
-            value = tokens.mid(1).join(QLatin1Char(' '));
-        } else if (key == QLatin1String("include")) {
+        if (!sectionActive) {
+            continue;
+        }
+
+        if (key == QLatin1String("include")) {
             for (int i = 1; i < tokens.size(); ++i) {
                 const QStringList included = expandIncludePattern(tokens.at(i), baseDir);
                 for (const QString &includedPath : included) {
-                    const QString nested =
-                        readProxyOptionForAlias(QFileInfo(includedPath), alias, optionKey);
+                    OpaqueKeywordQuery nestedQuery = query;
+                    nestedQuery.configPath = includedPath;
+                    const QString nested = readLibsshOpaqueKeyword(nestedQuery, depth + 1, visited);
                     if (!nested.isEmpty()) {
-                        value = nested;
+                        // First-value-wins across includes: keep the earliest non-empty.
+                        if (value.isEmpty()) {
+                            value = nested;
+                        }
                     }
                 }
             }
+            continue;
+        }
+
+        if (key == optionKey && tokens.size() >= 2 && value.isEmpty()) {
+            value = tokens.mid(1).join(QLatin1Char(' '));
         }
     }
 
     return value;
 }
 
-QString readProxyJumpForAlias(const QFileInfo &configFile, const QString &alias)
+QString readOpaqueKeywordForAlias(const OpaqueKeywordQuery &query)
 {
-    return readProxyOptionForAlias(configFile, alias, QStringLiteral("proxyjump"));
-}
-
-QString readProxyCommandForAlias(const QFileInfo &configFile, const QString &alias)
-{
-    return readProxyOptionForAlias(configFile, alias, QStringLiteral("proxycommand"));
-}
-
-QString readForwardAgentForAlias(const QFileInfo &configFile, const QString &alias)
-{
-    return readProxyOptionForAlias(configFile, alias, QStringLiteral("forwardagent"));
+    QSet<QString> visited;
+    return readLibsshOpaqueKeyword(query, 0, &visited);
 }
 
 /// OpenSSH ForwardAgent: yes/no; path/ask/confirm → enable (custom path is P6.x).
@@ -241,7 +294,6 @@ bool parseForwardAgentValue(const QString &raw)
     if (value.isEmpty() || value == QLatin1String("no") || value == QLatin1String("false")) {
         return false;
     }
-    // yes/true/ask/confirm, or a socket path → enable forwarding.
     return true;
 }
 
@@ -303,7 +355,6 @@ void collectAliasesFromFile(const QString &path,
             continue;
         }
 
-        // Only a single concrete Host token (no wildcards / multi-pattern).
         if (tokens.size() == 2 && isConcreteHostToken(tokens.at(1))) {
             const QString alias = tokens.at(1);
             if (!aliases->contains(alias)) {
@@ -324,6 +375,20 @@ QString optionString(ssh_session session, enum ssh_options_e type)
     return result;
 }
 
+QString absolutizeIdentityPath(QString path)
+{
+    path = expandTilde(path);
+    if (path.isEmpty()) {
+        return path;
+    }
+    const QFileInfo info(path);
+    if (info.isAbsolute()) {
+        return info.absoluteFilePath();
+    }
+    // OpenSSH resolves relative IdentityFile against the process cwd.
+    return QFileInfo(QDir::current().absoluteFilePath(path)).absoluteFilePath();
+}
+
 SshConfigHost resolveAliasWithLibssh(const QString &alias, const QString &configPath)
 {
     SshConfigHost host;
@@ -340,7 +405,7 @@ SshConfigHost resolveAliasWithLibssh(const QString &alias, const QString &config
     const QByteArray aliasBytes = alias.toUtf8();
     ssh_options_set(session, SSH_OPTIONS_HOST, aliasBytes.constData());
 
-    // Avoid double-processing on connect; we only need option resolution here.
+    // Avoid double-processing on a later connect; we only need option resolution here.
     const int processConfig = 0;
     ssh_options_set(session, SSH_OPTIONS_PROCESS_CONFIG, &processConfig);
 
@@ -376,17 +441,56 @@ SshConfigHost resolveAliasWithLibssh(const QString &alias, const QString &config
             }
             path.replace(QLatin1String("%d"), sshDir);
         }
-        host.identityFiles.append(expandTilde(path));
+        host.identityFiles.append(absolutizeIdentityPath(path));
     }
 
-    const QFileInfo configInfo(configPath.isEmpty() ? SshConfigParser::defaultConfigPath()
-                                                    : configPath);
-    host.proxyJump = readProxyJumpForAlias(configInfo, alias);
-    host.proxyCommand = readProxyCommandForAlias(configInfo, alias);
-    host.forwardAgent = parseForwardAgentValue(readForwardAgentForAlias(configInfo, alias));
+    // Readable via libssh.
+    host.proxyCommand = optionString(session, SSH_OPTIONS_PROXYCOMMAND);
 
     ssh_free(session);
+
+    // Not exported by ssh_options_get — Include-correct keyword scan only.
+    const QString keywordConfigPath =
+        configPath.isEmpty() ? SshConfigParser::defaultConfigPath() : configPath;
+    host.proxyJump = readOpaqueKeywordForAlias(
+        OpaqueKeywordQuery{keywordConfigPath, alias, OpaqueSshKeyword::ProxyJump});
+    host.forwardAgent = parseForwardAgentValue(readOpaqueKeywordForAlias(
+        OpaqueKeywordQuery{keywordConfigPath, alias, OpaqueSshKeyword::ForwardAgent}));
+
+    // If ProxyJump won, drop a ProxyCommand that libssh may have synthesized (or that
+    // coexists illegally); OpenSSH forbids both.
+    if (!host.proxyJump.isEmpty() && !isSshNoneToken(host.proxyJump)) {
+        host.proxyCommand.clear();
+    }
+
     return host;
+}
+
+JumpHop expandHopWithLibssh(const ParsedJumpEntry &parsed, const QString &configPath)
+{
+    JumpHop hop = parsed.hop;
+    if (hop.host.isEmpty()) {
+        return hop;
+    }
+
+    // Re-resolve the hop token the same way OpenSSH does for ProxyJump hosts:
+    // HostName / User / Port / Identity come from that host's own config stanza.
+    const SshConfigHost resolved = resolveAliasWithLibssh(hop.host, configPath);
+    if (!resolved.hostName.isEmpty()) {
+        hop.host = resolved.hostName;
+    }
+    if (!parsed.explicitPort && resolved.port > 0) {
+        hop.port = resolved.port;
+    }
+    if (!parsed.explicitUser && !resolved.user.isEmpty()) {
+        hop.username = resolved.user;
+    }
+    if (!resolved.identityFiles.isEmpty()) {
+        hop.privateKeyPath = resolved.identityFiles.first();
+        hop.authType = AuthType::PrivateKey;
+    }
+    hop.useTargetCredentials = true;
+    return hop;
 }
 
 } // namespace
@@ -417,10 +521,13 @@ QList<SshConfigHost> SshConfigParser::load(const QString &path)
     return hosts;
 }
 
-QList<Connection> SshConfigParser::toConnections(const QList<SshConfigHost> &hosts)
+QList<Connection> SshConfigParser::toConnections(const QList<SshConfigHost> &hosts,
+                                                 const QString &configPath)
 {
     QList<Connection> connections;
     connections.reserve(hosts.size());
+
+    const QString hopResolvePath = configPath;
 
     for (const SshConfigHost &host : hosts) {
         Connection connection;
@@ -438,10 +545,10 @@ QList<Connection> SshConfigParser::toConnections(const QList<SshConfigHost> &hos
 
         const bool hasJump = !host.proxyJump.isEmpty() && !isSshNoneToken(host.proxyJump);
         const bool hasCommand = !host.proxyCommand.isEmpty() && !isSshNoneToken(host.proxyCommand);
-        // OpenSSH forbids both; prefer ProxyJump when both appear (misconfig).
         if (hasJump) {
             connection.proxyMode = SshProxyMode::ProxyJump;
-            connection.jumpHops = SshConfigParser::parseProxyJumpHops(host.proxyJump);
+            connection.jumpHops = SshConfigParser::parseProxyJumpHops(
+                ProxyJumpParseRequest{host.proxyJump, hopResolvePath});
             connection.proxyCommand.clear();
         } else if (hasCommand) {
             connection.proxyMode = SshProxyMode::ProxyCommand;
@@ -464,14 +571,15 @@ QUuid SshConfigParser::stableIdForAlias(const QString &alias)
     return QUuid::createUuidV5(kSshConfigNamespace, QStringLiteral("ssh-config:") + alias);
 }
 
-QList<JumpHop> SshConfigParser::parseProxyJumpHops(const QString &proxyJump)
+QList<JumpHop> SshConfigParser::parseProxyJumpHops(const ProxyJumpParseRequest &request)
 {
     QList<JumpHop> hops;
-    for (const QString &entry : proxyJump.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-        const JumpHop hop = parseProxyJumpEntry(entry);
-        if (!hop.host.isEmpty()) {
-            hops.append(hop);
+    for (const QString &entry : request.proxyJump.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        const ParsedJumpEntry parsed = parseProxyJumpEntry(entry);
+        if (parsed.hop.host.isEmpty()) {
+            continue;
         }
+        hops.append(expandHopWithLibssh(parsed, request.configPath));
     }
     return hops;
 }
