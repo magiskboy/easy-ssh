@@ -97,6 +97,8 @@ signals:
     void sftpCanceled(const QString &message);
     void sftpUnavailable(const QString &message);
     void sftpProgress(qint64 bytesDone, qint64 bytesTotal, const QString &currentName);
+    /// Emitted after connect when remote FS opened (Sftp or Scp).
+    void remoteFsOpened(int backend);
 
     void tunnelStatusChanged(const QUuid &tunnelId, const QString &status, const QString &detail);
     void tunnelError(const QUuid &tunnelId, const QString &message);

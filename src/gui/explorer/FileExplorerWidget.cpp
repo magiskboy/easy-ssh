@@ -267,7 +267,7 @@ void FileExplorerWidget::bindSession(Session *session)
 
     if (!m_session->isSftpAvailable()) {
         showSftpUnavailable(m_session->sftpUnavailableReason().isEmpty()
-                                ? tr("SFTP is unavailable on this session.")
+                                ? tr("Remote file transfer is unavailable on this session.")
                                 : m_session->sftpUnavailableReason());
         return;
     }
@@ -279,12 +279,17 @@ void FileExplorerWidget::bindSession(Session *session)
         }
         if (!m_session->isSftpAvailable()) {
             showSftpUnavailable(m_session->sftpUnavailableReason().isEmpty()
-                                    ? tr("SFTP is unavailable on this session.")
+                                    ? tr("Remote file transfer is unavailable on this session.")
                                     : m_session->sftpUnavailableReason());
             return;
         }
 
         showTree(true);
+
+        if (m_session->fileBackend() == FsBackend::Scp) {
+            emit statusMessage(tr("Using SCP + shell for remote files."),
+                               ErrorNotifier::Level::Status);
+        }
 
         const QString startup = m_session->connection().startupDirectory.trimmed();
         m_pendingRootRequest = startup.isEmpty() ? QStringLiteral(".") : startup;
@@ -1157,8 +1162,9 @@ void FileExplorerWidget::showSftpUnavailable(const QString &message)
     setOpInFlight(false);
     m_model->unbindSession();
     // Keep m_session so tab switches / disconnect still work via stateChanged.
-    const QString detail = message.isEmpty() ? tr("This server does not support SFTP.") : message;
-    m_pathLabel->setText(tr("SFTP unavailable"));
+    const QString detail =
+        message.isEmpty() ? tr("Remote file transfer is unavailable on this server.") : message;
+    m_pathLabel->setText(tr("Files unavailable"));
     m_emptyLabel->setText(tr("%1\n\nTerminal session is still active.").arg(detail));
     showTree(false);
     emit statusMessage(detail, ErrorNotifier::Level::Warning);

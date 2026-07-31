@@ -22,6 +22,7 @@ constexpr int kErrorLevel = 3;
 void markFileUnavailable(FileChannelState &file)
 {
     file.available = false;
+    file.backend = FsBackend::None;
     file.state = ChannelState::Closed;
     file.unavailableReason.clear();
 }
@@ -517,8 +518,16 @@ void Session::wireWorker()
     connect(m_worker, &SshWorker::sftpError, this, &Session::sftpError);
     connect(m_worker, &SshWorker::sftpCanceled, this, &Session::sftpCanceled);
     connect(m_worker, &SshWorker::sftpProgress, this, &Session::sftpProgress);
+    connect(m_worker, &SshWorker::remoteFsOpened, this, [this](int backend) {
+        m_file.available = true;
+        m_file.state = ChannelState::Open;
+        m_file.unavailableReason.clear();
+        m_file.backend = static_cast<FsBackend>(backend);
+        emit fileChanged();
+    });
     connect(m_worker, &SshWorker::sftpUnavailable, this, [this](const QString &message) {
         m_file.available = false;
+        m_file.backend = FsBackend::None;
         m_file.state = ChannelState::Closed;
         m_file.unavailableReason = message;
         emit fileChanged();
@@ -562,7 +571,9 @@ void Session::updateTunnelStatus(const QUuid &tunnelId,
 
 void Session::onWorkerConnected(const QUuid &initialShellId)
 {
+    // Optimistic until remoteFsOpened / sftpUnavailable settles (same thread queue).
     m_file.available = true;
+    m_file.backend = FsBackend::None;
     m_file.state = ChannelState::Open;
     m_file.unavailableReason.clear();
     emit fileChanged();

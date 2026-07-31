@@ -7,19 +7,33 @@
 #pragma once
 
 #include "FsEngine.h"
+#include "ShellCommandSet.h"
+#include "ShellExecRunner.h"
+#include "core/connection/Connection.h"
+
+#include <memory>
 
 /**
- * SCP engine — not implement yet. All operations return NotSupported.
- * Future: native SCP transfer; list/CRUD remain NotSupported or workaround.
+ * SCP + shell remote FS (WinSCP-style): shell CommandSet for browse/CRUD,
+ * libssh SCP for file transfer.
  */
 class ScpEngine final : public FsEngine
 {
 public:
-    Capabilities capabilities() const override { return {}; }
+    ScpEngine() = default;
+    explicit ScpEngine(const ShellCommandSetConfig &config);
+    ~ScpEngine() override;
+
+    ScpEngine(const ScpEngine &) = delete;
+    ScpEngine &operator=(const ScpEngine &) = delete;
+
+    void setCommandConfig(const ShellCommandSetConfig &config);
+
+    Capabilities capabilities() const override;
 
     bool open(ssh_session session, QString *failureMessage = nullptr) override;
     void close() override;
-    bool isOpen() const override { return false; }
+    bool isOpen() const override { return m_session != nullptr && m_runner != nullptr; }
 
     bool listDirectoryEntries(const QString &path,
                               QVector<RemoteEntry> *outEntries,
@@ -44,5 +58,21 @@ public:
                       QString *error) override;
 
 private:
-    static bool notSupported(QString *error);
+    QString sessionError() const;
+    QString lsOptions() const;
+    bool runChecked(const QString &command,
+                    ShellExecRunner::Result *result,
+                    QString *error,
+                    bool allowExitOneWithStdout = false);
+    bool statEntry(const QString &path, RemoteEntry *out, QString *error);
+    bool probeScp(QString *failureMessage);
+    static QString parentRemoteDir(const QString &remotePath);
+    static QString remoteBaseName(const QString &remotePath);
+    static QString localIoErrorMessage(const QString &qtErrorString);
+
+    ShellCommandSet m_commands;
+    ssh_session m_session = nullptr;
+    std::unique_ptr<ShellExecRunner> m_runner;
+    bool m_fullTimeOk = false;
+    bool m_fullTimeProbed = false;
 };

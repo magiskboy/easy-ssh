@@ -96,6 +96,34 @@ QList<Connection> ConnectionStore::load()
         connection.compressionEnabled =
             settings.value(QStringLiteral("compressionEnabled"), false).toBool();
 
+        settings.beginGroup(QStringLiteral("shellCommands"));
+        connection.shellCommands.shell = settings.value(QStringLiteral("shell")).toString();
+        connection.shellCommands.listingCommand =
+            settings.value(QStringLiteral("listingCommand")).toString();
+        connection.shellCommands.listFileCommand =
+            settings.value(QStringLiteral("listFileCommand")).toString();
+        connection.shellCommands.mkdirCommand =
+            settings.value(QStringLiteral("mkdirCommand")).toString();
+        connection.shellCommands.removeCommand =
+            settings.value(QStringLiteral("removeCommand")).toString();
+        connection.shellCommands.renameCommand =
+            settings.value(QStringLiteral("renameCommand")).toString();
+        connection.shellCommands.pwdCommand =
+            settings.value(QStringLiteral("pwdCommand")).toString();
+        connection.shellCommands.realpathCommand =
+            settings.value(QStringLiteral("realpathCommand")).toString();
+        connection.shellCommands.clearAliases =
+            settings.value(QStringLiteral("clearAliases"), true).toBool();
+        connection.shellCommands.clearNationalVars =
+            settings.value(QStringLiteral("clearNationalVars"), true).toBool();
+        connection.shellCommands.tryFullTime =
+            settings.value(QStringLiteral("tryFullTime"), true).toBool();
+        connection.shellCommands.ignoreLsWarnings =
+            settings.value(QStringLiteral("ignoreLsWarnings"), false).toBool();
+        connection.shellCommands.allowScpFallback =
+            settings.value(QStringLiteral("allowScpFallback"), true).toBool();
+        settings.endGroup();
+
         loadJumpHops(settings, connection);
 
         if (connection.id.isNull() || connection.name.isEmpty()) {
@@ -128,6 +156,29 @@ void ConnectionStore::save(const QList<Connection> &connections)
         settings.setValue(QStringLiteral("keepAliveIntervalSec"), connection.keepAliveIntervalSec);
         settings.setValue(QStringLiteral("keepAliveCountMax"), connection.keepAliveCountMax);
         settings.setValue(QStringLiteral("compressionEnabled"), connection.compressionEnabled);
+
+        settings.beginGroup(QStringLiteral("shellCommands"));
+        settings.setValue(QStringLiteral("shell"), connection.shellCommands.shell);
+        settings.setValue(QStringLiteral("listingCommand"),
+                          connection.shellCommands.listingCommand);
+        settings.setValue(QStringLiteral("listFileCommand"),
+                          connection.shellCommands.listFileCommand);
+        settings.setValue(QStringLiteral("mkdirCommand"), connection.shellCommands.mkdirCommand);
+        settings.setValue(QStringLiteral("removeCommand"), connection.shellCommands.removeCommand);
+        settings.setValue(QStringLiteral("renameCommand"), connection.shellCommands.renameCommand);
+        settings.setValue(QStringLiteral("pwdCommand"), connection.shellCommands.pwdCommand);
+        settings.setValue(QStringLiteral("realpathCommand"),
+                          connection.shellCommands.realpathCommand);
+        settings.setValue(QStringLiteral("clearAliases"), connection.shellCommands.clearAliases);
+        settings.setValue(QStringLiteral("clearNationalVars"),
+                          connection.shellCommands.clearNationalVars);
+        settings.setValue(QStringLiteral("tryFullTime"), connection.shellCommands.tryFullTime);
+        settings.setValue(QStringLiteral("ignoreLsWarnings"),
+                          connection.shellCommands.ignoreLsWarnings);
+        settings.setValue(QStringLiteral("allowScpFallback"),
+                          connection.shellCommands.allowScpFallback);
+        settings.endGroup();
+
         saveJumpHops(settings, connection);
     }
 

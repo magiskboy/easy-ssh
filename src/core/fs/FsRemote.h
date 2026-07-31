@@ -8,6 +8,8 @@
 
 #include "FsEngine.h"
 #include "SftpTypes.h"
+#include "core/connection/Connection.h"
+#include "core/session/SessionTypes.h"
 
 #include <QString>
 #include <QStringList>
@@ -21,7 +23,7 @@
 
 /**
  * High-level remote FS entity: recursive transfer, progress, cancel.
- * Depends on FsEngine (SftpEngine today; ScpEngine later).
+ * Prefers SftpEngine; falls back to ScpEngine + shell CommandSet when configured.
  */
 class FsRemote
 {
@@ -38,9 +40,14 @@ public:
     void setEngine(std::unique_ptr<FsEngine> engine);
     FsEngine *engine() const { return m_engine.get(); }
 
+    void setShellCommands(const ShellCommandSetConfig &config);
+    ShellCommandSetConfig shellCommands() const { return m_shellCommands; }
+
+    /// Try SFTP, then SCP+shell when allowScpFallback. Sets backend on success.
     bool open(ssh_session session, QString *failureMessage = nullptr);
     void close();
     bool isOpen() const;
+    FsBackend backend() const { return m_backend; }
 
     void requestCancel();
     void setProgressCallback(ProgressCallback callback);
@@ -78,6 +85,8 @@ private:
     static QString joinRemotePath(const QString &dir, const QString &name);
 
     std::unique_ptr<FsEngine> m_engine;
+    ShellCommandSetConfig m_shellCommands;
+    FsBackend m_backend = FsBackend::None;
     ProgressCallback m_progressCallback;
     std::atomic_bool m_transferCancel{false};
     qint64 m_progressBytesDone = 0;

@@ -15,11 +15,11 @@
 #include "gui/dialogs/AboutDialog.h"
 #include "gui/dialogs/SettingsDialog.h"
 #include "gui/dialogs/ShortcutsDialog.h"
+#include "gui/explorer/FileExplorerWidget.h"
 #include "gui/models/ConnectionModel.h"
 #include "gui/session/SessionPage.h"
 #include "gui/session/SessionSideBar.h"
 #include "gui/session/SessionTabWidget.h"
-#include "gui/sftp/FileExplorerWidget.h"
 #include "gui/tunnel/TunnelListWidget.h"
 
 #include <QAbstractItemModel>

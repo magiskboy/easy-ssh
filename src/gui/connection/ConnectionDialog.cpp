@@ -25,7 +25,7 @@ ConnectionDialog::ConnectionDialog(Mode mode, QWidget *parent)
 {
     setupUi();
     setWindowTitle(mode == Mode::Create ? tr("New Connection") : tr("Edit Connection"));
-    resize(520, 560);
+    resize(560, 720);
 }
 
 void ConnectionDialog::setupUi()
@@ -165,11 +165,57 @@ void ConnectionDialog::setupUi()
     advancedForm->addRow(tr("Keep-alive max retries"), m_keepAliveCountSpin);
     advancedForm->addRow(QString(), m_compressionCheck);
 
+    m_scpShellGroup = new QGroupBox(tr("Remote FS / SCP shell"), this);
+    auto *scpForm = new QFormLayout(m_scpShellGroup);
+
+    m_allowScpFallbackCheck =
+        new QCheckBox(tr("Allow SCP + shell fallback when SFTP is unavailable"), this);
+    m_allowScpFallbackCheck->setChecked(true);
+
+    m_shellEdit = new QLineEdit(this);
+    m_shellEdit->setPlaceholderText(tr("default login shell (e.g. /bin/bash)"));
+
+    m_listingCommandEdit = new QLineEdit(this);
+    m_listingCommandEdit->setPlaceholderText(QStringLiteral("ls -la"));
+
+    m_clearAliasesCheck = new QCheckBox(tr("Clear command aliases on connect"), this);
+    m_clearAliasesCheck->setChecked(true);
+    m_clearNationalVarsCheck = new QCheckBox(tr("Clear locale / listing variables"), this);
+    m_clearNationalVarsCheck->setChecked(true);
+    m_tryFullTimeCheck = new QCheckBox(tr("Try ls --full-time"), this);
+    m_tryFullTimeCheck->setChecked(true);
+    m_ignoreLsWarningsCheck = new QCheckBox(tr("Ignore ls warnings (exit code 1)"), this);
+
+    m_mkdirCommandEdit = new QLineEdit(this);
+    m_mkdirCommandEdit->setPlaceholderText(QStringLiteral("mkdir %1"));
+    m_removeCommandEdit = new QLineEdit(this);
+    m_removeCommandEdit->setPlaceholderText(QStringLiteral("rm -f -r %1"));
+    m_renameCommandEdit = new QLineEdit(this);
+    m_renameCommandEdit->setPlaceholderText(QStringLiteral("mv -f %1 %2"));
+    m_realpathCommandEdit = new QLineEdit(this);
+    m_realpathCommandEdit->setPlaceholderText(QStringLiteral("realpath -e %1"));
+
+    m_resetShellCommandsButton = new QPushButton(tr("Reset command set to defaults"), this);
+
+    scpForm->addRow(QString(), m_allowScpFallbackCheck);
+    scpForm->addRow(tr("Shell"), m_shellEdit);
+    scpForm->addRow(tr("Listing command"), m_listingCommandEdit);
+    scpForm->addRow(QString(), m_clearAliasesCheck);
+    scpForm->addRow(QString(), m_clearNationalVarsCheck);
+    scpForm->addRow(QString(), m_tryFullTimeCheck);
+    scpForm->addRow(QString(), m_ignoreLsWarningsCheck);
+    scpForm->addRow(tr("mkdir (%1 = path)"), m_mkdirCommandEdit);
+    scpForm->addRow(tr("remove (%1 = path)"), m_removeCommandEdit);
+    scpForm->addRow(tr("rename (%1 %2)"), m_renameCommandEdit);
+    scpForm->addRow(tr("realpath (%1 = path)"), m_realpathCommandEdit);
+    scpForm->addRow(QString(), m_resetShellCommandsButton);
+
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
 
     layout->addWidget(targetGroup);
     layout->addWidget(m_gatewayGroup);
     layout->addWidget(m_advancedGroup);
+    layout->addWidget(m_scpShellGroup);
     layout->addWidget(buttons);
 
     connect(m_authTypeCombo,
@@ -199,6 +245,10 @@ void ConnectionDialog::setupUi()
             &ConnectionDialog::browseGatewayPrivateKey);
     connect(buttons, &QDialogButtonBox::accepted, this, &ConnectionDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(m_resetShellCommandsButton,
+            &QPushButton::clicked,
+            this,
+            &ConnectionDialog::resetShellCommandsToDefaults);
 
     updateAuthFieldsVisibility();
     updateGatewayPanelVisibility();
@@ -238,6 +288,7 @@ void ConnectionDialog::setConnection(const Connection &connection)
     m_keepAliveIntervalSpin->setValue(connection.keepAliveIntervalSec);
     m_keepAliveCountSpin->setValue(connection.keepAliveCountMax);
     m_compressionCheck->setChecked(connection.compressionEnabled);
+    applyShellCommandsToForm(connection.shellCommands);
 
     updateAuthFieldsVisibility();
     updateGatewayPanelVisibility();
@@ -266,6 +317,7 @@ Connection ConnectionDialog::connection() const
     connection.keepAliveIntervalSec = m_keepAliveIntervalSpin->value();
     connection.keepAliveCountMax = m_keepAliveCountSpin->value();
     connection.compressionEnabled = m_compressionCheck->isChecked();
+    connection.shellCommands = shellCommandsFromForm();
 
     return connection;
 }
@@ -589,4 +641,41 @@ void ConnectionDialog::refreshHopList()
 int ConnectionDialog::currentHopIndex() const
 {
     return m_hopList ? m_hopList->currentRow() : -1;
+}
+
+void ConnectionDialog::applyShellCommandsToForm(const ShellCommandSetConfig &config)
+{
+    m_allowScpFallbackCheck->setChecked(config.allowScpFallback);
+    m_shellEdit->setText(config.shell);
+    m_listingCommandEdit->setText(config.listingCommand);
+    m_clearAliasesCheck->setChecked(config.clearAliases);
+    m_clearNationalVarsCheck->setChecked(config.clearNationalVars);
+    m_tryFullTimeCheck->setChecked(config.tryFullTime);
+    m_ignoreLsWarningsCheck->setChecked(config.ignoreLsWarnings);
+    m_mkdirCommandEdit->setText(config.mkdirCommand);
+    m_removeCommandEdit->setText(config.removeCommand);
+    m_renameCommandEdit->setText(config.renameCommand);
+    m_realpathCommandEdit->setText(config.realpathCommand);
+}
+
+ShellCommandSetConfig ConnectionDialog::shellCommandsFromForm() const
+{
+    ShellCommandSetConfig config;
+    config.allowScpFallback = m_allowScpFallbackCheck->isChecked();
+    config.shell = m_shellEdit->text().trimmed();
+    config.listingCommand = m_listingCommandEdit->text().trimmed();
+    config.clearAliases = m_clearAliasesCheck->isChecked();
+    config.clearNationalVars = m_clearNationalVarsCheck->isChecked();
+    config.tryFullTime = m_tryFullTimeCheck->isChecked();
+    config.ignoreLsWarnings = m_ignoreLsWarningsCheck->isChecked();
+    config.mkdirCommand = m_mkdirCommandEdit->text().trimmed();
+    config.removeCommand = m_removeCommandEdit->text().trimmed();
+    config.renameCommand = m_renameCommandEdit->text().trimmed();
+    config.realpathCommand = m_realpathCommandEdit->text().trimmed();
+    return config;
+}
+
+void ConnectionDialog::resetShellCommandsToDefaults()
+{
+    applyShellCommandsToForm(ShellCommandSetConfig{});
 }

@@ -4,6 +4,7 @@
 
 #include "FsRemote.h"
 
+#include "ScpEngine.h"
 #include "SftpEngine.h"
 
 #include <QCoreApplication>
@@ -42,14 +43,46 @@ void FsRemote::setEngine(std::unique_ptr<FsEngine> engine)
 {
     close();
     m_engine = std::move(engine);
+    m_backend = FsBackend::None;
+}
+
+void FsRemote::setShellCommands(const ShellCommandSetConfig &config)
+{
+    m_shellCommands = config;
 }
 
 bool FsRemote::open(ssh_session session, QString *failureMessage)
 {
-    if (!m_engine) {
-        m_engine = std::make_unique<SftpEngine>();
+    close();
+
+    auto sftp = std::make_unique<SftpEngine>();
+    QString sftpError;
+    if (sftp->open(session, &sftpError)) {
+        m_engine = std::move(sftp);
+        m_backend = FsBackend::Sftp;
+        return true;
     }
-    return m_engine->open(session, failureMessage);
+
+    if (!m_shellCommands.allowScpFallback) {
+        if (failureMessage) {
+            *failureMessage = sftpError;
+        }
+        return false;
+    }
+
+    auto scp = std::make_unique<ScpEngine>(m_shellCommands);
+    QString scpError;
+    if (scp->open(session, &scpError)) {
+        m_engine = std::move(scp);
+        m_backend = FsBackend::Scp;
+        return true;
+    }
+
+    if (failureMessage) {
+        *failureMessage =
+            trFs("SFTP unavailable (%1); SCP fallback failed (%2)").arg(sftpError, scpError);
+    }
+    return false;
 }
 
 void FsRemote::close()
@@ -57,6 +90,7 @@ void FsRemote::close()
     if (m_engine) {
         m_engine->close();
     }
+    m_backend = FsBackend::None;
     endTransfer();
 }
 

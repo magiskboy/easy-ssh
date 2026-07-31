@@ -56,6 +56,7 @@ private slots:
     void onRemoveHop();
     void browsePrivateKey();
     void browseGatewayPrivateKey();
+    void resetShellCommandsToDefaults();
     void accept() override;
 
 private:
@@ -68,6 +69,8 @@ private:
     void syncCurrentHopFromEditor();
     void refreshHopList();
     int currentHopIndex() const;
+    void applyShellCommandsToForm(const ShellCommandSetConfig &config);
+    ShellCommandSetConfig shellCommandsFromForm() const;
 
     Mode m_mode;
     QUuid m_id;
@@ -76,6 +79,7 @@ private:
     QFormLayout *m_targetForm = nullptr;
     QGroupBox *m_gatewayGroup = nullptr;
     QGroupBox *m_advancedGroup = nullptr;
+    QGroupBox *m_scpShellGroup = nullptr;
 
     QLineEdit *m_nameEdit = nullptr;
     QLineEdit *m_hostEdit = nullptr;
@@ -106,4 +110,17 @@ private:
     QSpinBox *m_keepAliveIntervalSpin = nullptr;
     QSpinBox *m_keepAliveCountSpin = nullptr;
     QCheckBox *m_compressionCheck = nullptr;
+
+    QCheckBox *m_allowScpFallbackCheck = nullptr;
+    QLineEdit *m_shellEdit = nullptr;
+    QLineEdit *m_listingCommandEdit = nullptr;
+    QCheckBox *m_clearAliasesCheck = nullptr;
+    QCheckBox *m_clearNationalVarsCheck = nullptr;
+    QCheckBox *m_tryFullTimeCheck = nullptr;
+    QCheckBox *m_ignoreLsWarningsCheck = nullptr;
+    QLineEdit *m_mkdirCommandEdit = nullptr;
+    QLineEdit *m_removeCommandEdit = nullptr;
+    QLineEdit *m_renameCommandEdit = nullptr;
+    QLineEdit *m_realpathCommandEdit = nullptr;
+    QPushButton *m_resetShellCommandsButton = nullptr;
 };

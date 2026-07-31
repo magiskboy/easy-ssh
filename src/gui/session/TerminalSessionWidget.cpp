@@ -512,6 +512,10 @@ void TerminalSessionWidget::beginConnect()
     connect(m_worker, &SshWorker::sftpError, this, &TerminalSessionWidget::sftpError);
     connect(m_worker, &SshWorker::sftpCanceled, this, &TerminalSessionWidget::sftpCanceled);
     connect(m_worker, &SshWorker::sftpProgress, this, &TerminalSessionWidget::sftpProgress);
+    connect(m_worker, &SshWorker::remoteFsOpened, this, [this](int) {
+        m_sftpAvailable = true;
+        m_sftpUnavailableReason.clear();
+    });
     connect(m_worker, &SshWorker::sftpUnavailable, this, [this](const QString &message) {
         m_sftpAvailable = false;
         m_sftpUnavailableReason = message;

@@ -36,6 +36,10 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/SftpEngine.h
     core/fs/ScpEngine.cpp
     core/fs/ScpEngine.h
+    core/fs/ShellCommandSet.cpp
+    core/fs/ShellCommandSet.h
+    core/fs/ShellExecRunner.cpp
+    core/fs/ShellExecRunner.h
     core/fs/SftpTypes.h
     core/tunnel/Tunnel.h
     core/tunnel/TunnelStore.cpp
@@ -90,8 +94,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/connection/ConnectionDialog.h
     gui/connection/WelcomeWidget.cpp
     gui/connection/WelcomeWidget.h
-    gui/sftp/FileExplorerWidget.cpp
-    gui/sftp/FileExplorerWidget.h
+    gui/explorer/FileExplorerWidget.cpp
+    gui/explorer/FileExplorerWidget.h
     gui/tunnel/TunnelListWidget.cpp
     gui/tunnel/TunnelListWidget.h
     gui/tunnel/TunnelDialog.cpp

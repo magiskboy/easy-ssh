@@ -32,6 +32,25 @@ struct JumpHop
     bool useTargetCredentials = true;
 };
 
+/// WinSCP-style shell + command templates for SCP remote FS fallback.
+/// Empty template strings resolve to built-in Unix defaults at runtime.
+struct ShellCommandSetConfig
+{
+    QString shell;
+    QString listingCommand;
+    QString listFileCommand;
+    QString mkdirCommand;
+    QString removeCommand;
+    QString renameCommand;
+    QString pwdCommand;
+    QString realpathCommand;
+    bool clearAliases = true;
+    bool clearNationalVars = true;
+    bool tryFullTime = true;
+    bool ignoreLsWarnings = false;
+    bool allowScpFallback = true;
+};
+
 struct Connection
 {
     QUuid id;
@@ -50,6 +69,7 @@ struct Connection
     int keepAliveIntervalSec = 0;
     int keepAliveCountMax = 3;
     bool compressionEnabled = false;
+    ShellCommandSetConfig shellCommands;
 
     bool usesJumpHost() const { return !jumpHops.isEmpty(); }
 
