@@ -103,6 +103,8 @@ QWidget *ConnectionDialog::createSessionPage()
     }
 
     m_privateKeyEdit = new QLineEdit(authGroup);
+    m_privateKeyEdit->setPlaceholderText(
+        tr("Optional — leave empty to use ssh-agent / default identities"));
     auto *browseButton = new QPushButton(tr("Browse…"), authGroup);
     auto *keyLayout = new QHBoxLayout();
     keyLayout->setContentsMargins(0, 0, 0, 0);
@@ -117,10 +119,17 @@ QWidget *ConnectionDialog::createSessionPage()
         m_passphraseEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
-    m_authForm->addRow(tr("Authentication"), m_authTypeCombo);
+    m_authAgentHint =
+        new QLabel(tr("When using a private key, ssh-agent is tried first if available "
+                      "(login only — not the same as Agent Forwarding)."),
+                   authGroup);
+    m_authAgentHint->setWordWrap(true);
+
+    m_authForm->addRow(tr("Method"), m_authTypeCombo);
     m_authForm->addRow(tr("Password"), m_passwordEdit);
     m_authForm->addRow(tr("Private Key"), m_privateKeyRow);
     m_authForm->addRow(tr("Passphrase"), m_passphraseEdit);
+    m_authForm->addRow(QString(), m_authAgentHint);
 
     layout->addWidget(targetGroup);
     layout->addWidget(authGroup);
@@ -230,6 +239,8 @@ QWidget *ConnectionDialog::createProxyPage()
     }
 
     m_gatewayPrivateKeyEdit = new QLineEdit(m_jumpPanel);
+    m_gatewayPrivateKeyEdit->setPlaceholderText(
+        tr("Optional — leave empty to use ssh-agent / default identities"));
     auto *gatewayBrowseButton = new QPushButton(tr("Browse…"), m_jumpPanel);
     auto *gatewayKeyLayout = new QHBoxLayout();
     gatewayKeyLayout->setContentsMargins(0, 0, 0, 0);
@@ -248,7 +259,7 @@ QWidget *ConnectionDialog::createProxyPage()
     m_gatewayForm->addRow(tr("Port"), m_gatewayPortSpin);
     m_gatewayForm->addRow(tr("Username"), m_gatewayUsernameEdit);
     m_gatewayForm->addRow(QString(), m_useTargetCredentialsCheck);
-    m_gatewayForm->addRow(tr("Authentication"), m_gatewayAuthTypeCombo);
+    m_gatewayForm->addRow(tr("Method"), m_gatewayAuthTypeCombo);
     m_gatewayForm->addRow(tr("Password"), m_gatewayPasswordEdit);
     m_gatewayForm->addRow(tr("Private Key"), m_gatewayPrivateKeyRow);
     m_gatewayForm->addRow(tr("Passphrase"), m_gatewayPassphraseEdit);
@@ -666,14 +677,6 @@ bool ConnectionDialog::validate()
         return false;
     }
 
-    const auto authType = static_cast<AuthType>(m_authTypeCombo->currentData().toInt());
-    if (authType == AuthType::PrivateKey && m_privateKeyEdit->text().trimmed().isEmpty()) {
-        QMessageBox::warning(this, tr("Validation"), tr("Private key path is required."));
-        m_shell->selectById(QStringLiteral("session"));
-        m_privateKeyEdit->setFocus();
-        return false;
-    }
-
     if (m_proxyMode == SshProxyMode::ProxyJump) {
         syncCurrentHopFromEditor();
         for (int i = 0; i < m_jumpHops.size(); ++i) {
@@ -701,13 +704,6 @@ bool ConnectionDialog::validate()
             if (i == 0 && !hop.useTargetCredentials) {
                 const auto gatewayAuth =
                     static_cast<AuthType>(m_gatewayAuthTypeCombo->currentData().toInt());
-                if (gatewayAuth == AuthType::PrivateKey && hop.privateKeyPath.trimmed().isEmpty()) {
-                    QMessageBox::warning(
-                        this, tr("Validation"), tr("Gateway private key path is required."));
-                    m_shell->selectById(QStringLiteral("ssh-proxy"));
-                    m_gatewayPrivateKeyEdit->setFocus();
-                    return false;
-                }
                 if (gatewayAuth == AuthType::Password && m_mode == Mode::Create &&
                     m_gatewayPasswordEdit->text().isEmpty()) {
                     QMessageBox::warning(
@@ -749,7 +745,8 @@ void ConnectionDialog::updateAuthFieldsVisibility()
 
         if (field == m_passwordEdit) {
             m_authForm->setRowVisible(i, usePassword);
-        } else if (field == m_privateKeyRow || field == m_passphraseEdit) {
+        } else if (field == m_privateKeyRow || field == m_passphraseEdit ||
+                   field == m_authAgentHint) {
             m_authForm->setRowVisible(i, !usePassword);
         }
     }

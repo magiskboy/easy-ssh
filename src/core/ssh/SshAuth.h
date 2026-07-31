@@ -19,13 +19,19 @@ class SshAuth
 {
 public:
     /// Authenticate `session` using `profile` and mutable `secret` (password/passphrase).
-    static bool authenticateSession(ssh_session session, const Connection &profile, QString secret);
+    /// On failure, optionally writes a short reason to `detailOut`.
+    static bool authenticateSession(ssh_session session,
+                                    const Connection &profile,
+                                    QString secret,
+                                    QString *detailOut = nullptr);
 
 private:
     static bool authenticatePassword(ssh_session session, const QString &password);
     static bool authenticateKeyboardInteractive(ssh_session session, const QString &password);
     static bool authenticateWithAgent(ssh_session session);
-    static bool
-    authenticatePrivateKey(ssh_session session, const QString &keyPath, const QString &passphrase);
+    static bool authenticatePrivateKey(ssh_session session,
+                                       const QString &keyPath,
+                                       const QString &passphrase,
+                                       QString *detailOut);
     static bool authenticatePublicKeyAuto(ssh_session session, const QString &passphrase);
 };

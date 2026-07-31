@@ -4,16 +4,36 @@
 
 #include "SshAuth.h"
 
-#include <QFile>
+#include <QCoreApplication>
 
-bool SshAuth::authenticateSession(ssh_session session, const Connection &profile, QString secret)
+namespace
+{
+QString trAuth(const char *text)
+{
+    return QCoreApplication::translate("SshAuth", text);
+}
+
+void setDetail(QString *detailOut, const char *text)
+{
+    if (detailOut) {
+        *detailOut = trAuth(text);
+    }
+}
+} // namespace
+
+bool SshAuth::authenticateSession(ssh_session session,
+                                  const Connection &profile,
+                                  QString secret,
+                                  QString *detailOut)
 {
     if (session == nullptr) {
+        setDetail(detailOut, "Invalid SSH session");
         return false;
     }
 
     int rc = ssh_userauth_none(session, nullptr);
     if (rc == SSH_AUTH_ERROR) {
+        setDetail(detailOut, "Authentication probe failed");
         return false;
     }
     if (rc == SSH_AUTH_SUCCESS) {
@@ -27,7 +47,7 @@ bool SshAuth::authenticateSession(ssh_session session, const Connection &profile
         }
 
         if (!profile.privateKeyPath.isEmpty()) {
-            if (authenticatePrivateKey(session, profile.privateKeyPath, secret)) {
+            if (authenticatePrivateKey(session, profile.privateKeyPath, secret, detailOut)) {
                 return true;
             }
             return false;
@@ -37,11 +57,13 @@ bool SshAuth::authenticateSession(ssh_session session, const Connection &profile
             return true;
         }
 
+        setDetail(detailOut, "Public key authentication failed (ssh-agent and default identities)");
         return false;
     }
     case AuthType::Password:
     default: {
         if (secret.isEmpty()) {
+            setDetail(detailOut, "No password provided");
             return false;
         }
 
@@ -54,8 +76,11 @@ bool SshAuth::authenticateSession(ssh_session session, const Connection &profile
             if (authenticateKeyboardInteractive(session, secret)) {
                 return true;
             }
+            setDetail(detailOut, "Password and keyboard-interactive authentication failed");
+            return false;
         }
 
+        setDetail(detailOut, "Password authentication failed");
         return false;
     }
     }
@@ -101,9 +126,11 @@ bool SshAuth::authenticateWithAgent(ssh_session session)
 
 bool SshAuth::authenticatePrivateKey(ssh_session session,
                                      const QString &keyPath,
-                                     const QString &passphrase)
+                                     const QString &passphrase,
+                                     QString *detailOut)
 {
     if (keyPath.isEmpty()) {
+        setDetail(detailOut, "Private key path is empty");
         return false;
     }
 
@@ -114,13 +141,19 @@ bool SshAuth::authenticatePrivateKey(ssh_session session,
 
     int rc = ssh_pki_import_privkey_file(path.constData(), phrasePtr, nullptr, nullptr, &key);
     if (rc != SSH_OK) {
+        setDetail(detailOut, "Failed to import private key (check path and passphrase)");
         return false;
     }
 
     rc = ssh_userauth_publickey(session, nullptr, key);
     ssh_key_free(key);
 
-    return rc == SSH_AUTH_SUCCESS;
+    if (rc != SSH_AUTH_SUCCESS) {
+        setDetail(detailOut, "Public key authentication failed");
+        return false;
+    }
+
+    return true;
 }
 
 bool SshAuth::authenticatePublicKeyAuto(ssh_session session, const QString &passphrase)

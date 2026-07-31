@@ -148,11 +148,14 @@ bool SshSession::establish(const Connection &connection,
     }
 
     QString mutableSecret = credentials.targetSecret;
-    if (!SshAuth::authenticateSession(m_session, connection, mutableSecret)) {
-        qCWarning(lcSsh) << "Authentication failed for" << connection.host;
+    QString authDetail;
+    if (!SshAuth::authenticateSession(m_session, connection, mutableSecret, &authDetail)) {
+        qCWarning(lcSsh) << "Authentication failed for" << connection.host
+                         << (authDetail.isEmpty() ? QString() : authDetail);
         mutableSecret.fill(QChar(u'\0'));
         if (errorOut) {
-            *errorOut = trSession("Authentication failed: %1").arg(sessionError());
+            const QString reason = !authDetail.isEmpty() ? authDetail : sessionError();
+            *errorOut = trSession("Authentication failed: %1").arg(reason);
         }
         cleanup();
         return false;
@@ -453,12 +456,13 @@ int SshSession::handleJumpAuthenticate(ssh_session session, int hopIndex)
         secret = m_credentials.gatewaySecret;
     }
 
-    if (SshAuth::authenticateSession(session, authProfile, secret)) {
+    QString authDetail;
+    if (SshAuth::authenticateSession(session, authProfile, secret, &authDetail)) {
         return SSH_OK;
     }
 
     qCWarning(lcSsh) << "Gateway authentication failed for" << hop.username << hop.host << ":"
-                     << sessionErrorOf(session);
+                     << (authDetail.isEmpty() ? sessionErrorOf(session) : authDetail);
     return SSH_ERROR;
 }
 
