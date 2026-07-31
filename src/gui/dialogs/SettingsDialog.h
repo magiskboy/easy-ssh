@@ -54,6 +54,7 @@ private:
     QComboBox *m_cursorShape = nullptr;
     QCheckBox *m_cursorBlink = nullptr;
     QCheckBox *m_confirmMultilinePaste = nullptr;
+    QCheckBox *m_smartLayout = nullptr;
 
     // General
     QCheckBox *m_autoReconnect = nullptr;

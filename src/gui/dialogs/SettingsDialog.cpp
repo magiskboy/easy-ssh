@@ -32,7 +32,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     m_categoryList = new QListWidget(this);
     m_categoryList->setFixedWidth(140);
     m_categoryList->addItem(tr("File Explorer"));
-    m_categoryList->addItem(tr("Terminal"));
+    m_categoryList->addItem(tr("Shell"));
     m_categoryList->addItem(tr("General"));
     m_categoryList->setCurrentRow(0);
 
@@ -138,6 +138,10 @@ QWidget *SettingsDialog::createTerminalPage()
 
     m_cursorBlink = new QCheckBox(tr("Blink cursor"), page);
     m_confirmMultilinePaste = new QCheckBox(tr("Warn before multiline paste"), page);
+    m_smartLayout = new QCheckBox(tr("Smart layout for new shells"), page);
+    m_smartLayout->setToolTip(
+        tr("Automatically tile newly created shells next to the focused pane "
+           "(alternating right / bottom). Drag from the sidebar to place manually."));
 
     layout->addRow(tr("Font"), m_fontCombo);
     layout->addRow(tr("Font size"), m_fontSize);
@@ -146,6 +150,7 @@ QWidget *SettingsDialog::createTerminalPage()
     layout->addRow(tr("Cursor shape"), m_cursorShape);
     layout->addRow(QString(), m_cursorBlink);
     layout->addRow(QString(), m_confirmMultilinePaste);
+    layout->addRow(QString(), m_smartLayout);
     return page;
 }
 
@@ -195,6 +200,7 @@ void SettingsDialog::loadFromSettings()
     m_cursorShape->setCurrentIndex(s.cursorShape());
     m_cursorBlink->setChecked(s.cursorBlink());
     m_confirmMultilinePaste->setChecked(s.confirmMultilinePaste());
+    m_smartLayout->setChecked(s.smartLayout());
 
     m_autoReconnect->setChecked(s.autoReconnect());
 }
@@ -220,6 +226,7 @@ void SettingsDialog::saveToSettings()
     s.setCursorShape(m_cursorShape->currentData().toInt());
     s.setCursorBlink(m_cursorBlink->isChecked());
     s.setConfirmMultilinePaste(m_confirmMultilinePaste->isChecked());
+    s.setSmartLayout(m_smartLayout->isChecked());
 
     s.setAutoReconnect(m_autoReconnect->isChecked());
 }

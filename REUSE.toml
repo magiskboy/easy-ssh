@@ -48,3 +48,9 @@ SPDX-License-Identifier = "CC0-1.0"
 path = ["third_party/qtermwidget-patches/**"]
 SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
 SPDX-License-Identifier = "GPL-3.0-only"
+
+# Product / phase specs
+[[annotations]]
+path = [".ai/**"]
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"

@@ -16,10 +16,10 @@
 
 class QLabel;
 class QPushButton;
-class QStackedWidget;
 class QTermWidget;
 class QTimer;
 class Session;
+class ShellDockHost;
 class TerminalIoBridge;
 
 class SessionPage final : public QWidget
@@ -39,6 +39,7 @@ public:
     void clearScreen();
     void saveLog();
     void saveScreenshot();
+    void setLayoutActive(bool active);
 
 signals:
     void statusMessage(const QString &message, ErrorNotifier::Level level);
@@ -60,6 +61,8 @@ private slots:
     void onSendData(const char *data, int length);
     void syncPtySize();
     void disconnectOrReconnect();
+    void onDockShellFocused(const QUuid &shellId);
+    void onDropShellRequested(const QUuid &shellId, int dockArea);
 
 private:
     struct Pane
@@ -73,19 +76,23 @@ private:
 
     void ensurePane(const QUuid &shellId);
     void removePane(const QUuid &shellId);
+    void pinShellToLayout(const QUuid &shellId, int dockArea = 0x10, const QUuid &relativeTo = {});
+    void pinShellWithSmartLayout(const QUuid &shellId);
     void applySettingsToTerm(QTermWidget *term);
     Pane *activePane();
     QTermWidget *activeTerm();
     void showOverlay(const QString &message, bool showReconnect);
     void schedulePtySizeSync();
     QSize readTerminalSize(QTermWidget *term) const;
+    QString shellTitle(const QUuid &shellId) const;
 
     Session *m_session = nullptr;
-    QStackedWidget *m_stack = nullptr;
+    ShellDockHost *m_dockHost = nullptr;
     QWidget *m_overlay = nullptr;
     QLabel *m_overlayLabel = nullptr;
     QPushButton *m_reconnectButton = nullptr;
     QHash<QUuid, Pane> m_panes;
-    QHash<QUuid, int> m_stackIndex;
     QTimer *m_resizeDebounce = nullptr;
+    /// Shell created in the latest shellsChanged; may use smart layout when activated.
+    QUuid m_pendingSmartPinId;
 };

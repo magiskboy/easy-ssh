@@ -33,6 +33,14 @@ remain in effect and are independent of the Easy SSH license.
 - License: BSD 3-Clause License
 - Used tag: see `EASY_SSH_QTKEYCHAIN_GIT_TAG` in `cmake/EasySshVersions.cmake`
 
+## Qt Advanced Docking System
+
+- Project: https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System
+- License: GNU Lesser General Public License v2.1 (LGPL-2.1)
+- Used tag: see `EASY_SSH_ADS_GIT_TAG` in `cmake/EasySshVersions.cmake`
+- Built as a shared library and bundled; see `third_party/qt-ads/README.md`
+  and `LICENSES/LGPL-2.1-only.txt`
+
 ## lxqt-build-tools
 
 - Project: https://github.com/lxqt/lxqt-build-tools

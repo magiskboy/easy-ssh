@@ -80,6 +80,10 @@ set(EASY_SSH_GUI_SOURCES
     gui/session/ShellListWidget.h
     gui/session/SessionPage.cpp
     gui/session/SessionPage.h
+    gui/session/ShellDockHost.cpp
+    gui/session/ShellDockHost.h
+    gui/session/ShellLayoutPlanner.cpp
+    gui/session/ShellLayoutPlanner.h
     gui/connection/ConnectionListWidget.cpp
     gui/connection/ConnectionListWidget.h
     gui/connection/ConnectionDialog.cpp
@@ -152,7 +156,9 @@ target_link_libraries(easy-ssh-gui
     PUBLIC
         easy-ssh-core
         Qt6::Widgets
+        Qt6::Svg
         qtermwidget6
+        ads::qtadvanceddocking-qt6
 )
 target_compile_definitions(easy-ssh-gui
     PUBLIC
