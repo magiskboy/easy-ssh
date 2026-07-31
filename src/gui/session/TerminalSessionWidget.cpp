@@ -531,6 +531,9 @@ void TerminalSessionWidget::beginConnect()
             this,
             &TerminalSessionWidget::tunnelStatusChanged);
     connect(m_worker, &SshWorker::tunnelError, this, &TerminalSessionWidget::tunnelError);
+    connect(m_worker, &SshWorker::agentForwardingWarning, this, [this](const QString &message) {
+        emit statusMessage(message, ErrorNotifier::Level::Warning);
+    });
 
     m_thread->start();
 

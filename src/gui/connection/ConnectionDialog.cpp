@@ -133,6 +133,21 @@ QWidget *ConnectionDialog::createSessionPage()
 
     layout->addWidget(targetGroup);
     layout->addWidget(authGroup);
+
+    auto *agentGroup = new QGroupBox(tr("Agent Forwarding"), page);
+    auto *agentForm = new QFormLayout(agentGroup);
+    m_agentForwardingCheck =
+        new QCheckBox(tr("Enable agent forwarding (ForwardAgent)"), agentGroup);
+    auto *agentHint =
+        new QLabel(tr("Allows remote processes to use keys in your local ssh-agent. "
+                      "Enable only for hosts you trust. This is not a login method and does not "
+                      "replace Gateway/Jump."),
+                   agentGroup);
+    agentHint->setWordWrap(true);
+    agentForm->addRow(QString(), m_agentForwardingCheck);
+    agentForm->addRow(QString(), agentHint);
+    layout->addWidget(agentGroup);
+
     layout->addStretch(1);
 
     connect(m_authTypeCombo,
@@ -431,6 +446,7 @@ void ConnectionDialog::setConnection(const Connection &connection)
     m_keepAliveIntervalSpin->setValue(connection.keepAliveIntervalSec);
     m_keepAliveCountSpin->setValue(connection.keepAliveCountMax);
     m_compressionCheck->setChecked(connection.compressionEnabled);
+    m_agentForwardingCheck->setChecked(connection.agentForwarding);
     applyShellCommandsToForm(connection.shellCommands);
 
     updateAuthFieldsVisibility();
@@ -465,6 +481,7 @@ Connection ConnectionDialog::connection() const
     connection.keepAliveIntervalSec = m_keepAliveIntervalSpin->value();
     connection.keepAliveCountMax = m_keepAliveCountSpin->value();
     connection.compressionEnabled = m_compressionCheck->isChecked();
+    connection.agentForwarding = m_agentForwardingCheck->isChecked();
     connection.shellCommands = shellCommandsFromForm();
 
     return connection;

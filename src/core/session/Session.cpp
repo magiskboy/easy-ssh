@@ -547,6 +547,9 @@ void Session::wireWorker()
                 emit tunnelStatusChanged(tunnelId, status, detail);
             });
     connect(m_worker, &SshWorker::tunnelError, this, &Session::tunnelError);
+    connect(m_worker, &SshWorker::agentForwardingWarning, this, [this](const QString &message) {
+        emit statusMessage(message, kWarningLevel);
+    });
 }
 
 int Session::nextShellSerial()
