@@ -4,6 +4,8 @@
 
 #include "SessionPage.h"
 
+#include "ShellDockHost.h"
+#include "ShellLayoutPlanner.h"
 #include "core/session/Session.h"
 #include "core/settings/AppSettings.h"
 #include "gui/ErrorNotifier.h"
@@ -19,7 +21,6 @@
 #include <QPixmap>
 #include <QPushButton>
 #include <QSet>
-#include <QStackedWidget>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -52,9 +53,13 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     overlayLayout->addWidget(m_reconnectButton, 0, Qt::AlignHCenter);
     overlayLayout->addStretch(1);
 
-    m_stack = new QStackedWidget(this);
+    m_dockHost = new ShellDockHost(this);
     root->addWidget(m_overlay, 0);
-    root->addWidget(m_stack, 1);
+    root->addWidget(m_dockHost, 1);
+
+    connect(m_dockHost, &ShellDockHost::shellFocused, this, &SessionPage::onDockShellFocused);
+    connect(
+        m_dockHost, &ShellDockHost::dropShellRequested, this, &SessionPage::onDropShellRequested);
 
     m_resizeDebounce = new QTimer(this);
     m_resizeDebounce->setSingleShot(true);
@@ -81,7 +86,19 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     onSessionStateChanged(m_session->state());
 }
 
-SessionPage::~SessionPage() = default;
+SessionPage::~SessionPage()
+{
+    if (m_dockHost) {
+        m_dockHost->clearLayout();
+    }
+}
+
+void SessionPage::setLayoutActive(bool active)
+{
+    if (m_dockHost) {
+        m_dockHost->setLayoutActive(active);
+    }
+}
 
 void SessionPage::onSessionStateChanged(SessionState state)
 {
@@ -91,12 +108,21 @@ void SessionPage::onSessionStateChanged(SessionState state)
         break;
     case SessionState::Connected:
         m_overlay->hide();
-        m_stack->show();
+        m_dockHost->show();
+        // Initial shell is created while Connecting; pin it now so it always
+        // appears on the main screen (smart layout on or off).
+        onActiveShellChanged(m_session->activeShellId());
         break;
     case SessionState::Disconnected:
+        if (m_dockHost) {
+            m_dockHost->clearLayout();
+        }
         showOverlay(tr("Disconnected from %1.").arg(m_session->displayName()), true);
         break;
     case SessionState::Failed:
+        if (m_dockHost) {
+            m_dockHost->clearLayout();
+        }
         showOverlay(tr("Connection failed:\n%1").arg(m_session->lastError()), true);
         break;
     }
@@ -104,11 +130,20 @@ void SessionPage::onSessionStateChanged(SessionState state)
 
 void SessionPage::onShellsChanged()
 {
+    const QSet<QUuid> previousPaneIds(m_panes.keyBegin(), m_panes.keyEnd());
+
     const QList<ShellChannelState> shells = m_session->shells();
     QSet<QUuid> alive;
+    QUuid newborn;
     for (const ShellChannelState &shell : shells) {
         alive.insert(shell.id);
+        if (!previousPaneIds.contains(shell.id)) {
+            newborn = shell.id;
+        }
         ensurePane(shell.id);
+        if (m_dockHost && m_dockHost->isPinned(shell.id)) {
+            m_dockHost->setShellTitle(shell.id, shell.title);
+        }
     }
     const QList<QUuid> existing = m_panes.keys();
     for (const QUuid &id : existing) {
@@ -116,7 +151,17 @@ void SessionPage::onShellsChanged()
             removePane(id);
         }
     }
-    onActiveShellChanged(m_session->activeShellId());
+
+    if (m_session->state() == SessionState::Connected && !newborn.isNull()) {
+        m_pendingSmartPinId = newborn;
+        if (m_session->activeShellId() != newborn) {
+            m_session->setActiveShell(newborn);
+        } else {
+            onActiveShellChanged(newborn);
+        }
+    } else {
+        onActiveShellChanged(m_session->activeShellId());
+    }
 
     if (m_session->state() == SessionState::Connected && shells.isEmpty()) {
         showOverlay(tr("No shells open.\nClick New Shell in the sidebar or Terminal menu."), false);
@@ -134,20 +179,88 @@ void SessionPage::onShellsChanged()
             m_reconnectButton, &QPushButton::clicked, this, &SessionPage::disconnectOrReconnect);
         m_reconnectButton->setText(tr("Reconnect"));
         m_overlay->hide();
-        m_stack->show();
+        m_dockHost->show();
     }
 }
 
 void SessionPage::onActiveShellChanged(const QUuid &shellId)
 {
-    if (shellId.isNull() || !m_stackIndex.contains(shellId)) {
+    if (shellId.isNull() || !m_panes.contains(shellId) || !m_dockHost) {
         return;
     }
-    m_stack->setCurrentIndex(m_stackIndex.value(shellId));
+    if (m_session->state() != SessionState::Connected) {
+        return;
+    }
+    if (m_dockHost->isPinned(shellId)) {
+        m_dockHost->focusShell(shellId);
+    } else if (shellId == m_pendingSmartPinId && AppSettings::instance().smartLayout()) {
+        pinShellWithSmartLayout(shellId);
+    } else {
+        pinShellToLayout(shellId);
+    }
+    if (shellId == m_pendingSmartPinId) {
+        m_pendingSmartPinId = {};
+    }
     if (Pane *pane = activePane()) {
         pane->term->setFocus(Qt::OtherFocusReason);
         schedulePtySizeSync();
     }
+}
+
+void SessionPage::onDockShellFocused(const QUuid &shellId)
+{
+    if (!m_session || shellId.isNull() || shellId == m_session->activeShellId()) {
+        return;
+    }
+    m_session->setActiveShell(shellId);
+}
+
+void SessionPage::onDropShellRequested(const QUuid &shellId, int dockArea)
+{
+    if (!m_session || shellId.isNull() || !m_panes.contains(shellId)) {
+        return;
+    }
+    m_session->setActiveShell(shellId);
+    if (m_dockHost->isPinned(shellId)) {
+        m_dockHost->focusShell(shellId);
+        return;
+    }
+    pinShellToLayout(shellId, dockArea);
+}
+
+void SessionPage::pinShellToLayout(const QUuid &shellId, int dockArea, const QUuid &relativeTo)
+{
+    auto it = m_panes.find(shellId);
+    if (it == m_panes.end() || !m_dockHost) {
+        return;
+    }
+    Pane &pane = it.value();
+    pane.term->show();
+    m_dockHost->pinShell(shellId, shellTitle(shellId), pane.term, dockArea, relativeTo);
+    schedulePtySizeSync();
+}
+
+void SessionPage::pinShellWithSmartLayout(const QUuid &shellId)
+{
+    ShellLayoutSnapshot snap;
+    snap.dockedIds = m_dockHost->dockedShellIds();
+    snap.focusedId = m_dockHost->focusedShellId();
+    const ShellPlacement placement =
+        ShellLayoutPlanner{}.decide(snap, ShellLayoutPlanner::Mode::AlternateFocus);
+    pinShellToLayout(shellId, placement.dockArea, placement.relativeTo);
+}
+
+QString SessionPage::shellTitle(const QUuid &shellId) const
+{
+    if (!m_session) {
+        return tr("Shell");
+    }
+    for (const ShellChannelState &shell : m_session->shells()) {
+        if (shell.id == shellId) {
+            return shell.title;
+        }
+    }
+    return tr("Shell");
 }
 
 void SessionPage::ensurePane(const QUuid &shellId)
@@ -156,15 +269,14 @@ void SessionPage::ensurePane(const QUuid &shellId)
         return;
     }
     Pane pane;
-    pane.term = new QTermWidget(0, m_stack);
+    pane.term = new QTermWidget(0, m_dockHost->termHolder());
+    pane.term->hide();
     pane.term->setTerminalSizeHint(false);
     pane.bridge = new TerminalIoBridge(pane.term);
     pane.term->installEventFilter(this);
     connect(
         pane.term, SIGNAL(sendData(const char *, int)), this, SLOT(onSendData(const char *, int)));
     applySettingsToTerm(pane.term);
-    const int index = m_stack->addWidget(pane.term);
-    m_stackIndex.insert(shellId, index);
     m_panes.insert(shellId, pane);
 
     if (m_session->state() == SessionState::Connected) {
@@ -180,19 +292,14 @@ void SessionPage::removePane(const QUuid &shellId)
     if (!m_panes.contains(shellId)) {
         return;
     }
+    if (m_dockHost) {
+        m_dockHost->unpinShell(shellId);
+    }
     Pane pane = m_panes.take(shellId);
     if (pane.bridge) {
         pane.bridge->teardown();
     }
-    const int index = m_stackIndex.take(shellId);
-    QWidget *w = m_stack->widget(index);
-    m_stack->removeWidget(w);
-    delete w;
-    // Rebuild indices
-    m_stackIndex.clear();
-    for (auto it = m_panes.begin(); it != m_panes.end(); ++it) {
-        m_stackIndex.insert(it.key(), m_stack->indexOf(it.value().term));
-    }
+    delete pane.term;
 }
 
 SessionPage::Pane *SessionPage::activePane()
@@ -227,6 +334,14 @@ void SessionPage::onSendData(const char *data, int length)
 {
     if (!m_session || data == nullptr || length <= 0) {
         return;
+    }
+    // Route to the shell that owns the focused term when possible.
+    QObject *senderObj = sender();
+    for (auto it = m_panes.begin(); it != m_panes.end(); ++it) {
+        if (it.value().term == senderObj) {
+            m_session->writeToShell(it.key(), QByteArray(data, length));
+            return;
+        }
     }
     m_session->writeToActiveShell(QByteArray(data, length));
 }
@@ -388,23 +503,42 @@ void SessionPage::schedulePtySizeSync()
 
 void SessionPage::syncPtySize()
 {
-    Pane *pane = activePane();
-    if (!pane || !m_session || m_session->state() != SessionState::Connected) {
+    if (!m_session || m_session->state() != SessionState::Connected || !m_dockHost) {
         return;
     }
-    if (!pane->term || pane->term->width() <= 0 || pane->term->height() <= 0) {
-        return;
+
+    const QList<QUuid> pinned = m_dockHost->pinnedShellIds();
+    QList<QUuid> targets = pinned;
+    if (targets.isEmpty()) {
+        const QUuid active = m_session->activeShellId();
+        if (!active.isNull()) {
+            targets.append(active);
+        }
     }
-    const QSize sz = readTerminalSize(pane->term);
-    if (sz.width() == pane->lastCols && sz.height() == pane->lastRows) {
-        return;
+
+    for (const QUuid &shellId : targets) {
+        auto it = m_panes.find(shellId);
+        if (it == m_panes.end()) {
+            continue;
+        }
+        Pane &pane = it.value();
+        if (!pane.term || pane.term->width() <= 0 || pane.term->height() <= 0) {
+            continue;
+        }
+        if (!pane.term->isVisible()) {
+            continue;
+        }
+        const QSize sz = readTerminalSize(pane.term);
+        if (sz.width() == pane.lastCols && sz.height() == pane.lastRows) {
+            continue;
+        }
+        pane.lastCols = sz.width();
+        pane.lastRows = sz.height();
+        if (pane.bridge) {
+            pane.bridge->syncSize(sz.width(), sz.height());
+        }
+        m_session->changePtySize(shellId, sz.width(), sz.height());
     }
-    pane->lastCols = sz.width();
-    pane->lastRows = sz.height();
-    if (pane->bridge) {
-        pane->bridge->syncSize(sz.width(), sz.height());
-    }
-    m_session->changePtySize(m_session->activeShellId(), sz.width(), sz.height());
 }
 
 QSize SessionPage::readTerminalSize(QTermWidget *term) const

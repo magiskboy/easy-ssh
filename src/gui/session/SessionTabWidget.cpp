@@ -171,6 +171,7 @@ void SessionTabWidget::onTabCloseRequested(int index)
     if (!page) {
         return;
     }
+    page->setLayoutActive(false);
     const QString name = page->session() ? page->session()->displayName() : QString();
     const QUuid id = page->session() ? page->session()->connectionId() : QUuid();
     m_pagesByConnection.remove(id);
@@ -187,10 +188,13 @@ void SessionTabWidget::onTabCloseRequested(int index)
 
 void SessionTabWidget::onCurrentChanged(int index)
 {
-    SessionPage *page = pageAt(index);
-    if (page && page->session() && m_sessionManager) {
-        m_sessionManager->setActive(page->session()->connectionId());
-        emit activeSessionChanged(page->session()->displayName());
+    SessionPage *active = pageAt(index);
+    for (SessionPage *page : m_pagesByConnection) {
+        page->setLayoutActive(page == active);
+    }
+    if (active && active->session() && m_sessionManager) {
+        m_sessionManager->setActive(active->session()->connectionId());
+        emit activeSessionChanged(active->session()->displayName());
     } else {
         emit activeSessionChanged(QString());
     }

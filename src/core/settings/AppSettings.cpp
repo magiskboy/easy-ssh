@@ -26,6 +26,7 @@ constexpr auto kHistorySize = "terminal/historySize";
 constexpr auto kCursorShape = "terminal/cursorShape";
 constexpr auto kCursorBlink = "terminal/cursorBlink";
 constexpr auto kConfirmMultilinePaste = "terminal/confirmMultilinePaste";
+constexpr auto kSmartLayout = "terminal/smartLayout";
 
 constexpr auto kAutoReconnect = "session/autoReconnect";
 constexpr auto kRecentConnections = "session/recentConnectionIds";
@@ -284,6 +285,16 @@ bool AppSettings::confirmMultilinePaste() const
 void AppSettings::setConfirmMultilinePaste(bool confirm)
 {
     setBoolValue(QLatin1String(kConfirmMultilinePaste), confirm);
+}
+
+bool AppSettings::smartLayout() const
+{
+    return boolValue(QLatin1String(kSmartLayout), true);
+}
+
+void AppSettings::setSmartLayout(bool enabled)
+{
+    setBoolValue(QLatin1String(kSmartLayout), enabled);
 }
 
 bool AppSettings::autoReconnect() const

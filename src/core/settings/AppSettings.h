@@ -62,6 +62,10 @@ public:
     bool confirmMultilinePaste() const;
     void setConfirmMultilinePaste(bool confirm);
 
+    /// When true, newly created shells are tiled with AlternateFocus instead of center-tab.
+    bool smartLayout() const;
+    void setSmartLayout(bool enabled);
+
     // --- Session / General ---
     bool autoReconnect() const;
     void setAutoReconnect(bool enabled);

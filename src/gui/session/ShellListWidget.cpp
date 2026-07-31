@@ -4,14 +4,52 @@
 
 #include "ShellListWidget.h"
 
+#include "ShellDockHost.h"
 #include "core/session/Session.h"
 
+#include <QAbstractItemView>
+#include <QDrag>
 #include <QFrame>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
+#include <QMimeData>
+#include <QMouseEvent>
 #include <QVBoxLayout>
+
+namespace
+{
+class ShellDragListWidget final : public QListWidget
+{
+public:
+    explicit ShellDragListWidget(QWidget *parent = nullptr) : QListWidget(parent)
+    {
+        setDragEnabled(true);
+        setDragDropMode(QAbstractItemView::DragOnly);
+        setDefaultDropAction(Qt::CopyAction);
+    }
+
+protected:
+    void startDrag(Qt::DropActions supportedActions) override
+    {
+        QListWidgetItem *item = currentItem();
+        if (!item) {
+            return;
+        }
+        const QUuid id = item->data(Qt::UserRole).toUuid();
+        if (id.isNull()) {
+            return;
+        }
+        auto *mime = new QMimeData;
+        mime->setData(QLatin1String(ShellDockHost::kShellMimeType),
+                      id.toString(QUuid::WithoutBraces).toUtf8());
+        auto *drag = new QDrag(this);
+        drag->setMimeData(mime);
+        drag->exec(supportedActions, Qt::CopyAction);
+    }
+};
+} // namespace
 
 ShellListWidget::ShellListWidget(QWidget *parent) : QWidget(parent)
 {
@@ -19,7 +57,7 @@ ShellListWidget::ShellListWidget(QWidget *parent) : QWidget(parent)
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
 
-    m_list = new QListWidget(this);
+    m_list = new ShellDragListWidget(this);
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -80,6 +118,7 @@ void ShellListWidget::refresh()
     for (const ShellChannelState &shell : m_session->shells()) {
         auto *item = new QListWidgetItem(shell.title, m_list);
         item->setData(Qt::UserRole, shell.id);
+        item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
         if (shell.id == active) {
             item->setSelected(true);
             m_list->setCurrentItem(item);

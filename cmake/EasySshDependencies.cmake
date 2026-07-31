@@ -46,6 +46,7 @@ set(EASY_SSH_QT_PREFIX "${EASY_SSH_QT_ROOT}/${_aqt_path_suffix}")
 set(_qt_marker "${EASY_SSH_QT_PREFIX}/lib/cmake/Qt6/Qt6Config.cmake")
 set(_qt_linguist_marker
     "${EASY_SSH_QT_PREFIX}/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsConfig.cmake")
+set(_qt_svg_marker "${EASY_SSH_QT_PREFIX}/lib/cmake/Qt6Svg/Qt6SvgConfig.cmake")
 
 if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
     message(STATUS "EasySshDeps: installing Qt ${EASY_SSH_QT_VERSION} via aqt (${_aqt_host}/${_aqt_arch})")
@@ -85,9 +86,9 @@ if(NOT EXISTS "${_qt_marker}" OR NOT EXISTS "${_qt_linguist_marker}")
 
     file(MAKE_DIRECTORY "${EASY_SSH_QT_ROOT}")
 
-    # qttools → LinguistTools; icu → bundled libicui18n for Linux host tools (lrelease).
+    # qttools → LinguistTools; qtsvg → ADS icons; icu → bundled libicui18n for Linux host tools.
     # See https://github.com/miurahr/aqtinstall/issues/532
-    set(_aqt_extra_args --archives qtbase qttools)
+    set(_aqt_extra_args --archives qtbase qttools qtsvg)
     if(UNIX AND NOT APPLE)
         list(APPEND _aqt_extra_args icu)
     endif()
@@ -136,6 +137,50 @@ else()
     message(STATUS "EasySshDeps: reusing cached Qt at ${EASY_SSH_QT_PREFIX}")
 endif()
 
+# Existing aqt trees may predate qtsvg; install the module into the same prefix.
+if(EXISTS "${_qt_marker}" AND NOT EXISTS "${_qt_svg_marker}")
+    message(STATUS "EasySshDeps: installing Qt Svg into ${EASY_SSH_QT_PREFIX}")
+    set(_easy_ssh_venv_hints
+        "${CMAKE_SOURCE_DIR}/.deps/venv/Scripts"
+        "${CMAKE_SOURCE_DIR}/.deps/venv/bin"
+    )
+    find_program(EASY_SSH_AQT_SVG NAMES aqt aqt.exe HINTS ${_easy_ssh_venv_hints})
+    if(EASY_SSH_AQT_SVG)
+        set(_aqt_svg_cmd
+            "${EASY_SSH_AQT_SVG}" install-qt
+            ${_aqt_host} desktop ${EASY_SSH_QT_VERSION} ${_aqt_arch}
+            --outputdir "${EASY_SSH_QT_ROOT}"
+            --archives qtsvg
+        )
+    else()
+        find_program(
+            EASY_SSH_PYTHON3_SVG
+            NAMES python python3 python.exe python3.exe
+            HINTS ${_easy_ssh_venv_hints}
+            REQUIRED
+        )
+        set(_aqt_svg_cmd
+            ${EASY_SSH_PYTHON3_SVG} -m aqt install-qt
+            ${_aqt_host} desktop ${EASY_SSH_QT_VERSION} ${_aqt_arch}
+            --outputdir "${EASY_SSH_QT_ROOT}"
+            --archives qtsvg
+        )
+    endif()
+    if(UNIX AND NOT APPLE)
+        list(APPEND _aqt_svg_cmd icu)
+    endif()
+    execute_process(
+        COMMAND ${_aqt_svg_cmd}
+        RESULT_VARIABLE _aqt_svg_result
+        OUTPUT_VARIABLE _aqt_svg_out
+        ERROR_VARIABLE _aqt_svg_err
+    )
+    if(NOT _aqt_svg_result EQUAL 0 OR NOT EXISTS "${_qt_svg_marker}")
+        message(FATAL_ERROR
+            "EasySshDeps: aqt install qtsvg failed:\n${_aqt_svg_err}\n${_aqt_svg_out}")
+    endif()
+endif()
+
 list(PREPEND CMAKE_PREFIX_PATH "${EASY_SSH_QT_PREFIX}")
 set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "Qt and dependency prefixes" FORCE)
 
@@ -155,6 +200,7 @@ find_package(Qt6 ${EASY_SSH_QT_VERSION} REQUIRED COMPONENTS
     Widgets
     Concurrent
     Network
+    Svg
 )
 
 # Refuse distro / Homebrew Qt — both presets must use aqt under .deps/qt.
@@ -376,12 +422,49 @@ if(EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/historic")
 endif()
 message(STATUS "EasySshDeps: QTermWidget data → ${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}")
 
+# --- Qt Advanced Docking System ---
+set(ADS_VERSION "${EASY_SSH_ADS_VERSION}" CACHE STRING "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_STATIC OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    qtads
+    GIT_REPOSITORY https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System.git
+    GIT_TAG        ${EASY_SSH_ADS_GIT_TAG}
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(qtads)
+if(NOT TARGET qtadvanceddocking-qt6 AND NOT TARGET ads::qtadvanceddocking-qt6)
+    message(FATAL_ERROR "FetchContent qtads did not create qtadvanceddocking-qt6")
+endif()
+# ADS defaults to ${CMAKE_BINARY_DIR}/x64/{lib,bin}; align with project layout.
+if(TARGET qtadvanceddocking-qt6)
+    if(WIN32)
+        set_target_properties(qtadvanceddocking-qt6 PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        )
+    else()
+        set_target_properties(qtadvanceddocking-qt6 PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        )
+    endif()
+endif()
+if(TARGET qtadvanceddocking-qt6 AND NOT TARGET ads::qtadvanceddocking-qt6)
+    add_library(ads::qtadvanceddocking-qt6 ALIAS qtadvanceddocking-qt6)
+endif()
+message(STATUS "EasySshDeps: Qt ADS from FetchContent (${EASY_SSH_ADS_GIT_TAG})")
+
 message(STATUS "EasySshDeps: third-party libraries built from source (FetchContent)")
 
 # FetchContent shared libs: use @rpath so the build-tree app finds them under
 # ${CMAKE_BINARY_DIR}/lib (see CMAKE_BUILD_RPATH in EasySshDefaults). Skip IMPORTED.
 if(APPLE)
-    foreach(_easy_ssh_dep IN ITEMS ssh qt6keychain qtermwidget6)
+    foreach(_easy_ssh_dep IN ITEMS ssh qt6keychain qtermwidget6 qtadvanceddocking-qt6)
         if(NOT TARGET ${_easy_ssh_dep})
             continue()
         endif()

@@ -14,7 +14,7 @@ install(TARGETS easy-ssh
 # Always bundle app-specific shared libs (FetchContent). Never install(TARGETS)
 # on IMPORTED system packages. OS commons are not packaged.
 easy_ssh_collect_shared_targets(_easy_ssh_bundle_deps
-    ssh qt6keychain qtermwidget6
+    ssh qt6keychain qtermwidget6 qtadvanceddocking-qt6
 )
 
 install(FILES
