@@ -25,8 +25,7 @@ Requires Podman + Compose plugin, or Docker Compose v2+.
 ```bash
 cd sandbox
 chmod +x scripts/*.sh
-./scripts/generate-keys.sh          # optional refresh of client keys
-./scripts/generate-host-keys.sh     # once — stable server host keys
+./scripts/prepare.sh                 # generate client + host keys (gitignored)
 podman compose -f compose.yaml up -d --build
 ```
 
@@ -52,15 +51,17 @@ Default password for every lab user: **`easy`** (override with `LAB_PASSWORD` in
 | `passonly` | `target-auth` only | password only | No authorized_keys |
 | `kbdint` | `target-auth` only | keyboard-interactive | Password still `easy` |
 
-Key material (baked into the image; copies also under `fixtures/lab-keys/`):
+Key material is **generated locally** (not committed). `./scripts/prepare.sh` writes:
 
-| File | Use |
+| Path | Use |
 |------|-----|
 | `fixtures/lab-keys/id_ed25519` | Private key, no passphrase |
 | `fixtures/lab-keys/id_ed25519_passphrase` | Private key, passphrase `lab-passphrase` |
 | `fixtures/lab-keys/authorized_keys` | Installed for lab users at container start |
+| `fixtures/host-keys/<role>/` | Stable server host keys (baked into image) |
+| `keys/` | Same client keys for optional bind-mount |
 
-`scripts/generate-keys.sh` writes into `keys/` (gitignored) and refreshes `fixtures/lab-keys/` — rebuild the image after regenerating.
+Rebuild the image after regenerating keys (`compose … --build`).
 
 ## Feature → host map
 
@@ -119,6 +120,7 @@ sandbox/
   compose.yaml
   Containerfile              # ubuntu:26.04 + OpenSSH + helpers
   scripts/
+    prepare.sh               # generate client + host keys
     entrypoint.sh            # ROLE-based sshd + HTTP/UDS
     generate-keys.sh
     generate-host-keys.sh
@@ -126,12 +128,14 @@ sandbox/
     http_tcp.py / http_uds.py
   sshd/                      # per-role sshd snippets
   fixtures/
-    lab-keys/                # client keys (baked into image)
-    host-keys/               # stable server host keys
+    lab-keys/                # client keys (generated, gitignored)
+    host-keys/               # stable server host keys (generated, gitignored)
     ssh-config.sample
-  keys/                      # optional regenerate output (gitignored)
+  keys/                      # client key copy for bind-mount (gitignored)
 ```
 
 ## Security note
 
-This lab is **intentionally insecure** (shared password, published keys, agent forwarding on). Use only on localhost. Do not expose these ports on a public interface.
+This lab is **intentionally insecure** (shared password, locally generated keys,
+agent forwarding on). Use only on localhost. Do not expose these ports on a
+public interface. Key files under `fixtures/` and `keys/` must not be committed.

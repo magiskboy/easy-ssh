@@ -1,11 +1,14 @@
-# Test-only key material
+# Test-only client key material (generated, not committed).
 
-These keys are **intentionally public** so the compose lab is turnkey under
-rootless Podman/Docker. Password for every lab user remains `easy`.
+Run from `sandbox/`:
+
+```bash
+./scripts/generate-keys.sh
+```
 
 | File | Passphrase |
 |------|------------|
 | `id_ed25519` | _(none)_ |
 | `id_ed25519_passphrase` | `lab-passphrase` |
 
-Never use these keys on a real host.
+Never use these keys on a real host. Password for every lab user remains `easy`.

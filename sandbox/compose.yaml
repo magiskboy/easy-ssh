@@ -1,10 +1,11 @@
 # easy-ssh integration lab — Ubuntu LTS hosts for shell / SFTP / tunnels / jump / auth.
 #
 # Usage:
-#   ./scripts/generate-keys.sh
+#   ./scripts/prepare.sh
 #   podman compose -f compose.yaml up -d --build
 #   # or: docker compose -f compose.yaml up -d --build
 #
+# prepare.sh generates client + host keys under fixtures/ (gitignored).
 # All published ports bind to 127.0.0.1 only.
 # Volume flag :z shares the SELinux label across lab containers (Podman).
 # Docker typically ignores it. Keys are also baked into the image at
