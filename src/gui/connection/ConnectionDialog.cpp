@@ -857,17 +857,23 @@ void ConnectionDialog::syncCurrentHopFromEditor()
 
 void ConnectionDialog::refreshHopList()
 {
+    // Block selection signals: clear()+setCurrentRow would otherwise re-enter
+    // syncHopEditorFromCurrent via onHopSelectionChanged and wipe gateway
+    // password/passphrase fields the user just typed (R-D2).
     const int previousRow = m_hopList->currentRow();
-    m_hopList->clear();
-    for (int i = 0; i < m_jumpHops.size(); ++i) {
-        const JumpHop &hop = m_jumpHops.at(i);
-        const QString label = hop.host.isEmpty()
-                                  ? tr("Hop %1").arg(i + 1)
-                                  : tr("Hop %1 — %2@%3").arg(i + 1).arg(hop.username, hop.host);
-        m_hopList->addItem(label);
-    }
-    if (m_hopList->count() > 0) {
-        m_hopList->setCurrentRow(qBound(0, previousRow, m_hopList->count() - 1));
+    {
+        const QSignalBlocker blocker(m_hopList);
+        m_hopList->clear();
+        for (int i = 0; i < m_jumpHops.size(); ++i) {
+            const JumpHop &hop = m_jumpHops.at(i);
+            const QString label = hop.host.isEmpty()
+                                      ? tr("Hop %1").arg(i + 1)
+                                      : tr("Hop %1 — %2@%3").arg(i + 1).arg(hop.username, hop.host);
+            m_hopList->addItem(label);
+        }
+        if (m_hopList->count() > 0) {
+            m_hopList->setCurrentRow(qBound(0, previousRow, m_hopList->count() - 1));
+        }
     }
     m_removeHopButton->setEnabled(m_proxyMode == SshProxyMode::ProxyJump && m_jumpHops.size() > 1);
 }
