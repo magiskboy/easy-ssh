@@ -46,7 +46,7 @@ signals:
     void editRequested();
     void closeRequested();
     void deleteRequested();
-    /// Ask the host to reconnect using freshly loaded keychain credentials.
+    /// Ask the host to reconnect using the Session's current in-memory credentials.
     void reconnectRequested();
 
 protected:

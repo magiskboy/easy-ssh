@@ -786,8 +786,9 @@ void MainWindow::onConnectionEdited(const QUuid &id,
                 }
                 session->setCredentials(creds);
             }
-            if (connectivityChanged && (session->state() == SessionState::Connected ||
-                                        session->state() == SessionState::Connecting)) {
+            // Include Failed/Disconnected: E8 edits the password after a failed login, then
+            // needs an immediate retry with the dialog secret (keychain write is async).
+            if (connectivityChanged) {
                 const auto answer = QMessageBox::question(
                     this,
                     tr("Reconnect?"),

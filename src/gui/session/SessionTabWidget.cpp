@@ -88,8 +88,11 @@ void SessionTabWidget::openSshSession(const Connection &connection,
     connect(page, &SessionPage::editRequested, this, [this, session]() {
         emit editConnectionRequested(session->connectionId());
     });
-    connect(page, &SessionPage::reconnectRequested, this, [this, session]() {
-        emit openConnectionRequested(session->connectionId());
+    connect(page, &SessionPage::reconnectRequested, this, [session]() {
+        // Use Session's in-memory credentials (updated immediately on edit) rather than
+        // re-reading the keychain, which can still hold the previous secret while the
+        // async WritePasswordJob is in flight (E8).
+        session->reconnect();
     });
     connect(session, &Session::stateChanged, this, [this, page](SessionState) {
         updateTabPresentation(page);
@@ -115,12 +118,8 @@ void SessionTabWidget::reconnectCurrentSession()
     if (!session) {
         return;
     }
-    // Re-read secrets from the keychain so edits to password/passphrase apply.
-    if (session->state() == SessionState::Connected ||
-        session->state() == SessionState::Connecting) {
-        session->disconnectTransport();
-    }
-    emit openConnectionRequested(session->connectionId());
+    // Prefer Session credentials (kept in sync on edit) over an async keychain re-read.
+    session->reconnect();
 }
 
 void SessionTabWidget::closeCurrentSession()
@@ -230,9 +229,7 @@ void SessionTabWidget::onTabContextMenu(const QPoint &pos)
     if (session->state() == SessionState::Connected) {
         menu.addAction(tr("Disconnect"), session, &Session::disconnectTransport);
     } else {
-        menu.addAction(tr("Reconnect"), this, [this, session]() {
-            emit openConnectionRequested(session->connectionId());
-        });
+        menu.addAction(tr("Reconnect"), session, [session]() { session->reconnect(); });
     }
     menu.addAction(tr("Close"), this, [this, index]() { onTabCloseRequested(index); });
     menu.addSeparator();
