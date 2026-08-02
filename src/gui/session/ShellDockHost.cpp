@@ -126,7 +126,6 @@ bool ShellDockHost::eventFilter(QObject *watched, QEvent *event)
 
     auto *ce = static_cast<QContextMenuEvent *>(event);
     QMenu menu(tab);
-    emit shellTabContextMenuRequested(shellId, &menu);
     tab->buildContextMenu(&menu);
     menu.exec(ce->globalPos());
     ce->accept();

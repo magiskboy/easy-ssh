@@ -11,7 +11,6 @@
 #include <QWidget>
 
 class QLabel;
-class QMenu;
 class QMimeData;
 class QVBoxLayout;
 
@@ -52,8 +51,6 @@ public:
 signals:
     void shellFocused(const QUuid &shellId);
     void dropShellRequested(const QUuid &shellId, int dockArea);
-    /// Emitted while building the dock-tab context menu; callers prepend actions.
-    void shellTabContextMenuRequested(const QUuid &shellId, QMenu *menu);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

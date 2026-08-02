@@ -11,6 +11,7 @@
 #include "gui/ErrorNotifier.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
+#include <QAction>
 #include <QDir>
 #include <QEvent>
 #include <QFile>
@@ -20,6 +21,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QPoint>
 #include <QPushButton>
 #include <QSet>
 #include <QStandardPaths>
@@ -61,10 +63,6 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     connect(m_dockHost, &ShellDockHost::shellFocused, this, &SessionPage::onDockShellFocused);
     connect(
         m_dockHost, &ShellDockHost::dropShellRequested, this, &SessionPage::onDropShellRequested);
-    connect(m_dockHost,
-            &ShellDockHost::shellTabContextMenuRequested,
-            this,
-            &SessionPage::onShellTabContextMenuRequested);
 
     m_resizeDebounce = new QTimer(this);
     m_resizeDebounce->setSingleShot(true);
@@ -233,33 +231,51 @@ void SessionPage::onDropShellRequested(const QUuid &shellId, int dockArea)
     pinShellToLayout(shellId, dockArea);
 }
 
-void SessionPage::onShellTabContextMenuRequested(const QUuid &shellId, QMenu *menu)
+void SessionPage::onTermContextMenuRequested(const QPoint &pos)
 {
-    if (!menu || shellId.isNull() || !m_panes.contains(shellId)) {
+    auto *term = qobject_cast<QTermWidget *>(sender());
+    if (!term) {
         return;
     }
 
-    auto add = [this, menu, shellId](const QString &text, void (SessionPage::*method)()) {
-        menu->addAction(text, this, [this, shellId, method]() {
-            if (m_session) {
-                m_session->setActiveShell(shellId);
-            }
-            if (m_dockHost) {
-                m_dockHost->focusShell(shellId);
-            }
-            (this->*method)();
-        });
-    };
+    QUuid shellId;
+    for (auto it = m_panes.constBegin(); it != m_panes.constEnd(); ++it) {
+        if (it.value().term == term) {
+            shellId = it.key();
+            break;
+        }
+    }
+    if (shellId.isNull()) {
+        return;
+    }
 
-    add(tr("Copy"), &SessionPage::copySelection);
-    add(tr("Paste"), &SessionPage::pasteClipboard);
-    menu->addSeparator();
-    add(tr("Clear Screen"), &SessionPage::clearScreen);
-    add(tr("Search…"), &SessionPage::toggleSearch);
-    menu->addSeparator();
-    add(tr("Save Log…"), &SessionPage::saveLog);
-    add(tr("Save Screenshot…"), &SessionPage::saveScreenshot);
-    menu->addSeparator();
+    if (m_session) {
+        m_session->setActiveShell(shellId);
+    }
+    if (m_dockHost) {
+        m_dockHost->focusShell(shellId);
+    }
+
+    QMenu menu(this);
+    const QList<QAction *> filterActs = term->filterActions(pos);
+    for (QAction *action : filterActs) {
+        menu.addAction(action);
+    }
+    if (!filterActs.isEmpty()) {
+        menu.addSeparator();
+    }
+
+    QAction *copyAction = menu.addAction(tr("Copy"), this, &SessionPage::copySelection);
+    copyAction->setEnabled(!term->selectedText(false).isEmpty());
+    menu.addAction(tr("Paste"), this, &SessionPage::pasteClipboard);
+    menu.addSeparator();
+    menu.addAction(tr("Clear Screen"), this, &SessionPage::clearScreen);
+    menu.addAction(tr("Search…"), this, &SessionPage::toggleSearch);
+    menu.addSeparator();
+    menu.addAction(tr("Save Log…"), this, &SessionPage::saveLog);
+    menu.addAction(tr("Save Screenshot…"), this, &SessionPage::saveScreenshot);
+
+    menu.exec(term->mapToGlobal(pos));
 }
 
 void SessionPage::pinShellToLayout(const QUuid &shellId, int dockArea, const QUuid &relativeTo)
@@ -306,8 +322,13 @@ void SessionPage::ensurePane(const QUuid &shellId)
     pane.term = new QTermWidget(0, m_dockHost->termHolder());
     pane.term->hide();
     pane.term->setTerminalSizeHint(false);
+    pane.term->setContextMenuPolicy(Qt::CustomContextMenu);
     pane.bridge = new TerminalIoBridge(pane.term);
     pane.term->installEventFilter(this);
+    connect(pane.term,
+            &QWidget::customContextMenuRequested,
+            this,
+            &SessionPage::onTermContextMenuRequested);
     connect(
         pane.term, SIGNAL(sendData(const char *, int)), this, SLOT(onSendData(const char *, int)));
     applySettingsToTerm(pane.term);
@@ -475,6 +496,8 @@ void SessionPage::clearScreen()
 {
     if (QTermWidget *t = activeTerm()) {
         t->clear();
+        // Ask the remote shell to reprint a prompt after the local wipe.
+        t->sendText(QStringLiteral("\r"));
     }
 }
 
