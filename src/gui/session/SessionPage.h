@@ -15,6 +15,7 @@
 #include <QWidget>
 
 class QLabel;
+class QMenu;
 class QPushButton;
 class QTermWidget;
 class QTimer;
@@ -65,6 +66,7 @@ private slots:
     void disconnectOrReconnect();
     void onDockShellFocused(const QUuid &shellId);
     void onDropShellRequested(const QUuid &shellId, int dockArea);
+    void onShellTabContextMenuRequested(const QUuid &shellId, QMenu *menu);
 
 private:
     struct Pane

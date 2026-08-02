@@ -407,35 +407,34 @@ void MainWindow::setupMenus()
     m_connectionsListMenu = connectionsMenu->addMenu(tr("&List"));
     rebuildConnectionsListMenu();
 
-    auto *terminalMenu = menuBar()->addMenu(tr("&Terminal"));
+    // No Terminal menubar entry — actions live on the shell ADS tab context menu
+    // (and sidebar). Keep QActions here so keyboard shortcuts still work.
+    auto addTerminalShortcut = [this](const QString &text, auto method, const QString &actionId) {
+        auto *action = new QAction(text, this);
+        registerAction(actionId, action);
+        connect(action, &QAction::triggered, this, [this, method]() {
+            if (auto *page = m_sessionTabs->activeSessionPage()) {
+                (page->*method)();
+            }
+        });
+        m_terminalActions.append(action);
+        return action;
+    };
 
-    auto addTerminalAction =
-        [this, terminalMenu](const QString &text, auto method, const QString &actionId) {
-            auto *action = terminalMenu->addAction(text);
-            registerAction(actionId, action);
-            connect(action, &QAction::triggered, this, [this, method]() {
-                if (auto *page = m_sessionTabs->activeSessionPage()) {
-                    (page->*method)();
-                }
-            });
-            m_terminalActions.append(action);
-            return action;
-        };
-
-    addTerminalAction(tr("&Copy"), &SessionPage::copySelection, QStringLiteral("terminal.copy"));
-    addTerminalAction(tr("&Paste"), &SessionPage::pasteClipboard, QStringLiteral("terminal.paste"));
-    terminalMenu->addSeparator();
-    addTerminalAction(
+    addTerminalShortcut(tr("&Copy"), &SessionPage::copySelection, QStringLiteral("terminal.copy"));
+    addTerminalShortcut(
+        tr("&Paste"), &SessionPage::pasteClipboard, QStringLiteral("terminal.paste"));
+    addTerminalShortcut(
         tr("&Clear Screen"), &SessionPage::clearScreen, QStringLiteral("terminal.clearScreen"));
-    addTerminalAction(
+    addTerminalShortcut(
         tr("&Search…"), &SessionPage::toggleSearch, QStringLiteral("terminal.search"));
-    terminalMenu->addSeparator();
-    addTerminalAction(tr("Save &Log…"), &SessionPage::saveLog, QStringLiteral("terminal.saveLog"));
-    addTerminalAction(tr("Save Screensho&t…"),
-                      &SessionPage::saveScreenshot,
-                      QStringLiteral("terminal.saveScreenshot"));
-    terminalMenu->addSeparator();
-    auto *newShellAction = terminalMenu->addAction(tr("&New Shell"));
+    addTerminalShortcut(
+        tr("Save &Log…"), &SessionPage::saveLog, QStringLiteral("terminal.saveLog"));
+    addTerminalShortcut(tr("Save Screensho&t…"),
+                        &SessionPage::saveScreenshot,
+                        QStringLiteral("terminal.saveScreenshot"));
+
+    auto *newShellAction = new QAction(tr("&New Shell"), this);
     registerAction(QStringLiteral("session.newSession"), newShellAction);
     connect(newShellAction, &QAction::triggered, this, [this]() {
         if (Session *session = m_sessionTabs->activeSession()) {
@@ -444,7 +443,7 @@ void MainWindow::setupMenus()
     });
     m_terminalActions.append(newShellAction);
 
-    auto *closeShellAction = terminalMenu->addAction(tr("Close &Shell"));
+    auto *closeShellAction = new QAction(tr("Close &Shell"), this);
     registerAction(QStringLiteral("shell.close"), closeShellAction);
     connect(closeShellAction, &QAction::triggered, this, [this]() {
         if (Session *session = m_sessionTabs->activeSession()) {

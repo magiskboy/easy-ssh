@@ -4,14 +4,17 @@
 
 #include "ShellDockHost.h"
 
+#include <QContextMenuEvent>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QLabel>
+#include <QMenu>
 #include <QMimeData>
 #include <QVBoxLayout>
 
 #include <DockManager.h>
 #include <DockWidget.h>
+#include <DockWidgetTab.h>
 
 namespace
 {
@@ -92,9 +95,41 @@ bool ShellDockHost::pinShell(const QUuid &shellId,
 
     m_manager->addDockWidget(area, dock, relativeArea);
     m_docks.insert(shellId, dock);
+    if (ads::CDockWidgetTab *tab = dock->tabWidget()) {
+        tab->installEventFilter(this);
+    }
     updateEmptyState();
     dock->setAsCurrentTab();
     term->setFocus(Qt::OtherFocusReason);
+    return true;
+}
+
+bool ShellDockHost::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() != QEvent::ContextMenu) {
+        return QWidget::eventFilter(watched, event);
+    }
+
+    auto *tab = qobject_cast<ads::CDockWidgetTab *>(watched);
+    if (!tab) {
+        return QWidget::eventFilter(watched, event);
+    }
+    if (tab->dragState() == ads::DraggingFloatingWidget) {
+        event->accept();
+        return true;
+    }
+
+    const QUuid shellId = shellIdForDock(tab->dockWidget());
+    if (shellId.isNull()) {
+        return QWidget::eventFilter(watched, event);
+    }
+
+    auto *ce = static_cast<QContextMenuEvent *>(event);
+    QMenu menu(tab);
+    emit shellTabContextMenuRequested(shellId, &menu);
+    tab->buildContextMenu(&menu);
+    menu.exec(ce->globalPos());
+    ce->accept();
     return true;
 }
 

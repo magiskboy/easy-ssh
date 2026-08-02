@@ -17,6 +17,7 @@
 #include <QFileDialog>
 #include <QFontMetrics>
 #include <QLabel>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
@@ -60,6 +61,10 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     connect(m_dockHost, &ShellDockHost::shellFocused, this, &SessionPage::onDockShellFocused);
     connect(
         m_dockHost, &ShellDockHost::dropShellRequested, this, &SessionPage::onDropShellRequested);
+    connect(m_dockHost,
+            &ShellDockHost::shellTabContextMenuRequested,
+            this,
+            &SessionPage::onShellTabContextMenuRequested);
 
     m_resizeDebounce = new QTimer(this);
     m_resizeDebounce->setSingleShot(true);
@@ -226,6 +231,35 @@ void SessionPage::onDropShellRequested(const QUuid &shellId, int dockArea)
         return;
     }
     pinShellToLayout(shellId, dockArea);
+}
+
+void SessionPage::onShellTabContextMenuRequested(const QUuid &shellId, QMenu *menu)
+{
+    if (!menu || shellId.isNull() || !m_panes.contains(shellId)) {
+        return;
+    }
+
+    auto add = [this, menu, shellId](const QString &text, void (SessionPage::*method)()) {
+        menu->addAction(text, this, [this, shellId, method]() {
+            if (m_session) {
+                m_session->setActiveShell(shellId);
+            }
+            if (m_dockHost) {
+                m_dockHost->focusShell(shellId);
+            }
+            (this->*method)();
+        });
+    };
+
+    add(tr("Copy"), &SessionPage::copySelection);
+    add(tr("Paste"), &SessionPage::pasteClipboard);
+    menu->addSeparator();
+    add(tr("Clear Screen"), &SessionPage::clearScreen);
+    add(tr("Search…"), &SessionPage::toggleSearch);
+    menu->addSeparator();
+    add(tr("Save Log…"), &SessionPage::saveLog);
+    add(tr("Save Screenshot…"), &SessionPage::saveScreenshot);
+    menu->addSeparator();
 }
 
 void SessionPage::pinShellToLayout(const QUuid &shellId, int dockArea, const QUuid &relativeTo)
