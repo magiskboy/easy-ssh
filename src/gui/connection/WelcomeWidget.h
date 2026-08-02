@@ -14,7 +14,6 @@
 class ConnectionModel;
 class QLabel;
 class QListWidget;
-class QPushButton;
 
 class WelcomeWidget final : public QWidget
 {
@@ -34,14 +33,13 @@ signals:
 
 private slots:
     void onRecentActivated();
-    void onOpenRecentClicked();
 
 private:
+    void openCurrentRecent();
     void rebuildRecentList();
 
     ConnectionModel *m_model = nullptr;
     QLabel *m_recentHeading = nullptr;
     QListWidget *m_recentList = nullptr;
-    QPushButton *m_openRecentButton = nullptr;
     QLabel *m_emptyRecentLabel = nullptr;
 };

@@ -59,13 +59,6 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent)
     m_recentList->setMaximumHeight(220);
     connect(m_recentList, &QListWidget::itemActivated, this, &WelcomeWidget::onRecentActivated);
 
-    m_openRecentButton = new QPushButton(tr("Open Selected"), this);
-    m_openRecentButton->setEnabled(false);
-    connect(m_openRecentButton, &QPushButton::clicked, this, &WelcomeWidget::onOpenRecentClicked);
-    connect(m_recentList, &QListWidget::itemSelectionChanged, this, [this]() {
-        m_openRecentButton->setEnabled(m_recentList->currentItem() != nullptr);
-    });
-
     m_emptyRecentLabel = new QLabel(tr("No recent connections yet."), this);
     m_emptyRecentLabel->setAlignment(Qt::AlignCenter);
     m_emptyRecentLabel->setEnabled(false);
@@ -79,7 +72,6 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent)
     layout->addWidget(m_recentHeading);
     layout->addWidget(m_recentList);
     layout->addWidget(m_emptyRecentLabel);
-    layout->addWidget(m_openRecentButton, 0, Qt::AlignLeft);
     layout->addStretch(2);
 
     rebuildRecentList();
@@ -98,15 +90,13 @@ void WelcomeWidget::refresh()
 
 void WelcomeWidget::onRecentActivated()
 {
-    onOpenRecentClicked();
+    openCurrentRecent();
 }
 
-void WelcomeWidget::onOpenRecentClicked()
+void WelcomeWidget::openCurrentRecent()
 {
     QListWidgetItem *item = m_recentList ? m_recentList->currentItem() : nullptr;
     if (!item) {
-        emit statusMessage(tr("Select a recent connection to open."),
-                           ErrorNotifier::Level::Warning);
         return;
     }
 
@@ -143,8 +133,6 @@ void WelcomeWidget::rebuildRecentList()
 
     const bool hasRecent = added > 0;
     m_recentList->setVisible(hasRecent);
-    m_openRecentButton->setVisible(hasRecent);
-    m_openRecentButton->setEnabled(hasRecent && m_recentList->currentItem() != nullptr);
     m_emptyRecentLabel->setVisible(!hasRecent);
     m_recentHeading->setVisible(true);
 }
