@@ -8,6 +8,7 @@
 
 #include "core/connection/Connection.h"
 #include "core/fs/SftpTypes.h"
+#include "core/fs/TransferTypes.h"
 #include "core/session/SessionTypes.h"
 #include "core/ssh/SshWorker.h"
 #include "core/tunnel/Tunnel.h"
@@ -75,6 +76,9 @@ public:
     void downloadPaths(const QStringList &remotePaths, const QString &localDir);
     void canonicalizePath(const QString &path);
     void cancelTransfer();
+    void resumeInterruptedTransfer();
+    void discardInterruptedTransfer();
+    bool hasResumableTransfer() const { return m_hasResumableTransfer; }
 
     void startTunnel(const TunnelDefinition &def);
     void stopTunnel(const QUuid &tunnelId);
@@ -102,8 +106,10 @@ signals:
     void sftpFinished(const QString &message);
     void sftpError(const QString &message);
     void sftpCanceled(const QString &message);
+    void sftpInterrupted(const TransferJob &job);
     void sftpUnavailable(const QString &message);
     void sftpProgress(qint64 bytesDone, qint64 bytesTotal, const QString &currentName);
+    void transferResumableChanged(bool resumable);
 
     void tunnelStatusChanged(const QUuid &tunnelId, const QString &status, const QString &detail);
     void tunnelError(const QUuid &tunnelId, const QString &message);
@@ -119,6 +125,8 @@ private:
     void onWorkerConnected(const QUuid &initialShellId);
     void onWorkerDisconnected();
     void onWorkerError(const QString &message);
+    void scheduleAutoReconnect();
+    void tryAutoResumeTransfer();
     void onShellOpened(const QUuid &shellId);
     void onShellClosed(const QUuid &shellId);
     void onShellFailed(const QUuid &shellId, const QString &message);
@@ -139,4 +147,10 @@ private:
     QThread *m_thread = nullptr;
     SshWorker *m_worker = nullptr;
     bool m_shuttingDown = false;
+    bool m_userDisconnect = false;
+    bool m_autoReconnectAttempted = false;
+    bool m_autoResumeAttempted = false;
+    bool m_hasResumableTransfer = false;
+    int m_reconnectCols = 80;
+    int m_reconnectRows = 24;
 };

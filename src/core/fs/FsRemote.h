@@ -8,21 +8,24 @@
 
 #include "FsEngine.h"
 #include "SftpTypes.h"
+#include "TransferTypes.h"
 #include "core/connection/Connection.h"
 #include "core/session/SessionTypes.h"
 
 #include <QString>
 #include <QStringList>
+#include <QUuid>
 #include <QVector>
 
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include <libssh/libssh.h>
 
 /**
- * High-level remote FS entity: recursive transfer, progress, cancel.
+ * High-level remote FS entity: recursive transfer, progress, cancel, resume jobs.
  * Prefers SftpEngine; falls back to ScpEngine + shell CommandSet when configured.
  */
 class FsRemote
@@ -43,6 +46,13 @@ public:
     void setShellCommands(const ShellCommandSetConfig &config);
     ShellCommandSetConfig shellCommands() const { return m_shellCommands; }
 
+    void setConnectionId(const QUuid &connectionId) { m_connectionId = connectionId; }
+    QUuid connectionId() const { return m_connectionId; }
+
+    /// Stall timeout in seconds; 0 disables. Checked during progress/cancel polls.
+    void setStallTimeoutSec(int seconds) { m_stallTimeoutSec = qMax(0, seconds); }
+    int stallTimeoutSec() const { return m_stallTimeoutSec; }
+
     /// Try SFTP, then SCP+shell when allowScpFallback. Sets backend on success.
     bool open(ssh_session session, QString *failureMessage = nullptr);
     void close();
@@ -50,8 +60,14 @@ public:
     FsBackend backend() const { return m_backend; }
 
     void requestCancel();
+    void requestInterrupt(TransferEndReason reason, const QString &message = {});
     void setProgressCallback(ProgressCallback callback);
+
     bool wasCanceled() const;
+    bool wasInterrupted() const;
+    TransferEndReason lastEndReason() const { return m_lastEndReason; }
+    QString lastEndMessage() const { return m_lastEndMessage; }
+    std::optional<TransferJob> lastInterruptedJob() const { return m_lastInterruptedJob; }
 
     bool
     listDirectoryEntries(const QString &path, QVector<RemoteEntry> *outEntries, QString *error);
@@ -64,11 +80,17 @@ public:
     bool uploadFileTo(const QString &localPath, const QString &remotePath, QString *error);
     bool downloadPaths(const QStringList &remotePaths, const QString &localDir, QString *error);
 
+    /// Resume the persisted interrupted job for this connection (SFTP only).
+    bool resumeInterruptedTransfer(QString *error);
+    bool discardInterruptedTransfer(QString *error);
+
 private:
     void beginTransfer(qint64 bytesTotal);
     void endTransfer();
-    bool transferCanceled(QString *error) const;
+    bool transferShouldStop(QString *error) const;
     void noteTransferProgress(qint64 bytesDelta, const QString &currentName);
+    void seedProgressBytes(qint64 bytesDone);
+    void touchProgressActivity();
 
     qint64 computeLocalBytes(const QStringList &localPaths) const;
     qint64 computeLocalPathBytes(const QString &localPath) const;
@@ -76,21 +98,47 @@ private:
     qint64 computeRemotePathBytes(const QString &remotePath, bool isDir);
 
     bool removePathRecursive(const QString &path, QString *error);
-    bool uploadPathRecursive(const QString &localPath, const QString &remotePath, QString *error);
+    bool uploadPathRecursive(const QString &localPath,
+                             const QString &remotePath,
+                             TransferWriteMode mode,
+                             QString *error);
     bool downloadPathRecursive(const QString &remotePath,
                                const QString &localPath,
                                bool isDir,
+                               TransferWriteMode mode,
                                QString *error);
+
+    bool transferOneUpload(const QString &localPath,
+                           const QString &remoteFinalPath,
+                           TransferWriteMode mode,
+                           QString *error);
+    bool transferOneDownload(const QString &remoteFinalPath,
+                             const QString &localFinalPath,
+                             TransferWriteMode mode,
+                             QString *error);
+
+    void persistInterruptedJob(const TransferJob &job);
+    TransferOptions optionsForMode(TransferWriteMode mode, const TransferJob *resumeJob) const;
 
     static QString joinRemotePath(const QString &dir, const QString &name);
 
     std::unique_ptr<FsEngine> m_engine;
     ShellCommandSetConfig m_shellCommands;
     FsBackend m_backend = FsBackend::None;
+    QUuid m_connectionId;
     ProgressCallback m_progressCallback;
     std::atomic_bool m_transferCancel{false};
+    std::atomic_bool m_transferInterrupt{false};
+    TransferEndReason m_interruptReason = TransferEndReason::Interrupted;
+    QString m_interruptMessage;
+    TransferEndReason m_lastEndReason = TransferEndReason::Completed;
+    QString m_lastEndMessage;
+    std::optional<TransferJob> m_lastInterruptedJob;
+    std::optional<TransferJob> m_activeJob;
     qint64 m_progressBytesDone = 0;
     qint64 m_progressBytesTotal = -1;
     qint64 m_progressLastEmitBytes = 0;
     qint64 m_progressLastEmitMs = 0;
+    qint64 m_progressLastActivityMs = 0;
+    int m_stallTimeoutSec = 60;
 };

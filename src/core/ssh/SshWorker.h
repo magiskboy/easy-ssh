@@ -9,6 +9,7 @@
 #include "core/connection/Connection.h"
 #include "core/fs/FsRemote.h"
 #include "core/fs/SftpTypes.h"
+#include "core/fs/TransferTypes.h"
 #include "core/shell/SshShell.h"
 #include "core/ssh/SshKnownHosts.h"
 #include "core/ssh/SshSession.h"
@@ -72,6 +73,9 @@ public slots:
     void downloadPaths(const QStringList &remotePaths, const QString &localDir);
     void canonicalizePath(const QString &path);
     void cancelTransfer();
+    void resumeInterruptedTransfer();
+    void discardInterruptedTransfer();
+    void interruptTransfer(const QString &message = {});
 
     void startTunnel(const TunnelDefinition &def);
     void stopTunnel(const QUuid &tunnelId);
@@ -95,8 +99,10 @@ signals:
     void sftpFinished(const QString &message);
     void sftpError(const QString &message);
     void sftpCanceled(const QString &message);
+    void sftpInterrupted(const TransferJob &job);
     void sftpUnavailable(const QString &message);
     void sftpProgress(qint64 bytesDone, qint64 bytesTotal, const QString &currentName);
+    void transferResumableChanged(bool resumable);
     /// Emitted after connect when remote FS opened (Sftp or Scp).
     void remoteFsOpened(int backend);
 
@@ -119,6 +125,7 @@ private:
     void retireShell(const QUuid &shellId, bool emitClosed);
     bool openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut);
     void tryRequestAgentForwarding(SshShell *shell);
+    void emitTransferFailure(const QString &error);
 
     SshSession m_session;
     QHash<QUuid, SshShell *> m_shells;

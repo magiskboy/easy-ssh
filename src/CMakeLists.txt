@@ -38,6 +38,9 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/SftpEngine.h
     core/fs/ScpEngine.cpp
     core/fs/ScpEngine.h
+    core/fs/TransferTypes.h
+    core/fs/TransferJobStore.cpp
+    core/fs/TransferJobStore.h
     core/fs/ShellCommandSet.cpp
     core/fs/ShellCommandSet.h
     core/fs/ShellExecRunner.cpp

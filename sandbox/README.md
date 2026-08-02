@@ -113,6 +113,19 @@ ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 ssh -F fixtures/ssh-config.sample lab-via-bastion 'hostname'
 ```
 
+## SFTP resume (manual)
+
+Against `target:2200` with SFTP available:
+
+1. Upload a large file; click **Cancel** mid-transfer → progress bar shows Resume/Discard; remote `name.filepart` kept.
+2. Click **Resume** → transfer continues; final file appears without `.filepart`; SHA-256 must match.
+3. Start upload again, stop the lab (`podman compose stop target`) mid-way → reconnect → with auto-resume enabled the transfer continues once; otherwise use **Resume**.
+4. Corrupt the remote `.filepart` and try Resume → hash mismatch error; **Restart** / Discard then re-upload works.
+5. Download to a folder that already has the final file → Overwrite / Skip / Cancel prompt.
+6. On `target-sftp-off:2201` (SCP only) → cancel leaves no Resume (SCP has no resume).
+
+Settings: **General → Transfers** (stall timeout, auto-resume after reconnect) and **Session → Auto reconnect**.
+
 ## Layout
 
 ```text

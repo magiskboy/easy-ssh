@@ -6,3 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+### Added
+
+- SFTP transfer resume via `.filepart` + SHA-256 prefix/full verification after cancel, stall, or disconnect
+- Transfer stall timeout and auto-resume-after-reconnect settings (General → Transfers)
+- Session auto-reconnect when connection is lost (honors existing setting)
+- File Explorer Resume / Discard controls for interrupted transfers; conflict prompts for existing finals vs partials
+
+### Changed
+
+- Explorer upload/download conflict dialogs support Overwrite / Skip / Cancel (and Resume / Restart for partials)

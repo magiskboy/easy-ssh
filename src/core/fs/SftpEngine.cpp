@@ -4,7 +4,10 @@
 
 #include "SftpEngine.h"
 
+#include "TransferTypes.h"
+
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
 
@@ -43,7 +46,7 @@ SftpEngine::~SftpEngine()
 
 FsEngine::Capabilities SftpEngine::capabilities() const
 {
-    return List | Mkdir | Rename | Remove | Canonicalize | Transfer;
+    return List | Mkdir | Rename | Remove | Canonicalize | Transfer | ResumeTransfer;
 }
 
 bool SftpEngine::open(ssh_session session, QString *failureMessage)
@@ -363,12 +366,137 @@ bool SftpEngine::remoteFileSize(const QString &path, qint64 *sizeOut, QString *e
     return true;
 }
 
+bool SftpEngine::feedHashFromLocal(QFile &local,
+                                   qint64 length,
+                                   QCryptographicHash *hash,
+                                   QString *error) const
+{
+    if (!hash || length < 0) {
+        if (error) {
+            *error = trSftp("Invalid hash request");
+        }
+        return false;
+    }
+    if (length == 0) {
+        return true;
+    }
+    if (!local.seek(0)) {
+        if (error) {
+            *error =
+                trSftp("Cannot seek local file: %1").arg(localIoErrorMessage(local.errorString()));
+        }
+        return false;
+    }
+
+    qint64 remaining = length;
+    char buffer[kXferBufSize];
+    while (remaining > 0) {
+        const qint64 chunk = qMin(remaining, static_cast<qint64>(sizeof(buffer)));
+        const qint64 nread = local.read(buffer, chunk);
+        if (nread <= 0) {
+            if (error) {
+                *error = trSftp("Cannot read local file for hashing: %1")
+                             .arg(localIoErrorMessage(local.errorString()));
+            }
+            return false;
+        }
+        hash->addData(QByteArrayView(buffer, static_cast<qsizetype>(nread)));
+        remaining -= nread;
+    }
+    return true;
+}
+
+bool SftpEngine::hashLocalPrefix(const QString &localPath,
+                                 qint64 length,
+                                 QString &hexOut,
+                                 QString *error) const
+{
+    QFile local(localPath);
+    if (!local.open(QIODevice::ReadOnly)) {
+        if (error) {
+            *error =
+                trSftp("Cannot open local file: %1").arg(localIoErrorMessage(local.errorString()));
+        }
+        return false;
+    }
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!feedHashFromLocal(local, length, &hash, error)) {
+        return false;
+    }
+    hexOut = QString::fromLatin1(hash.result().toHex());
+    return true;
+}
+
+bool SftpEngine::hashLocalFile(const QString &localPath, QString &hexOut, QString *error) const
+{
+    const QFileInfo info(localPath);
+    return hashLocalPrefix(localPath, info.size(), hexOut, error);
+}
+
+bool SftpEngine::hashRemotePrefix(const QString &remotePath,
+                                  qint64 length,
+                                  QString &hexOut,
+                                  QString *error) const
+{
+    if (length < 0) {
+        if (error) {
+            *error = trSftp("Invalid remote hash length");
+        }
+        return false;
+    }
+    if (length == 0) {
+        QCryptographicHash empty(QCryptographicHash::Sha256);
+        hexOut = QString::fromLatin1(empty.result().toHex());
+        return true;
+    }
+
+    const QByteArray remote = remotePath.toUtf8();
+    sftp_file file = sftp_open(m_sftp, remote.constData(), O_RDONLY, 0);
+    if (file == nullptr) {
+        if (error) {
+            *error = trSftp("Cannot open remote file for hashing: %1").arg(sftpErrorMessage());
+        }
+        return false;
+    }
+
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    qint64 remaining = length;
+    char buffer[kXferBufSize];
+    while (remaining > 0) {
+        const size_t chunk =
+            static_cast<size_t>(qMin(remaining, static_cast<qint64>(sizeof(buffer))));
+        const ssize_t nbytes = sftp_read(file, buffer, chunk);
+        if (nbytes <= 0) {
+            sftp_close(file);
+            if (error) {
+                *error = trSftp("Cannot read remote file for hashing: %1").arg(sftpErrorMessage());
+            }
+            return false;
+        }
+        hash.addData(QByteArrayView(buffer, static_cast<qsizetype>(nbytes)));
+        remaining -= nbytes;
+    }
+    sftp_close(file);
+    hexOut = QString::fromLatin1(hash.result().toHex());
+    return true;
+}
+
 bool SftpEngine::uploadFile(const QString &localPath,
                             const CancelCheck &shouldCancel,
                             const QString &remotePath,
                             const ProgressNote &onProgress,
-                            QString *error)
+                            const TransferOptions &options,
+                            QString *error,
+                            qint64 *partialBytes,
+                            QString *partialSha256PrefixHex)
 {
+    if (partialBytes) {
+        *partialBytes = 0;
+    }
+    if (partialSha256PrefixHex) {
+        partialSha256PrefixHex->clear();
+    }
+
     if (shouldCancel && shouldCancel(error)) {
         return false;
     }
@@ -382,8 +510,76 @@ bool SftpEngine::uploadFile(const QString &localPath,
         return false;
     }
 
-    const QByteArray remote = remotePath.toUtf8();
-    const int access = O_WRONLY | O_CREAT | O_TRUNC;
+    const qint64 localSize = local.size();
+    const bool useFilepart = options.mode != TransferWriteMode::OverwriteFinal;
+    const QString writePath = useFilepart ? transferFilepartPathForFinal(remotePath) : remotePath;
+    const QByteArray remote = writePath.toUtf8();
+
+    qint64 offset = 0;
+    QCryptographicHash running(QCryptographicHash::Sha256);
+
+    if (options.mode == TransferWriteMode::ResumeFilepart) {
+        offset = options.resumeOffset;
+        if (offset < 0 || offset > localSize) {
+            if (error) {
+                *error = trSftp("Invalid resume offset");
+            }
+            return false;
+        }
+
+        qint64 remoteSize = 0;
+        if (!remoteFileSize(writePath, &remoteSize, error) || remoteSize != offset) {
+            if (error && error->isEmpty()) {
+                *error = trSftp("Remote partial size does not match resume offset");
+            }
+            return false;
+        }
+
+        QString localPrefix;
+        if (!hashLocalPrefix(localPath, offset, localPrefix, error)) {
+            return false;
+        }
+        if (localPrefix.compare(options.sha256PrefixHex, Qt::CaseInsensitive) != 0) {
+            if (error) {
+                *error =
+                    trSftp("Local file changed since the interrupted transfer (hash mismatch)");
+            }
+            return false;
+        }
+
+        QString remotePrefix;
+        if (!hashRemotePrefix(writePath, offset, remotePrefix, error)) {
+            return false;
+        }
+        if (remotePrefix.compare(options.sha256PrefixHex, Qt::CaseInsensitive) != 0) {
+            if (error) {
+                *error = trSftp("Remote partial file is corrupt (hash mismatch)");
+            }
+            return false;
+        }
+
+        if (!feedHashFromLocal(local, offset, &running, error)) {
+            return false;
+        }
+        if (!local.seek(offset)) {
+            if (error) {
+                *error = trSftp("Cannot seek local file: %1")
+                             .arg(localIoErrorMessage(local.errorString()));
+            }
+            return false;
+        }
+    } else if (!local.seek(0)) {
+        if (error) {
+            *error =
+                trSftp("Cannot seek local file: %1").arg(localIoErrorMessage(local.errorString()));
+        }
+        return false;
+    }
+
+    int access = O_WRONLY | O_CREAT;
+    if (options.mode != TransferWriteMode::ResumeFilepart) {
+        access |= O_TRUNC;
+    }
     sftp_file file =
         sftp_open(m_sftp, remote.constData(), access, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (file == nullptr) {
@@ -393,14 +589,38 @@ bool SftpEngine::uploadFile(const QString &localPath,
         return false;
     }
 
+    if (options.mode == TransferWriteMode::ResumeFilepart) {
+        if (sftp_seek64(file, static_cast<uint64_t>(offset)) < 0) {
+            if (error) {
+                *error = trSftp("Cannot seek remote file: %1").arg(sftpErrorMessage());
+            }
+            sftp_close(file);
+            return false;
+        }
+    }
+
     const QString displayName = QFileInfo(localPath).fileName();
     if (onProgress) {
         onProgress(0, displayName);
     }
 
+    qint64 bytesDone = offset;
+    auto persistPartial = [&]() {
+        if (partialBytes) {
+            *partialBytes = bytesDone;
+        }
+        if (partialSha256PrefixHex && bytesDone > 0) {
+            QString hex;
+            if (hashLocalPrefix(localPath, bytesDone, hex, nullptr)) {
+                *partialSha256PrefixHex = hex;
+            }
+        }
+    };
+
     char buffer[kXferBufSize];
-    while (!local.atEnd()) {
+    while (bytesDone < localSize) {
         if (shouldCancel && shouldCancel(error)) {
+            persistPartial();
             sftp_close(file);
             return false;
         }
@@ -411,6 +631,7 @@ bool SftpEngine::uploadFile(const QString &localPath,
                 *error = trSftp("Cannot read local file: %1")
                              .arg(localIoErrorMessage(local.errorString()));
             }
+            persistPartial();
             sftp_close(file);
             return false;
         }
@@ -422,6 +643,7 @@ bool SftpEngine::uploadFile(const QString &localPath,
         const char *ptr = buffer;
         while (remaining > 0) {
             if (shouldCancel && shouldCancel(error)) {
+                persistPartial();
                 sftp_close(file);
                 return false;
             }
@@ -431,11 +653,14 @@ bool SftpEngine::uploadFile(const QString &localPath,
                 if (error) {
                     *error = trSftp("Cannot write remote file: %1").arg(sftpErrorMessage());
                 }
+                persistPartial();
                 sftp_close(file);
                 return false;
             }
+            running.addData(QByteArrayView(ptr, static_cast<qsizetype>(nwritten)));
             ptr += nwritten;
             remaining -= nwritten;
+            bytesDone += nwritten;
             if (onProgress) {
                 onProgress(nwritten, displayName);
             }
@@ -446,7 +671,41 @@ bool SftpEngine::uploadFile(const QString &localPath,
         if (error) {
             *error = trSftp("Cannot close remote file: %1").arg(sftpErrorMessage());
         }
+        persistPartial();
         return false;
+    }
+
+    const QString streamedHex = QString::fromLatin1(running.result().toHex());
+    QString expectedFull = options.expectedSha256FullHex;
+    if (expectedFull.isEmpty()) {
+        if (!hashLocalFile(localPath, expectedFull, error)) {
+            persistPartial();
+            return false;
+        }
+    }
+    if (streamedHex.compare(expectedFull, Qt::CaseInsensitive) != 0) {
+        if (error) {
+            *error = trSftp("Upload hash mismatch");
+        }
+        persistPartial();
+        return false;
+    }
+
+    if (useFilepart) {
+        // Replace final path atomically via remove + rename when supported.
+        QString unused;
+        removeFile(remotePath, &unused);
+        if (!renamePath(writePath, remotePath, error)) {
+            persistPartial();
+            return false;
+        }
+    }
+
+    if (partialBytes) {
+        *partialBytes = bytesDone;
+    }
+    if (partialSha256PrefixHex) {
+        *partialSha256PrefixHex = streamedHex;
     }
     return true;
 }
@@ -455,11 +714,29 @@ bool SftpEngine::downloadFile(const QString &remotePath,
                               const CancelCheck &shouldCancel,
                               const QString &localPath,
                               const ProgressNote &onProgress,
-                              QString *error)
+                              const TransferOptions &options,
+                              QString *error,
+                              qint64 *partialBytes,
+                              QString *partialSha256PrefixHex)
 {
+    if (partialBytes) {
+        *partialBytes = 0;
+    }
+    if (partialSha256PrefixHex) {
+        partialSha256PrefixHex->clear();
+    }
+
     if (shouldCancel && shouldCancel(error)) {
         return false;
     }
+
+    qint64 remoteSize = 0;
+    if (!remoteFileSize(remotePath, &remoteSize, error)) {
+        return false;
+    }
+
+    const bool useFilepart = options.mode != TransferWriteMode::OverwriteFinal;
+    const QString writePath = useFilepart ? transferFilepartPathForFinal(localPath) : localPath;
 
     const QByteArray remote = remotePath.toUtf8();
     sftp_file file = sftp_open(m_sftp, remote.constData(), O_RDONLY, 0);
@@ -470,8 +747,60 @@ bool SftpEngine::downloadFile(const QString &remotePath,
         return false;
     }
 
-    QFile local(localPath);
-    if (!local.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    qint64 offset = 0;
+    QCryptographicHash running(QCryptographicHash::Sha256);
+    QIODevice::OpenMode localMode = QIODevice::WriteOnly | QIODevice::Truncate;
+
+    if (options.mode == TransferWriteMode::ResumeFilepart) {
+        offset = options.resumeOffset;
+        if (offset < 0 || offset > remoteSize) {
+            sftp_close(file);
+            if (error) {
+                *error = trSftp("Invalid resume offset");
+            }
+            return false;
+        }
+
+        const QFileInfo partInfo(writePath);
+        if (!partInfo.exists() || partInfo.size() != offset) {
+            sftp_close(file);
+            if (error) {
+                *error = trSftp("Local partial size does not match resume offset");
+            }
+            return false;
+        }
+
+        QString localPrefix;
+        if (!hashLocalPrefix(writePath, offset, localPrefix, error)) {
+            sftp_close(file);
+            return false;
+        }
+        if (localPrefix.compare(options.sha256PrefixHex, Qt::CaseInsensitive) != 0) {
+            sftp_close(file);
+            if (error) {
+                *error = trSftp("Local partial file is corrupt (hash mismatch)");
+            }
+            return false;
+        }
+
+        QFile seed(writePath);
+        if (!seed.open(QIODevice::ReadOnly) || !feedHashFromLocal(seed, offset, &running, error)) {
+            sftp_close(file);
+            return false;
+        }
+
+        if (sftp_seek64(file, static_cast<uint64_t>(offset)) < 0) {
+            sftp_close(file);
+            if (error) {
+                *error = trSftp("Cannot seek remote file: %1").arg(sftpErrorMessage());
+            }
+            return false;
+        }
+        localMode = QIODevice::WriteOnly | QIODevice::Append;
+    }
+
+    QFile local(writePath);
+    if (!local.open(localMode)) {
         if (error) {
             *error = trSftp("Cannot open local file for writing: %1")
                          .arg(localIoErrorMessage(local.errorString()));
@@ -485,9 +814,24 @@ bool SftpEngine::downloadFile(const QString &remotePath,
         onProgress(0, displayName);
     }
 
+    qint64 bytesDone = offset;
+    auto persistPartial = [&]() {
+        if (partialBytes) {
+            *partialBytes = bytesDone;
+        }
+        if (partialSha256PrefixHex && bytesDone > 0) {
+            local.flush();
+            QString hex;
+            if (hashLocalPrefix(writePath, bytesDone, hex, nullptr)) {
+                *partialSha256PrefixHex = hex;
+            }
+        }
+    };
+
     char buffer[kXferBufSize];
     for (;;) {
         if (shouldCancel && shouldCancel(error)) {
+            persistPartial();
             sftp_close(file);
             return false;
         }
@@ -500,6 +844,7 @@ bool SftpEngine::downloadFile(const QString &remotePath,
             if (error) {
                 *error = trSftp("Cannot read remote file: %1").arg(sftpErrorMessage());
             }
+            persistPartial();
             sftp_close(file);
             return false;
         }
@@ -509,9 +854,12 @@ bool SftpEngine::downloadFile(const QString &remotePath,
                 *error = trSftp("Cannot write local file: %1")
                              .arg(localIoErrorMessage(local.errorString()));
             }
+            persistPartial();
             sftp_close(file);
             return false;
         }
+        running.addData(QByteArrayView(buffer, static_cast<qsizetype>(nbytes)));
+        bytesDone += nbytes;
         if (onProgress) {
             onProgress(nbytes, displayName);
         }
@@ -521,7 +869,52 @@ bool SftpEngine::downloadFile(const QString &remotePath,
         if (error) {
             *error = trSftp("Cannot close remote file: %1").arg(sftpErrorMessage());
         }
+        persistPartial();
         return false;
+    }
+    local.close();
+
+    if (bytesDone != remoteSize) {
+        if (error) {
+            *error = trSftp("Download size mismatch");
+        }
+        persistPartial();
+        return false;
+    }
+
+    const QString streamedHex = QString::fromLatin1(running.result().toHex());
+    QString verifyHex;
+    if (!hashLocalPrefix(writePath, bytesDone, verifyHex, error) ||
+        verifyHex.compare(streamedHex, Qt::CaseInsensitive) != 0) {
+        if (error && error->isEmpty()) {
+            *error = trSftp("Download hash mismatch");
+        }
+        persistPartial();
+        return false;
+    }
+
+    if (useFilepart) {
+        if (QFile::exists(localPath) && !QFile::remove(localPath)) {
+            if (error) {
+                *error = trSftp("Cannot replace local file: %1").arg(localPath);
+            }
+            persistPartial();
+            return false;
+        }
+        if (!QFile::rename(writePath, localPath)) {
+            if (error) {
+                *error = trSftp("Cannot finalize downloaded file: %1").arg(localPath);
+            }
+            persistPartial();
+            return false;
+        }
+    }
+
+    if (partialBytes) {
+        *partialBytes = bytesDone;
+    }
+    if (partialSha256PrefixHex) {
+        *partialSha256PrefixHex = streamedHex;
     }
     return true;
 }

@@ -4,6 +4,8 @@
 
 #include "ScpEngine.h"
 
+#include "TransferTypes.h"
+
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
@@ -315,8 +317,24 @@ bool ScpEngine::uploadFile(const QString &localPath,
                            const CancelCheck &shouldCancel,
                            const QString &remotePath,
                            const ProgressNote &onProgress,
-                           QString *error)
+                           const TransferOptions &options,
+                           QString *error,
+                           qint64 *partialBytes,
+                           QString *partialSha256PrefixHex)
 {
+    if (partialBytes) {
+        *partialBytes = 0;
+    }
+    if (partialSha256PrefixHex) {
+        partialSha256PrefixHex->clear();
+    }
+    if (options.mode == TransferWriteMode::ResumeFilepart) {
+        if (error) {
+            *error = trScp("Resume is not supported over SCP");
+        }
+        return false;
+    }
+
     if (shouldCancel && shouldCancel(error)) {
         return false;
     }
@@ -415,8 +433,24 @@ bool ScpEngine::downloadFile(const QString &remotePath,
                              const CancelCheck &shouldCancel,
                              const QString &localPath,
                              const ProgressNote &onProgress,
-                             QString *error)
+                             const TransferOptions &options,
+                             QString *error,
+                             qint64 *partialBytes,
+                             QString *partialSha256PrefixHex)
 {
+    if (partialBytes) {
+        *partialBytes = 0;
+    }
+    if (partialSha256PrefixHex) {
+        partialSha256PrefixHex->clear();
+    }
+    if (options.mode == TransferWriteMode::ResumeFilepart) {
+        if (error) {
+            *error = trScp("Resume is not supported over SCP");
+        }
+        return false;
+    }
+
     if (shouldCancel && shouldCancel(error)) {
         return false;
     }

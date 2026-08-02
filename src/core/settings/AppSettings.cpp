@@ -29,8 +29,11 @@ constexpr auto kConfirmMultilinePaste = "terminal/confirmMultilinePaste";
 constexpr auto kSmartLayout = "terminal/smartLayout";
 
 constexpr auto kAutoReconnect = "session/autoReconnect";
+constexpr auto kTransferStallTimeoutSec = "transfer/stallTimeoutSec";
+constexpr auto kAutoResumeTransfer = "transfer/autoResumeAfterReconnect";
 constexpr auto kRecentConnections = "session/recentConnectionIds";
 constexpr int kMaxRecentConnections = 8;
+constexpr int kDefaultStallTimeoutSec = 60;
 
 constexpr auto kWindowGeometry = "ui/window/geometry";
 constexpr auto kSidebarWidth = "ui/sidebar/width";
@@ -303,6 +306,26 @@ bool AppSettings::autoReconnect() const
 void AppSettings::setAutoReconnect(bool enabled)
 {
     setBoolValue(QLatin1String(kAutoReconnect), enabled);
+}
+
+int AppSettings::transferStallTimeoutSec() const
+{
+    return qMax(0, intValue(QLatin1String(kTransferStallTimeoutSec), kDefaultStallTimeoutSec));
+}
+
+void AppSettings::setTransferStallTimeoutSec(int seconds)
+{
+    setIntValue(QLatin1String(kTransferStallTimeoutSec), qMax(0, seconds));
+}
+
+bool AppSettings::autoResumeTransferAfterReconnect() const
+{
+    return boolValue(QLatin1String(kAutoResumeTransfer), true);
+}
+
+void AppSettings::setAutoResumeTransferAfterReconnect(bool enabled)
+{
+    setBoolValue(QLatin1String(kAutoResumeTransfer), enabled);
 }
 
 QByteArray AppSettings::windowGeometry() const

@@ -50,12 +50,18 @@ public:
                     const CancelCheck &shouldCancel,
                     const QString &remotePath,
                     const ProgressNote &onProgress,
-                    QString *error) override;
+                    const TransferOptions &options,
+                    QString *error,
+                    qint64 *partialBytes = nullptr,
+                    QString *partialSha256PrefixHex = nullptr) override;
     bool downloadFile(const QString &remotePath,
                       const CancelCheck &shouldCancel,
                       const QString &localPath,
                       const ProgressNote &onProgress,
-                      QString *error) override;
+                      const TransferOptions &options,
+                      QString *error,
+                      qint64 *partialBytes = nullptr,
+                      QString *partialSha256PrefixHex = nullptr) override;
 
 private:
     QString sessionError() const;

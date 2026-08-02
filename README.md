@@ -23,7 +23,8 @@ Easy SSH is designed around the SSH protocol itself: each capability maps to a f
 **File transfer**
 
 - **SFTP** — browse, upload / download, mkdir, rename, delete; Open With + auto-upload on save
-- **SCP** *(planned)*
+- **SFTP resume** — interrupted transfers continue from `.filepart` with SHA-256 integrity checks
+- **SCP** — fallback when SFTP is unavailable (no resume)
 
 **Forwarding & tunnels**
 

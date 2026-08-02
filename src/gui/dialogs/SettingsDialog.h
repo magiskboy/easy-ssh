@@ -67,6 +67,8 @@ private:
 
     // General
     QCheckBox *m_autoReconnect = nullptr;
+    QSpinBox *m_stallTimeout = nullptr;
+    QCheckBox *m_autoResumeTransfer = nullptr;
 
     // Shortcuts
     QTreeWidget *m_shortcutsTree = nullptr;

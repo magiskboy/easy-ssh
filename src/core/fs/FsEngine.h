@@ -7,6 +7,7 @@
 #pragma once
 
 #include "SftpTypes.h"
+#include "TransferTypes.h"
 
 #include <QString>
 #include <QVector>
@@ -31,6 +32,7 @@ public:
         Remove = 1 << 3,
         Canonicalize = 1 << 4,
         Transfer = 1 << 5,
+        ResumeTransfer = 1 << 6,
     };
     Q_DECLARE_FLAGS(Capabilities, Capability)
 
@@ -55,16 +57,25 @@ public:
     virtual bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) = 0;
     virtual bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) = 0;
 
+    /// Upload. For Fresh/Resume filepart modes, remotePath is the *final* path;
+    /// the engine writes to remotePath + ".filepart" and renames on success.
+    /// On partial failure with filepart modes, *partialBytes / *partialSha256PrefixHex are set.
     virtual bool uploadFile(const QString &localPath,
                             const CancelCheck &shouldCancel,
                             const QString &remotePath,
                             const ProgressNote &onProgress,
-                            QString *error) = 0;
+                            const TransferOptions &options,
+                            QString *error,
+                            qint64 *partialBytes = nullptr,
+                            QString *partialSha256PrefixHex = nullptr) = 0;
     virtual bool downloadFile(const QString &remotePath,
                               const CancelCheck &shouldCancel,
                               const QString &localPath,
                               const ProgressNote &onProgress,
-                              QString *error) = 0;
+                              const TransferOptions &options,
+                              QString *error,
+                              qint64 *partialBytes = nullptr,
+                              QString *partialSha256PrefixHex = nullptr) = 0;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(FsEngine::Capabilities)

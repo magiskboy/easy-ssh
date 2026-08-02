@@ -70,6 +70,14 @@ public:
     bool autoReconnect() const;
     void setAutoReconnect(bool enabled);
 
+    // --- Transfers ---
+    /// Seconds without progress before aborting a transfer; 0 disables.
+    int transferStallTimeoutSec() const;
+    void setTransferStallTimeoutSec(int seconds);
+    /// When true, resume a persisted SFTP .filepart job once after reconnect.
+    bool autoResumeTransferAfterReconnect() const;
+    void setAutoResumeTransferAfterReconnect(bool enabled);
+
     // --- Main window ---
     QByteArray windowGeometry() const;
     void setWindowGeometry(const QByteArray &geometry);

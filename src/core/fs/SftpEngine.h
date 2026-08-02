@@ -8,6 +8,9 @@
 
 #include "FsEngine.h"
 
+#include <QCryptographicHash>
+#include <QFile>
+
 #include <libssh/sftp.h>
 
 /**
@@ -43,12 +46,18 @@ public:
                     const CancelCheck &shouldCancel,
                     const QString &remotePath,
                     const ProgressNote &onProgress,
-                    QString *error) override;
+                    const TransferOptions &options,
+                    QString *error,
+                    qint64 *partialBytes = nullptr,
+                    QString *partialSha256PrefixHex = nullptr) override;
     bool downloadFile(const QString &remotePath,
                       const CancelCheck &shouldCancel,
                       const QString &localPath,
                       const ProgressNote &onProgress,
-                      QString *error) override;
+                      const TransferOptions &options,
+                      QString *error,
+                      qint64 *partialBytes = nullptr,
+                      QString *partialSha256PrefixHex = nullptr) override;
 
 private:
     enum class EntryType : uint8_t
@@ -64,6 +73,16 @@ private:
     static QString localIoErrorMessage(const QString &qtErrorString);
     static QString formatPermissions(uint32_t permissions, EntryType type);
     static QString joinRemotePath(const QString &dir, const QString &name);
+
+    bool
+    hashLocalPrefix(const QString &localPath, qint64 length, QString &hexOut, QString *error) const;
+    bool hashRemotePrefix(const QString &remotePath,
+                          qint64 length,
+                          QString &hexOut,
+                          QString *error) const;
+    bool hashLocalFile(const QString &localPath, QString &hexOut, QString *error) const;
+    bool
+    feedHashFromLocal(QFile &local, qint64 length, QCryptographicHash *hash, QString *error) const;
 
     sftp_session m_sftp = nullptr;
     ssh_session m_session = nullptr;

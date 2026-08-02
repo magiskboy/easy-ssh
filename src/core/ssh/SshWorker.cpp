@@ -4,6 +4,8 @@
 
 #include "SshWorker.h"
 
+#include "core/fs/TransferJobStore.h"
+#include "core/settings/AppSettings.h"
 #include "core/ssh/AgentForwardHost.h"
 #include "core/tunnel/RemoteTunnelSession.h"
 #include "core/util/Logging.h"
@@ -11,10 +13,27 @@
 #include <QFileInfo>
 #include <QTimer>
 
+#include <algorithm>
 #include <libssh/libssh.h>
+
+namespace
+{
+void filterTransferPartials(QVector<RemoteEntry> *entries)
+{
+    if (!entries) {
+        return;
+    }
+    entries->erase(
+        std::remove_if(entries->begin(),
+                       entries->end(),
+                       [](const RemoteEntry &entry) { return isTransferFilepartName(entry.name); }),
+        entries->end());
+}
+} // namespace
 
 SshWorker::SshWorker(QObject *parent) : QObject(parent)
 {
+    qRegisterMetaType<TransferJob>("TransferJob");
     m_fs.setProgressCallback([this](qint64 done, qint64 total, const QString &name) {
         emit sftpProgress(done, total, name);
     });
@@ -66,6 +85,8 @@ void SshWorker::connectToHost(const Connection &connection,
     }
 
     QString sftpFailure;
+    m_fs.setConnectionId(connection.id);
+    m_fs.setStallTimeoutSec(AppSettings::instance().transferStallTimeoutSec());
     m_fs.setShellCommands(connection.shellCommands);
     const bool fsReady = m_fs.open(m_session.handle(), &sftpFailure);
 
@@ -77,6 +98,7 @@ void SshWorker::connectToHost(const Connection &connection,
 
     if (fsReady) {
         emit remoteFsOpened(static_cast<int>(m_fs.backend()));
+        emit transferResumableChanged(TransferJobStore::loadLatest(connection.id).has_value());
     } else {
         qCWarning(lcSsh) << "Remote FS unavailable:" << sftpFailure;
         emit sftpUnavailable(sftpFailure);
@@ -223,6 +245,10 @@ void SshWorker::disconnectSession()
         m_ioTimer->stop();
     }
 
+    if (m_running && m_fs.isOpen()) {
+        m_fs.requestInterrupt(TransferEndReason::Interrupted, tr("Connection lost"));
+    }
+
     const bool wasRunning = m_running;
     cleanup();
 
@@ -254,7 +280,34 @@ void SshWorker::listDirectory(const QString &path)
         return;
     }
 
+    filterTransferPartials(&entries);
     emit directoryListed(path, entries);
+}
+
+void SshWorker::emitTransferFailure(const QString &error)
+{
+    if (m_fs.wasCanceled()) {
+        emit sftpCanceled(error.isEmpty() ? tr("Transfer canceled — partial kept") : error);
+        emit transferResumableChanged(m_fs.lastInterruptedJob().has_value());
+        return;
+    }
+    if (m_fs.wasInterrupted()) {
+        const auto job = m_fs.lastInterruptedJob();
+        if (job) {
+            emit sftpInterrupted(*job);
+            emit transferResumableChanged(true);
+            return;
+        }
+        emit sftpError(error.isEmpty() ? tr("Transfer interrupted") : error);
+        return;
+    }
+    if (m_fs.lastEndReason() == TransferEndReason::HashMismatch) {
+        emit sftpError(error.isEmpty() ? tr("Transfer hash mismatch") : error);
+        emit transferResumableChanged(m_fs.lastInterruptedJob().has_value());
+        return;
+    }
+    emit sftpError(error);
+    emit transferResumableChanged(m_fs.lastInterruptedJob().has_value());
 }
 
 void SshWorker::createDirectory(const QString &path)
@@ -314,15 +367,12 @@ void SshWorker::uploadFiles(const QStringList &localPaths, const QString &remote
 
     QString error;
     if (!m_fs.uploadFiles(localPaths, remoteDir, &error)) {
-        if (m_fs.wasCanceled()) {
-            emit sftpCanceled(error);
-        } else {
-            emit sftpError(error);
-        }
+        emitTransferFailure(error);
         return;
     }
 
     emit sftpFinished(tr("Upload finished (%1 item(s))").arg(localPaths.size()));
+    emit transferResumableChanged(false);
 }
 
 void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath)
@@ -334,11 +384,7 @@ void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath
 
     QString error;
     if (!m_fs.uploadFileTo(localPath, remotePath, &error)) {
-        if (m_fs.wasCanceled()) {
-            emit sftpCanceled(error);
-        } else {
-            emit sftpError(error);
-        }
+        emitTransferFailure(error);
         return;
     }
 
@@ -354,20 +400,50 @@ void SshWorker::downloadPaths(const QStringList &remotePaths, const QString &loc
 
     QString error;
     if (!m_fs.downloadPaths(remotePaths, localDir, &error)) {
-        if (m_fs.wasCanceled()) {
-            emit sftpCanceled(error);
-        } else {
-            emit sftpError(error);
-        }
+        emitTransferFailure(error);
         return;
     }
 
     emit sftpFinished(tr("Download finished (%1 item(s))").arg(remotePaths.size()));
+    emit transferResumableChanged(false);
 }
 
 void SshWorker::cancelTransfer()
 {
     m_fs.requestCancel();
+}
+
+void SshWorker::interruptTransfer(const QString &message)
+{
+    m_fs.requestInterrupt(TransferEndReason::Interrupted, message);
+}
+
+void SshWorker::resumeInterruptedTransfer()
+{
+    if (!m_running || !m_fs.isOpen()) {
+        emit sftpError(tr("SFTP is not available"));
+        return;
+    }
+
+    QString error;
+    if (!m_fs.resumeInterruptedTransfer(&error)) {
+        emitTransferFailure(error);
+        return;
+    }
+
+    emit sftpFinished(tr("Resumed transfer finished"));
+    emit transferResumableChanged(false);
+}
+
+void SshWorker::discardInterruptedTransfer()
+{
+    QString error;
+    if (!m_fs.discardInterruptedTransfer(&error)) {
+        emit sftpError(error);
+        return;
+    }
+    emit transferResumableChanged(false);
+    emit sftpFinished(tr("Discarded interrupted transfer"));
 }
 
 void SshWorker::canonicalizePath(const QString &path)

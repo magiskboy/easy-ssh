@@ -217,13 +217,24 @@ QWidget *SettingsDialog::createGeneralPage()
     auto *sessionGroup = new QGroupBox(tr("Session"), page);
     auto *sessionLayout = new QVBoxLayout(sessionGroup);
     m_autoReconnect = new QCheckBox(tr("Auto reconnect when connection is lost"), sessionGroup);
-    auto *hint = new QLabel(tr("Auto reconnect will be used in a future update."), sessionGroup);
-    hint->setWordWrap(true);
-    hint->setEnabled(false);
     sessionLayout->addWidget(m_autoReconnect);
-    sessionLayout->addWidget(hint);
+
+    auto *transferGroup = new QGroupBox(tr("Transfers"), page);
+    auto *transferForm = new QFormLayout(transferGroup);
+    m_stallTimeout = new QSpinBox(transferGroup);
+    m_stallTimeout->setRange(0, 3600);
+    m_stallTimeout->setSuffix(tr(" sec"));
+    m_stallTimeout->setSpecialValueText(tr("Disabled"));
+    m_stallTimeout->setToolTip(
+        tr("Abort a transfer if no bytes progress for this long. "
+           "Blocking SFTP I/O may delay detection until the next progress tick."));
+    transferForm->addRow(tr("Stall timeout"), m_stallTimeout);
+    m_autoResumeTransfer =
+        new QCheckBox(tr("Auto-resume interrupted transfer after reconnect"), transferGroup);
+    transferForm->addRow(m_autoResumeTransfer);
 
     layout->addWidget(sessionGroup);
+    layout->addWidget(transferGroup);
     layout->addStretch(1);
     return page;
 }
@@ -283,6 +294,8 @@ void SettingsDialog::loadFromSettings()
     m_smartLayout->setChecked(s.smartLayout());
 
     m_autoReconnect->setChecked(s.autoReconnect());
+    m_stallTimeout->setValue(s.transferStallTimeoutSec());
+    m_autoResumeTransfer->setChecked(s.autoResumeTransferAfterReconnect());
 
     loadShortcutsFromSettings();
 }
@@ -311,6 +324,8 @@ void SettingsDialog::saveToSettings()
     s.setSmartLayout(m_smartLayout->isChecked());
 
     s.setAutoReconnect(m_autoReconnect->isChecked());
+    s.setTransferStallTimeoutSec(m_stallTimeout->value());
+    s.setAutoResumeTransferAfterReconnect(m_autoResumeTransfer->isChecked());
 
     saveShortcutsToSettings();
 }

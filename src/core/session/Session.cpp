@@ -4,12 +4,15 @@
 
 #include "Session.h"
 
+#include "core/fs/TransferJobStore.h"
+#include "core/settings/AppSettings.h"
 #include "core/tunnel/TunnelStore.h"
 #include "core/util/Logging.h"
 
 #include <QDateTime>
 #include <QMetaObject>
 #include <QThread>
+#include <QTimer>
 
 namespace
 {
@@ -104,6 +107,10 @@ void Session::connectTransport(int cols, int rows)
     emit fileChanged();
     emit tunnelsChanged();
 
+    m_reconnectCols = cols;
+    m_reconnectRows = rows;
+    m_autoResumeAttempted = false;
+
     setState(SessionState::Connecting);
     emit statusMessage(tr("Connecting to %1…").arg(displayName()), kStatusLevel);
 
@@ -139,6 +146,9 @@ void Session::disconnectTransport()
         return;
     }
 
+    m_userDisconnect = true;
+    m_autoReconnectAttempted = false;
+
     if (m_worker == nullptr) {
         for (ShellChannelState &shell : m_shells) {
             shell.state = ChannelState::Closed;
@@ -159,6 +169,9 @@ void Session::disconnectTransport()
 
 void Session::reconnect(int cols, int rows)
 {
+    m_userDisconnect = false;
+    m_reconnectCols = cols;
+    m_reconnectRows = rows;
     if (m_state == SessionState::Connecting) {
         return;
     }
@@ -171,6 +184,7 @@ void Session::reconnect(int cols, int rows)
         teardownWorker();
     }
     m_shuttingDown = false;
+    m_userDisconnect = false;
     connectTransport(cols, rows);
 }
 
@@ -402,6 +416,31 @@ void Session::cancelTransfer()
     m_worker->cancelTransfer();
 }
 
+void Session::resumeInterruptedTransfer()
+{
+    if (m_state != SessionState::Connected || m_worker == nullptr) {
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker,
+        [worker = m_worker]() { worker->resumeInterruptedTransfer(); },
+        Qt::QueuedConnection);
+}
+
+void Session::discardInterruptedTransfer()
+{
+    if (m_worker == nullptr) {
+        m_hasResumableTransfer = false;
+        emit transferResumableChanged(false);
+        TransferJobStore::removeAllForConnection(m_connection.id);
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker,
+        [worker = m_worker]() { worker->discardInterruptedTransfer(); },
+        Qt::QueuedConnection);
+}
+
 void Session::startTunnel(const TunnelDefinition &def)
 {
     if (m_state != SessionState::Connected || m_worker == nullptr) {
@@ -528,13 +567,23 @@ void Session::wireWorker()
     connect(m_worker, &SshWorker::sftpFinished, this, &Session::sftpFinished);
     connect(m_worker, &SshWorker::sftpError, this, &Session::sftpError);
     connect(m_worker, &SshWorker::sftpCanceled, this, &Session::sftpCanceled);
+    connect(m_worker, &SshWorker::sftpInterrupted, this, [this](const TransferJob &job) {
+        m_hasResumableTransfer = true;
+        emit sftpInterrupted(job);
+        emit transferResumableChanged(true);
+    });
     connect(m_worker, &SshWorker::sftpProgress, this, &Session::sftpProgress);
+    connect(m_worker, &SshWorker::transferResumableChanged, this, [this](bool resumable) {
+        m_hasResumableTransfer = resumable;
+        emit transferResumableChanged(resumable);
+    });
     connect(m_worker, &SshWorker::remoteFsOpened, this, [this](int backend) {
         m_file.available = true;
         m_file.state = ChannelState::Open;
         m_file.unavailableReason.clear();
         m_file.backend = static_cast<FsBackend>(backend);
         emit fileChanged();
+        tryAutoResumeTransfer();
     });
     connect(m_worker, &SshWorker::sftpUnavailable, this, [this](const QString &message) {
         m_file.available = false;
@@ -597,6 +646,7 @@ void Session::onWorkerConnected(const QUuid &initialShellId)
         emit shellsChanged();
     }
 
+    m_autoReconnectAttempted = false;
     setState(SessionState::Connected);
     emit statusMessage(tr("Connected: %1").arg(displayName()), kSuccessLevel);
     startEnabledTunnels();
@@ -620,6 +670,9 @@ void Session::onWorkerDisconnected()
     emit fileChanged();
     emit statusMessage(tr("Disconnected: %1").arg(displayName()), kWarningLevel);
 
+    const bool shouldAutoReconnect =
+        !m_userDisconnect && AppSettings::instance().autoReconnect() && !m_autoReconnectAttempted;
+
     m_shuttingDown = true;
     if (m_worker != nullptr) {
         disconnect(m_worker, nullptr, this, nullptr);
@@ -633,6 +686,45 @@ void Session::onWorkerDisconnected()
         }
         m_thread = nullptr;
     }
+
+    if (shouldAutoReconnect) {
+        scheduleAutoReconnect();
+    }
+    m_userDisconnect = false;
+}
+
+void Session::scheduleAutoReconnect()
+{
+    m_autoReconnectAttempted = true;
+    emit statusMessage(tr("Reconnecting to %1…").arg(displayName()), kStatusLevel);
+    QTimer::singleShot(1000, this, [this]() {
+        if (m_state != SessionState::Disconnected && m_state != SessionState::Failed) {
+            return;
+        }
+        m_shuttingDown = false;
+        connectTransport(m_reconnectCols, m_reconnectRows);
+    });
+}
+
+void Session::tryAutoResumeTransfer()
+{
+    if (!AppSettings::instance().autoResumeTransferAfterReconnect()) {
+        return;
+    }
+    if (m_autoResumeAttempted) {
+        return;
+    }
+    if (m_file.backend != FsBackend::Sftp) {
+        return;
+    }
+    if (!TransferJobStore::loadLatest(m_connection.id)) {
+        return;
+    }
+    m_autoResumeAttempted = true;
+    m_hasResumableTransfer = true;
+    emit transferResumableChanged(true);
+    emit statusMessage(tr("Resuming interrupted transfer…"), kStatusLevel);
+    resumeInterruptedTransfer();
 }
 
 void Session::onWorkerError(const QString &message)

@@ -7,6 +7,7 @@
 #pragma once
 
 #include "core/fs/SftpTypes.h"
+#include "core/fs/TransferTypes.h"
 #include "gui/ErrorNotifier.h"
 
 #include <QList>
@@ -55,6 +56,7 @@ private slots:
     void onSftpFinished(const QString &message);
     void onSftpError(const QString &message);
     void onSftpCanceled(const QString &message);
+    void onSftpInterrupted(const TransferJob &job);
     void onSftpProgress(qint64 bytesDone, qint64 bytesTotal, const QString &currentName);
     void onDirectoryListed(const QString &path, const QVector<RemoteEntry> &entries);
     void onCustomContextMenu(const QPoint &pos);
@@ -63,6 +65,9 @@ private slots:
     void copySelectedPath();
     void updateActionsEnabled();
     void cancelActiveTransfer();
+    void resumeInterruptedTransfer();
+    void discardInterruptedTransfer();
+    void onTransferResumableChanged(bool resumable);
 
 private:
     struct OpenWithItem
@@ -79,13 +84,19 @@ private:
     void startUpload(const QStringList &localPaths);
     void confirmConflictsAndUpload(const QStringList &localPaths,
                                    const QString &remoteDir,
-                                   const QStringList &conflicts);
+                                   const QStringList &conflicts,
+                                   const QStringList &filepartConflicts);
     void beginUpload(const QStringList &localPaths, const QString &remoteDir);
     QStringList conflictNamesInEntries(const QStringList &localPaths,
                                        const QVector<RemoteEntry> &entries) const;
+    QStringList filepartConflictNames(const QStringList &localPaths,
+                                      const QVector<RemoteEntry> &entries) const;
     void startTransferProgress(const QString &label);
+    void showInterruptedTransferUi(const QString &message);
     void finishTransferProgress();
     void updateTransferProgressText();
+    void updateTransferActionButtons();
+    bool promptLocalDownloadConflicts(const QStringList &remotePaths, const QString &localDir);
     void setIdleState(const QString &message);
     void setOpInFlight(bool inFlight);
     void showTree(bool show);
@@ -109,6 +120,8 @@ private:
     QWidget *m_transferBar = nullptr;
     QProgressBar *m_transferProgress = nullptr;
     QPushButton *m_transferCancelButton = nullptr;
+    QPushButton *m_transferResumeButton = nullptr;
+    QPushButton *m_transferDiscardButton = nullptr;
     OpenFileTracker *m_openTracker = nullptr;
     QAction *m_refreshAction = nullptr;
     QAction *m_uploadFilesAction = nullptr;
@@ -134,4 +147,5 @@ private:
     bool m_openWithActive = false;
     bool m_awaitingSftpResult = false;
     bool m_awaitingUploadListing = false;
+    bool m_transferInterrupted = false;
 };
