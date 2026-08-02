@@ -473,26 +473,6 @@ void MainWindow::setupMenus()
     connect(logAction, &QAction::triggered, this, &MainWindow::openLogFile);
 
     windowsMenu->addSeparator();
-    auto *disconnectAction = windowsMenu->addAction(tr("&Disconnect"));
-    registerAction(QStringLiteral("connection.disconnect"), disconnectAction);
-    connect(disconnectAction,
-            &QAction::triggered,
-            m_sessionTabs,
-            &SessionTabWidget::disconnectCurrentSession);
-
-    auto *reconnectAction = windowsMenu->addAction(tr("&Reconnect"));
-    registerAction(QStringLiteral("session.reconnect"), reconnectAction);
-    connect(reconnectAction,
-            &QAction::triggered,
-            m_sessionTabs,
-            &SessionTabWidget::reconnectCurrentSession);
-
-    auto *closeSessionAction = windowsMenu->addAction(tr("&Close Session"));
-    registerAction(QStringLiteral("session.closeSession"), closeSessionAction);
-    connect(closeSessionAction,
-            &QAction::triggered,
-            m_sessionTabs,
-            &SessionTabWidget::closeCurrentSession);
 
     auto *nextTabAction = windowsMenu->addAction(tr("&Next Tab"));
     registerAction(QStringLiteral("session.nextTab"), nextTabAction);

@@ -52,12 +52,9 @@ constexpr ShortcutDef kShortcutDefs[] = {
     {"general.about", "General", "About", "F1"},
 
     {"session.newSession", "Terminal", "New Shell", "Ctrl+T"},
-    {"session.closeSession", "Windows", "Close Session", "Ctrl+W"},
     {"session.nextTab", "Windows", "Next Tab", "Ctrl+Tab"},
     {"session.previousTab", "Windows", "Previous Tab", "Ctrl+Shift+Tab"},
-    {"session.reconnect", "Windows", "Reconnect", "Ctrl+R"},
     {"shell.close", "Terminal", "Close Shell", "Ctrl+Shift+W"},
-    {"connection.disconnect", "Windows", "Disconnect", "Ctrl+Shift+D"},
 
     {"terminal.copy", "Terminal", "Copy", "Ctrl+Shift+C"},
     {"terminal.paste", "Terminal", "Paste", "Ctrl+Shift+V"},
