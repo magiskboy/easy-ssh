@@ -407,11 +407,12 @@ void MainWindow::setupMenus()
     m_connectionsListMenu = connectionsMenu->addMenu(tr("&List"));
     rebuildConnectionsListMenu();
 
-    // No Terminal menubar entry — actions live on the shell ADS tab context menu
-    // (and sidebar). Keep QActions here so keyboard shortcuts still work.
+    auto *shellMenu = menuBar()->addMenu(tr("&Shell"));
+
     auto addTerminalShortcut = [this](const QString &text, auto method, const QString &actionId) {
         auto *action = new QAction(text, this);
         registerAction(actionId, action);
+        addAction(action); // Required for shortcuts when the action is not in a menu.
         connect(action, &QAction::triggered, this, [this, method]() {
             if (auto *page = m_sessionTabs->activeSessionPage()) {
                 (page->*method)();
@@ -421,9 +422,24 @@ void MainWindow::setupMenus()
         return action;
     };
 
-    addTerminalShortcut(tr("&Copy"), &SessionPage::copySelection, QStringLiteral("terminal.copy"));
-    addTerminalShortcut(
-        tr("&Paste"), &SessionPage::pasteClipboard, QStringLiteral("terminal.paste"));
+    auto *copyAction = shellMenu->addAction(tr("&Copy"));
+    registerAction(QStringLiteral("terminal.copy"), copyAction);
+    connect(copyAction, &QAction::triggered, this, [this]() {
+        if (auto *page = m_sessionTabs->activeSessionPage()) {
+            page->copySelection();
+        }
+    });
+    m_terminalActions.append(copyAction);
+
+    auto *pasteAction = shellMenu->addAction(tr("&Paste"));
+    registerAction(QStringLiteral("terminal.paste"), pasteAction);
+    connect(pasteAction, &QAction::triggered, this, [this]() {
+        if (auto *page = m_sessionTabs->activeSessionPage()) {
+            page->pasteClipboard();
+        }
+    });
+    m_terminalActions.append(pasteAction);
+
     addTerminalShortcut(
         tr("&Clear Screen"), &SessionPage::clearScreen, QStringLiteral("terminal.clearScreen"));
     addTerminalShortcut(
@@ -436,6 +452,7 @@ void MainWindow::setupMenus()
 
     auto *newShellAction = new QAction(tr("&New Shell"), this);
     registerAction(QStringLiteral("session.newSession"), newShellAction);
+    addAction(newShellAction);
     connect(newShellAction, &QAction::triggered, this, [this]() {
         if (Session *session = m_sessionTabs->activeSession()) {
             session->newShell();
@@ -445,6 +462,7 @@ void MainWindow::setupMenus()
 
     auto *closeShellAction = new QAction(tr("Close &Shell"), this);
     registerAction(QStringLiteral("shell.close"), closeShellAction);
+    addAction(closeShellAction);
     connect(closeShellAction, &QAction::triggered, this, [this]() {
         if (Session *session = m_sessionTabs->activeSession()) {
             const QUuid id = session->activeShellId();
