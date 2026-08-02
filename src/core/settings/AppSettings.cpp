@@ -46,6 +46,7 @@ struct ShortcutDef
 
 constexpr ShortcutDef kShortcutDefs[] = {
     {"general.newConnection", "General", "New Connection", "Ctrl+N"},
+    {"general.connectionManager", "General", "Connection Manager", "Ctrl+Shift+O"},
     {"general.searchConnection", "General", "Search Connection", "Ctrl+F"},
     {"general.settings", "General", "Settings", "Ctrl+,"},
     {"general.shortcuts", "General", "Keyboard Shortcuts", "Ctrl+Shift+,"},

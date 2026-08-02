@@ -5,6 +5,7 @@
 #include "ConnectionListWidget.h"
 
 #include "ConnectionDialog.h"
+#include "ConnectionSecretHelper.h"
 #include "core/connection/SecretStore.h"
 #include "core/tunnel/Tunnel.h"
 #include "core/tunnel/TunnelStore.h"
@@ -87,32 +88,36 @@ void ConnectionListWidget::createConnection()
         return;
     }
 
-    ConnectionDialog dialog(ConnectionDialog::Mode::Create, this);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
+    // Parent to the top-level window (list widget itself may be hidden).
+    auto *dialog = new ConnectionDialog(ConnectionDialog::Mode::Create, window());
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        const Connection connection = dialog->connection();
+        if (!m_model->add(connection)) {
+            ErrorNotifier::notify(this,
+                                  tr("Error"),
+                                  tr("Failed to create connection."),
+                                  ErrorNotifier::Level::Warning);
+            return;
+        }
 
-    const Connection connection = dialog.connection();
-    if (!m_model->add(connection)) {
-        ErrorNotifier::notify(
-            this, tr("Error"), tr("Failed to create connection."), ErrorNotifier::Level::Warning);
-        return;
-    }
+        persistSecrets(connection,
+                       AuthType::Password,
+                       false,
+                       dialog->password(),
+                       dialog->passwordProvided(),
+                       dialog->passphrase(),
+                       dialog->passphraseProvided(),
+                       dialog->gatewayPassword(),
+                       dialog->gatewayPasswordProvided(),
+                       dialog->gatewayPassphrase(),
+                       dialog->gatewayPassphraseProvided());
 
-    persistSecrets(connection,
-                   AuthType::Password,
-                   false,
-                   dialog.password(),
-                   dialog.passwordProvided(),
-                   dialog.passphrase(),
-                   dialog.passphraseProvided(),
-                   dialog.gatewayPassword(),
-                   dialog.gatewayPasswordProvided(),
-                   dialog.gatewayPassphrase(),
-                   dialog.gatewayPassphraseProvided());
-
-    emit statusMessage(tr("Created connection: %1").arg(connection.name),
-                       ErrorNotifier::Level::Success);
+        emit statusMessage(tr("Created connection: %1").arg(connection.name),
+                           ErrorNotifier::Level::Success);
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 void ConnectionListWidget::editSelectedConnection()
@@ -142,78 +147,81 @@ void ConnectionListWidget::editConnectionById(const QUuid &id)
     const AuthType previousAuthType = existing->authType;
     const Connection before = *existing;
 
-    ConnectionDialog dialog(ConnectionDialog::Mode::Edit, this);
-    dialog.setConnection(*existing);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const Connection connection = dialog.connection();
-    if (!m_model->update(connection)) {
-        ErrorNotifier::notify(
-            this, tr("Error"), tr("Failed to update connection."), ErrorNotifier::Level::Warning);
-        return;
-    }
-
-    persistSecrets(connection,
-                   previousAuthType,
-                   true,
-                   dialog.password(),
-                   dialog.passwordProvided(),
-                   dialog.passphrase(),
-                   dialog.passphraseProvided(),
-                   dialog.gatewayPassword(),
-                   dialog.gatewayPasswordProvided(),
-                   dialog.gatewayPassphrase(),
-                   dialog.gatewayPassphraseProvided());
-
-    emit statusMessage(tr("Updated connection: %1").arg(connection.name),
-                       ErrorNotifier::Level::Success);
-
-    const bool secretsTouched = dialog.passwordProvided() || dialog.passphraseProvided() ||
-                                dialog.gatewayPasswordProvided() ||
-                                dialog.gatewayPassphraseProvided();
-    const bool connectivityChanged =
-        before.host != connection.host || before.port != connection.port ||
-        before.username != connection.username || before.authType != connection.authType ||
-        before.privateKeyPath != connection.privateKeyPath ||
-        before.proxyMode != connection.proxyMode ||
-        before.usesJumpHost() != connection.usesJumpHost() ||
-        before.proxyCommand != connection.proxyCommand ||
-        before.jumpHops.size() != connection.jumpHops.size() ||
-        before.agentForwarding != connection.agentForwarding || secretsTouched;
-
-    bool targetSecretUpdated = false;
-    QString targetSecret;
-    if (connection.authType == AuthType::Password && dialog.passwordProvided()) {
-        targetSecretUpdated = true;
-        targetSecret = dialog.password();
-    } else if (connection.authType == AuthType::PrivateKey && dialog.passphraseProvided()) {
-        targetSecretUpdated = true;
-        targetSecret = dialog.passphrase();
-    }
-
-    bool gatewaySecretUpdated = false;
-    QString gatewaySecret;
-    const bool usesCustomGateway =
-        connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials;
-    if (usesCustomGateway) {
-        const AuthType gatewayAuth = connection.jumpHops.first().authType;
-        if (gatewayAuth == AuthType::Password && dialog.gatewayPasswordProvided()) {
-            gatewaySecretUpdated = true;
-            gatewaySecret = dialog.gatewayPassword();
-        } else if (gatewayAuth == AuthType::PrivateKey && dialog.gatewayPassphraseProvided()) {
-            gatewaySecretUpdated = true;
-            gatewaySecret = dialog.gatewayPassphrase();
+    auto *dialog = new ConnectionDialog(ConnectionDialog::Mode::Edit, window());
+    dialog->setConnection(*existing);
+    connect(dialog, &QDialog::accepted, this, [this, dialog, previousAuthType, before]() {
+        const Connection connection = dialog->connection();
+        if (!m_model->update(connection)) {
+            ErrorNotifier::notify(this,
+                                  tr("Error"),
+                                  tr("Failed to update connection."),
+                                  ErrorNotifier::Level::Warning);
+            return;
         }
-    }
 
-    emit connectionEdited(connection.id,
-                          connectivityChanged,
-                          targetSecretUpdated,
-                          targetSecret,
-                          gatewaySecretUpdated,
-                          gatewaySecret);
+        persistSecrets(connection,
+                       previousAuthType,
+                       true,
+                       dialog->password(),
+                       dialog->passwordProvided(),
+                       dialog->passphrase(),
+                       dialog->passphraseProvided(),
+                       dialog->gatewayPassword(),
+                       dialog->gatewayPasswordProvided(),
+                       dialog->gatewayPassphrase(),
+                       dialog->gatewayPassphraseProvided());
+
+        emit statusMessage(tr("Updated connection: %1").arg(connection.name),
+                           ErrorNotifier::Level::Success);
+
+        const bool secretsTouched = dialog->passwordProvided() || dialog->passphraseProvided() ||
+                                    dialog->gatewayPasswordProvided() ||
+                                    dialog->gatewayPassphraseProvided();
+        const bool connectivityChanged =
+            before.host != connection.host || before.port != connection.port ||
+            before.username != connection.username || before.authType != connection.authType ||
+            before.privateKeyPath != connection.privateKeyPath ||
+            before.proxyMode != connection.proxyMode ||
+            before.usesJumpHost() != connection.usesJumpHost() ||
+            before.proxyCommand != connection.proxyCommand ||
+            before.jumpHops.size() != connection.jumpHops.size() ||
+            before.agentForwarding != connection.agentForwarding || secretsTouched;
+
+        bool targetSecretUpdated = false;
+        QString targetSecret;
+        if (connection.authType == AuthType::Password && dialog->passwordProvided()) {
+            targetSecretUpdated = true;
+            targetSecret = dialog->password();
+        } else if (connection.authType == AuthType::PrivateKey && dialog->passphraseProvided()) {
+            targetSecretUpdated = true;
+            targetSecret = dialog->passphrase();
+        }
+
+        bool gatewaySecretUpdated = false;
+        QString gatewaySecret;
+        const bool usesCustomGateway =
+            connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials;
+        if (usesCustomGateway) {
+            const AuthType gatewayAuth = connection.jumpHops.first().authType;
+            if (gatewayAuth == AuthType::Password && dialog->gatewayPasswordProvided()) {
+                gatewaySecretUpdated = true;
+                gatewaySecret = dialog->gatewayPassword();
+            } else if (gatewayAuth == AuthType::PrivateKey && dialog->gatewayPassphraseProvided()) {
+                gatewaySecretUpdated = true;
+                gatewaySecret = dialog->gatewayPassphrase();
+            }
+        }
+
+        emit connectionEdited(connection.id,
+                              connectivityChanged,
+                              targetSecretUpdated,
+                              targetSecret,
+                              gatewaySecretUpdated,
+                              gatewaySecret);
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 void ConnectionListWidget::deleteSelectedConnection()
@@ -442,6 +450,10 @@ void ConnectionListWidget::onContextMenu(const QPoint &pos)
     menu.addAction(
             tr("Import to Easy SSH…"), this, &ConnectionListWidget::importSelectedFromSshConfig)
         ->setEnabled(isConfig);
+    menu.addAction(tr("Manage…"), this, [this]() {
+        const auto id = selectedConnectionId();
+        emit manageConnectionsRequested(id.value_or(QUuid()));
+    });
     menu.addSeparator();
     menu.addAction(tr("Reload SSH Config"), this, &ConnectionListWidget::reloadSshConfig);
     menu.addSeparator();
@@ -496,56 +508,18 @@ void ConnectionListWidget::persistSecrets(const Connection &connection,
                                           const QString &gatewayPassphrase,
                                           bool gatewayPassphraseProvided)
 {
-    if (!m_secretStore) {
-        return;
-    }
-
-    if (isEdit && previousAuthType != connection.authType) {
-        if (previousAuthType == AuthType::Password) {
-            m_secretStore->deleteSecret(connection.id, SecretStore::Kind::Password);
-        } else {
-            m_secretStore->deleteSecret(connection.id, SecretStore::Kind::Passphrase);
-        }
-    }
-
-    if (connection.authType == AuthType::Password) {
-        if (passwordProvided) {
-            m_secretStore->storeSecret(connection.id, SecretStore::Kind::Password, password);
-        }
-        if (isEdit) {
-            m_secretStore->deleteSecret(connection.id, SecretStore::Kind::Passphrase);
-        }
-    } else {
-        if (passphraseProvided) {
-            m_secretStore->storeSecret(connection.id, SecretStore::Kind::Passphrase, passphrase);
-        }
-        if (isEdit) {
-            m_secretStore->deleteSecret(connection.id, SecretStore::Kind::Password);
-        }
-    }
-
-    const bool usesCustomGateway =
-        connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials;
-    if (!usesCustomGateway) {
-        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassword);
-        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassphrase);
-        return;
-    }
-
-    const AuthType gatewayAuth = connection.jumpHops.first().authType;
-    if (gatewayAuth == AuthType::Password) {
-        if (gatewayPasswordProvided) {
-            m_secretStore->storeSecret(
-                connection.id, SecretStore::Kind::GatewayPassword, gatewayPassword);
-        }
-        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassphrase);
-    } else {
-        if (gatewayPassphraseProvided) {
-            m_secretStore->storeSecret(
-                connection.id, SecretStore::Kind::GatewayPassphrase, gatewayPassphrase);
-        }
-        m_secretStore->deleteSecret(connection.id, SecretStore::Kind::GatewayPassword);
-    }
+    ConnectionSecretHelper::persistSecrets(m_secretStore,
+                                           connection,
+                                           previousAuthType,
+                                           isEdit,
+                                           password,
+                                           passwordProvided,
+                                           passphrase,
+                                           passphraseProvided,
+                                           gatewayPassword,
+                                           gatewayPasswordProvided,
+                                           gatewayPassphrase,
+                                           gatewayPassphraseProvided);
 }
 
 void ConnectionListWidget::warnSecretFailure(const QString &error)

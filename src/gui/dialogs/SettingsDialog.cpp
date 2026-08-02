@@ -5,6 +5,7 @@
 #include "SettingsDialog.h"
 
 #include "core/settings/AppSettings.h"
+#include "gui/dialogs/ModelessDialog.h"
 #include "gui/widgets/CategoryDialogShell.h"
 
 #include <QCheckBox>
@@ -29,6 +30,7 @@
 
 SettingsDialog::SettingsDialog(QWidget *parent, const QString &initialCategoryId) : QDialog(parent)
 {
+    configureModelessDialog(this);
     setWindowTitle(tr("Settings"));
     resize(720, 480);
 
@@ -68,6 +70,18 @@ SettingsDialog::SettingsDialog(QWidget *parent, const QString &initialCategoryId
     root->addWidget(buttonBox);
 
     loadFromSettings();
+}
+
+void SettingsDialog::selectCategory(const QString &categoryId)
+{
+    if (!m_shell) {
+        return;
+    }
+    if (categoryId.isEmpty()) {
+        m_shell->selectFirst();
+    } else {
+        m_shell->selectById(categoryId);
+    }
 }
 
 QWidget *SettingsDialog::createFileExplorerPage()

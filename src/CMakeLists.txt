@@ -96,6 +96,12 @@ set(EASY_SSH_GUI_SOURCES
     gui/connection/ConnectionListWidget.h
     gui/connection/ConnectionDialog.cpp
     gui/connection/ConnectionDialog.h
+    gui/connection/ConnectionEditor.cpp
+    gui/connection/ConnectionEditor.h
+    gui/connection/ConnectionManagerDialog.cpp
+    gui/connection/ConnectionManagerDialog.h
+    gui/connection/ConnectionSecretHelper.cpp
+    gui/connection/ConnectionSecretHelper.h
     gui/connection/WelcomeWidget.cpp
     gui/connection/WelcomeWidget.h
     gui/explorer/FileExplorerWidget.cpp

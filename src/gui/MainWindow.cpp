@@ -12,6 +12,7 @@
 #include "core/settings/AppSettings.h"
 #include "core/util/Logging.h"
 #include "gui/connection/ConnectionListWidget.h"
+#include "gui/connection/ConnectionManagerDialog.h"
 #include "gui/dialogs/AboutDialog.h"
 #include "gui/dialogs/SettingsDialog.h"
 #include "gui/explorer/FileExplorerWidget.h"
@@ -302,6 +303,10 @@ void MainWindow::setupUi()
             this,
             &MainWindow::onConnectionEdited);
     connect(m_connectionList,
+            &ConnectionListWidget::manageConnectionsRequested,
+            this,
+            &MainWindow::openConnectionManager);
+    connect(m_connectionList,
             &ConnectionListWidget::statusMessage,
             this,
             [this](const QString &, ErrorNotifier::Level) {
@@ -395,20 +400,12 @@ void MainWindow::setupMenus()
     connect(
         newAction, &QAction::triggered, m_connectionList, &ConnectionListWidget::createConnection);
 
+    auto *managerAction = connectionsMenu->addAction(tr("Connection &Manager…"));
+    registerAction(QStringLiteral("general.connectionManager"), managerAction);
+    connect(managerAction, &QAction::triggered, this, [this]() { openConnectionManager(); });
+
     m_connectionsListMenu = connectionsMenu->addMenu(tr("&List"));
     rebuildConnectionsListMenu();
-
-    auto *importAction = connectionsMenu->addAction(tr("&Import from SSH Config…"));
-    connect(importAction,
-            &QAction::triggered,
-            m_connectionList,
-            &ConnectionListWidget::promptImportFromSshConfig);
-
-    auto *reloadConfigAction = connectionsMenu->addAction(tr("&Reload SSH Config"));
-    connect(reloadConfigAction,
-            &QAction::triggered,
-            m_connectionList,
-            &ConnectionListWidget::reloadSshConfig);
 
     auto *terminalMenu = menuBar()->addMenu(tr("&Terminal"));
 
@@ -463,7 +460,7 @@ void MainWindow::setupMenus()
 
     auto *settingsAction = windowsMenu->addAction(tr("&Settings…"));
     registerAction(QStringLiteral("general.settings"), settingsAction);
-    connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
+    connect(settingsAction, &QAction::triggered, this, [this]() { openSettings(); });
 
     auto *shortcutsAction = windowsMenu->addAction(tr("Keyboard &Shortcuts…"));
     registerAction(QStringLiteral("general.shortcuts"), shortcutsAction);
@@ -511,22 +508,64 @@ void MainWindow::rebuildConnectionsListMenu()
     }
 }
 
-void MainWindow::openSettings()
+void MainWindow::openSettings(const QString &initialCategoryId)
 {
-    SettingsDialog dialog(this);
-    dialog.exec();
+    if (!m_settingsDialog) {
+        m_settingsDialog = new SettingsDialog(this, initialCategoryId);
+    } else if (!initialCategoryId.isEmpty()) {
+        m_settingsDialog->selectCategory(initialCategoryId);
+    }
+    m_settingsDialog->show();
+    m_settingsDialog->raise();
+    m_settingsDialog->activateWindow();
+}
+
+void MainWindow::openConnectionManager(const QUuid &selectId)
+{
+    if (!m_connectionManager) {
+        m_connectionManager = new ConnectionManagerDialog(this);
+        m_connectionManager->setConnectionModel(m_connectionModel);
+        m_connectionManager->setSecretStore(m_secretStore);
+        connect(m_connectionManager,
+                &ConnectionManagerDialog::connectionActivated,
+                this,
+                &MainWindow::openConnectionById);
+        connect(m_connectionManager,
+                &ConnectionManagerDialog::connectionEdited,
+                this,
+                &MainWindow::onConnectionEdited);
+        connect(m_connectionManager,
+                &ConnectionManagerDialog::statusMessage,
+                this,
+                &MainWindow::setStatusText);
+        connect(m_connectionManager, &QObject::destroyed, this, [this]() {
+            rebuildConnectionsListMenu();
+            if (m_sessionTabs) {
+                m_sessionTabs->refreshWelcome();
+            }
+        });
+    }
+    if (!selectId.isNull()) {
+        m_connectionManager->selectConnection(selectId);
+    }
+    m_connectionManager->show();
+    m_connectionManager->raise();
+    m_connectionManager->activateWindow();
 }
 
 void MainWindow::openShortcuts()
 {
-    SettingsDialog dialog(this, QStringLiteral("shortcuts"));
-    dialog.exec();
+    openSettings(QStringLiteral("shortcuts"));
 }
 
 void MainWindow::openAbout()
 {
-    AboutDialog dialog(this);
-    dialog.exec();
+    if (!m_aboutDialog) {
+        m_aboutDialog = new AboutDialog(this);
+    }
+    m_aboutDialog->show();
+    m_aboutDialog->raise();
+    m_aboutDialog->activateWindow();
 }
 
 void MainWindow::openLogFile()
@@ -740,10 +779,7 @@ void MainWindow::wireActiveSessionStateSync(Session *session)
 
 void MainWindow::editConnection(const QUuid &id)
 {
-    if (!m_connectionList) {
-        return;
-    }
-    m_connectionList->editConnectionById(id);
+    openConnectionManager(id);
 }
 
 void MainWindow::onConnectionEdited(const QUuid &id,

@@ -26,6 +26,8 @@ class SettingsDialog final : public QDialog
 public:
     explicit SettingsDialog(QWidget *parent = nullptr, const QString &initialCategoryId = {});
 
+    void selectCategory(const QString &categoryId);
+
 private slots:
     void apply();
     void accept() override;

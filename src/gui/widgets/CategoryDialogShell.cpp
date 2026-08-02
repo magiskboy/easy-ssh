@@ -7,10 +7,12 @@
 #include <QAbstractItemView>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QPalette>
 #include <QSize>
 #include <QStackedWidget>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <QVBoxLayout>
 
 namespace
 {
@@ -43,12 +45,29 @@ CategoryDialogShell::CategoryDialogShell(QWidget *parent) : QWidget(parent)
                                          "  background: palette(base);"
                                          "}"));
 
+    auto *sidebar = new QFrame(this);
+    sidebar->setObjectName(QStringLiteral("categorySidebar"));
+    sidebar->setFrameShape(QFrame::NoFrame);
+    sidebar->setAutoFillBackground(true);
+    sidebar->setFixedWidth(160);
+    {
+        QPalette sidePalette = sidebar->palette();
+        sidePalette.setColor(QPalette::Window, sidePalette.color(QPalette::Base));
+        sidebar->setPalette(sidePalette);
+        sidebar->setBackgroundRole(QPalette::Window);
+    }
+    auto *sideLayout = new QVBoxLayout(sidebar);
+    sideLayout->setContentsMargins(0, 0, 0, 0);
+    sideLayout->setSpacing(0);
+    m_tree->setFixedWidth(160);
+    sideLayout->addWidget(m_tree, 1);
+
     m_pages = new QStackedWidget(this);
 
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(8);
-    layout->addWidget(m_tree);
+    layout->addWidget(sidebar);
     layout->addWidget(m_pages, 1);
 
     connect(m_tree, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *current) {

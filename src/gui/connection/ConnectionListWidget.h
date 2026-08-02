@@ -51,6 +51,7 @@ signals:
                           bool gatewaySecretUpdated,
                           const QString &gatewaySecret);
     void statusMessage(const QString &message, ErrorNotifier::Level level);
+    void manageConnectionsRequested(const QUuid &selectId);
 
 private slots:
     void onFilterTextChanged(const QString &text);

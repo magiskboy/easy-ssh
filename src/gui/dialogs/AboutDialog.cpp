@@ -4,6 +4,8 @@
 
 #include "AboutDialog.h"
 
+#include "gui/dialogs/ModelessDialog.h"
+
 #include <QDialogButtonBox>
 #include <QIcon>
 #include <QLabel>
@@ -15,8 +17,8 @@
 
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
+    configureModelessDialog(this);
     setWindowTitle(tr("About Easy SSH"));
-    setModal(true);
     setWindowIcon(QIcon(QStringLiteral(":/icons/app-256.png")));
 
     auto *icon = new QLabel(this);

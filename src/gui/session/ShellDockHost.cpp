@@ -178,9 +178,12 @@ void ShellDockHost::setLayoutActive(bool active)
         return;
     }
     // Leaving a Session tab: hide OS floats (ADS does not do this on hide alone).
-    // Returning: CDockManager::showEvent restores via restoreHiddenFloatingWidgets().
+    // Returning: must show() the manager again — hideManagerAndFloatingWidgets() sets
+    // the Hidden flag, so parenting QTabWidget show alone will not restore it.
     if (m_layoutActive && !active) {
         m_manager->hideManagerAndFloatingWidgets();
+    } else if (!m_layoutActive && active && !m_docks.isEmpty()) {
+        m_manager->show(); // showEvent → restoreHiddenFloatingWidgets()
     }
     m_layoutActive = active;
 }

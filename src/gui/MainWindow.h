@@ -12,6 +12,7 @@
 #include <QHash>
 #include <QList>
 #include <QMainWindow>
+#include <QPointer>
 #include <QString>
 #include <QUuid>
 
@@ -20,7 +21,9 @@ class QLabel;
 class QMenu;
 class QTimer;
 class QCloseEvent;
+class AboutDialog;
 class ConnectionListWidget;
+class ConnectionManagerDialog;
 class ConnectionModel;
 class FileExplorerWidget;
 class SecretStore;
@@ -28,6 +31,7 @@ class Session;
 class SessionManager;
 class SessionSideBar;
 class SessionTabWidget;
+class SettingsDialog;
 class TunnelListWidget;
 
 class MainWindow final : public QMainWindow
@@ -63,10 +67,11 @@ private:
                             bool gatewaySecretUpdated,
                             const QString &gatewaySecret);
     void deleteConnection(const QUuid &id);
-    void openSettings();
+    void openSettings(const QString &initialCategoryId = {});
     void openShortcuts();
     void openAbout();
     void openLogFile();
+    void openConnectionManager(const QUuid &selectId = {});
     void applyAppSettings();
     void rebindShortcuts();
     QAction *registerAction(const QString &actionId, QAction *action);
@@ -91,4 +96,8 @@ private:
     QUuid m_pendingConnectId;
     SessionCredentials m_pendingCredentials;
     bool m_pendingNeedTargetSecret = false;
+
+    QPointer<ConnectionManagerDialog> m_connectionManager;
+    QPointer<SettingsDialog> m_settingsDialog;
+    QPointer<AboutDialog> m_aboutDialog;
 };

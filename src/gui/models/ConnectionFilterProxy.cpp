@@ -26,19 +26,43 @@ void ConnectionFilterProxy::setFilterText(const QString &text)
 #endif
 }
 
+void ConnectionFilterProxy::setSourceFilter(std::optional<ConnectionSource> source)
+{
+    if (m_sourceFilter == source) {
+        return;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+    m_sourceFilter = source;
+    endFilterChange(Direction::Rows);
+#else
+    m_sourceFilter = source;
+    invalidateFilter();
+#endif
+}
+
 bool ConnectionFilterProxy::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
-    const QString needle = m_filterText.trimmed();
-    if (needle.isEmpty()) {
-        return true;
-    }
-
     const QAbstractItemModel *model = sourceModel();
     if (!model) {
         return false;
     }
 
     const QModelIndex index = model->index(sourceRow, 0, sourceParent);
+
+    if (m_sourceFilter.has_value()) {
+        const auto source =
+            static_cast<ConnectionSource>(model->data(index, ConnectionModel::SourceRole).toInt());
+        if (source != *m_sourceFilter) {
+            return false;
+        }
+    }
+
+    const QString needle = m_filterText.trimmed();
+    if (needle.isEmpty()) {
+        return true;
+    }
+
     const QString name = model->data(index, ConnectionModel::NameRole).toString();
     const QString host = model->data(index, ConnectionModel::HostRole).toString();
     const QString username = model->data(index, ConnectionModel::UsernameRole).toString();
