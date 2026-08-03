@@ -37,6 +37,8 @@ constexpr auto kRecentConnections = "session/recentConnectionIds";
 constexpr int kMaxRecentConnections = 8;
 constexpr int kDefaultStallTimeoutSec = 60;
 
+constexpr auto kThemeId = "ui/themeId";
+constexpr auto kCustomThemePath = "ui/customThemePath";
 constexpr auto kWindowGeometry = "ui/window/geometry";
 constexpr auto kSidebarWidth = "ui/sidebar/width";
 constexpr auto kSidebarTabIndex = "ui/sidebar/tabIndex";
@@ -352,6 +354,26 @@ bool AppSettings::autoResumeTransferAfterReconnect() const
 void AppSettings::setAutoResumeTransferAfterReconnect(bool enabled)
 {
     setBoolValue(QLatin1String(kAutoResumeTransfer), enabled);
+}
+
+QString AppSettings::themeId() const
+{
+    return stringValue(QLatin1String(kThemeId), QStringLiteral("system"));
+}
+
+void AppSettings::setThemeId(const QString &id)
+{
+    setStringValue(QLatin1String(kThemeId), id);
+}
+
+QString AppSettings::customThemePath() const
+{
+    return stringValue(QLatin1String(kCustomThemePath), QString());
+}
+
+void AppSettings::setCustomThemePath(const QString &path)
+{
+    setStringValue(QLatin1String(kCustomThemePath), path);
 }
 
 QByteArray AppSettings::windowGeometry() const

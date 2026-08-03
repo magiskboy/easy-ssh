@@ -16,6 +16,7 @@ class QComboBox;
 class QFontComboBox;
 class QKeySequenceEdit;
 class QLineEdit;
+class QPushButton;
 class QSpinBox;
 class QTreeWidget;
 
@@ -33,10 +34,13 @@ private slots:
     void accept() override;
     void browseDownloadDir();
     void clearDownloadDir();
+    void browseCustomTheme();
+    void onThemeSelectionChanged();
     void resetShortcutsDefaults();
 
 private:
     QWidget *createFileExplorerPage();
+    QWidget *createAppearancePage();
     QWidget *createShellAppearancePage();
     QWidget *createShellBehaviorPage();
     QWidget *createGeneralPage();
@@ -45,6 +49,7 @@ private:
     void saveToSettings();
     void loadShortcutsFromSettings();
     void saveShortcutsToSettings();
+    void updateCustomThemeControls();
 
     CategoryDialogShell *m_shell = nullptr;
 
@@ -54,6 +59,11 @@ private:
     QCheckBox *m_showModified = nullptr;
     QCheckBox *m_showHidden = nullptr;
     QLineEdit *m_downloadDir = nullptr;
+
+    // Appearance / app theme
+    QComboBox *m_themeCombo = nullptr;
+    QLineEdit *m_customThemePath = nullptr;
+    QPushButton *m_browseThemeButton = nullptr;
 
     // Terminal / Shell
     QFontComboBox *m_fontCombo = nullptr;

@@ -85,6 +85,15 @@ public:
     bool autoResumeTransferAfterReconnect() const;
     void setAutoResumeTransferAfterReconnect(bool enabled);
 
+    // --- Appearance / theme ---
+    /// "system", a bundled theme id (e.g. "nord"), or "custom".
+    QString themeId() const;
+    void setThemeId(const QString &id);
+
+    /// Absolute path to a qt-themes JSON file when themeId is "custom".
+    QString customThemePath() const;
+    void setCustomThemePath(const QString &path);
+
     // --- Main window ---
     QByteArray windowGeometry() const;
     void setWindowGeometry(const QByteArray &geometry);

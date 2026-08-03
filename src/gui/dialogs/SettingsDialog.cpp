@@ -6,6 +6,7 @@
 
 #include "core/settings/AppSettings.h"
 #include "gui/dialogs/ModelessDialog.h"
+#include "gui/theme/ThemeManager.h"
 #include "gui/widgets/CategoryDialogShell.h"
 
 #include <QCheckBox>
@@ -20,6 +21,7 @@
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTreeWidget>
@@ -36,6 +38,8 @@ SettingsDialog::SettingsDialog(QWidget *parent, const QString &initialCategoryId
 
     m_shell = new CategoryDialogShell(this);
     m_shell->addPage(nullptr, tr("General"), createGeneralPage(), QStringLiteral("general"));
+    m_shell->addPage(
+        nullptr, tr("Appearance"), createAppearancePage(), QStringLiteral("appearance"));
     m_shell->addPage(
         nullptr, tr("File Explorer"), createFileExplorerPage(), QStringLiteral("file-explorer"));
 
@@ -82,6 +86,56 @@ void SettingsDialog::selectCategory(const QString &categoryId)
     } else {
         m_shell->selectById(categoryId);
     }
+}
+
+QWidget *SettingsDialog::createAppearancePage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    auto *themeGroup = new QGroupBox(tr("Application theme"), page);
+    auto *themeForm = new QFormLayout(themeGroup);
+
+    m_themeCombo = new QComboBox(themeGroup);
+    m_themeCombo->addItem(tr("System"), QString::fromLatin1(ThemeManager::kSystemThemeId));
+    const QStringList themes = ThemeManager::availableThemes();
+    for (const QString &id : themes) {
+        m_themeCombo->addItem(ThemeManager::displayName(id), id);
+    }
+    m_themeCombo->addItem(tr("Custom…"), QString::fromLatin1(ThemeManager::kCustomThemeId));
+    if (themes.isEmpty()) {
+        m_themeCombo->setToolTip(
+            tr("Bundled themes were not found. Rebuild/install Easy SSH so "
+               "share/easy-ssh/themes is available, or choose a custom JSON file."));
+    }
+    connect(m_themeCombo,
+            &QComboBox::currentIndexChanged,
+            this,
+            &SettingsDialog::onThemeSelectionChanged);
+    themeForm->addRow(tr("Theme"), m_themeCombo);
+
+    auto *customRow = new QWidget(themeGroup);
+    auto *customLayout = new QHBoxLayout(customRow);
+    customLayout->setContentsMargins(0, 0, 0, 0);
+    m_customThemePath = new QLineEdit(customRow);
+    m_customThemePath->setPlaceholderText(tr("Path to theme .json file"));
+    m_browseThemeButton = new QPushButton(tr("Browse…"), customRow);
+    connect(m_browseThemeButton, &QPushButton::clicked, this, &SettingsDialog::browseCustomTheme);
+    customLayout->addWidget(m_customThemePath, 1);
+    customLayout->addWidget(m_browseThemeButton);
+    themeForm->addRow(tr("Custom file"), customRow);
+
+    auto *hint =
+        new QLabel(tr("Themes use QPalette color roles (Fusion). Custom files must match the "
+                      "qt-themes JSON format."),
+                   themeGroup);
+    hint->setWordWrap(true);
+    themeForm->addRow(hint);
+
+    layout->addWidget(themeGroup);
+    layout->addStretch(1);
+    updateCustomThemeControls();
+    return page;
 }
 
 QWidget *SettingsDialog::createFileExplorerPage()
@@ -302,6 +356,27 @@ void SettingsDialog::loadFromSettings()
     m_stallTimeout->setValue(s.transferStallTimeoutSec());
     m_autoResumeTransfer->setChecked(s.autoResumeTransferAfterReconnect());
 
+    const QString themeId = s.themeId();
+    int themeIndex = m_themeCombo->findData(themeId);
+    if (themeIndex < 0) {
+        if (themeId == QLatin1String(ThemeManager::kCustomThemeId) ||
+            !s.customThemePath().isEmpty()) {
+            themeIndex = m_themeCombo->findData(QString::fromLatin1(ThemeManager::kCustomThemeId));
+        } else if (!themeId.isEmpty() && themeId != QLatin1String(ThemeManager::kSystemThemeId)) {
+            // Saved bundled theme missing from catalog — keep it selectable.
+            m_themeCombo->insertItem(
+                m_themeCombo->count() - 1, ThemeManager::displayName(themeId), themeId);
+            themeIndex = m_themeCombo->findData(themeId);
+        } else {
+            themeIndex = m_themeCombo->findData(QString::fromLatin1(ThemeManager::kSystemThemeId));
+        }
+    }
+    if (themeIndex >= 0) {
+        m_themeCombo->setCurrentIndex(themeIndex);
+    }
+    m_customThemePath->setText(s.customThemePath());
+    updateCustomThemeControls();
+
     loadShortcutsFromSettings();
 }
 
@@ -332,6 +407,20 @@ void SettingsDialog::saveToSettings()
     s.setRestoreWorkspace(m_restoreWorkspace->isChecked());
     s.setTransferStallTimeoutSec(m_stallTimeout->value());
     s.setAutoResumeTransferAfterReconnect(m_autoResumeTransfer->isChecked());
+
+    const QString themeId = m_themeCombo->currentData().toString();
+    s.setThemeId(themeId);
+    s.setCustomThemePath(m_customThemePath->text().trimmed());
+
+    if (themeId == QLatin1String(ThemeManager::kCustomThemeId)) {
+        const QString path = m_customThemePath->text().trimmed();
+        if (path.isEmpty() || !ThemeManager::loadThemeFile(path)) {
+            QMessageBox::warning(this,
+                                 tr("Custom theme"),
+                                 tr("Could not load the custom theme file. "
+                                    "The application will fall back to the system palette."));
+        }
+    }
 
     saveShortcutsToSettings();
 }
@@ -406,4 +495,37 @@ void SettingsDialog::browseDownloadDir()
 void SettingsDialog::clearDownloadDir()
 {
     m_downloadDir->clear();
+}
+
+void SettingsDialog::browseCustomTheme()
+{
+    const QString path = QFileDialog::getOpenFileName(this,
+                                                      tr("Select Theme File"),
+                                                      m_customThemePath->text(),
+                                                      tr("Theme JSON (*.json);;All Files (*)"));
+    if (!path.isEmpty()) {
+        m_customThemePath->setText(path);
+        const int customIndex =
+            m_themeCombo->findData(QString::fromLatin1(ThemeManager::kCustomThemeId));
+        if (customIndex >= 0) {
+            m_themeCombo->setCurrentIndex(customIndex);
+        }
+        updateCustomThemeControls();
+    }
+}
+
+void SettingsDialog::onThemeSelectionChanged()
+{
+    updateCustomThemeControls();
+}
+
+void SettingsDialog::updateCustomThemeControls()
+{
+    if (!m_themeCombo || !m_customThemePath || !m_browseThemeButton) {
+        return;
+    }
+    const bool custom =
+        m_themeCombo->currentData().toString() == QLatin1String(ThemeManager::kCustomThemeId);
+    m_customThemePath->setEnabled(custom);
+    m_browseThemeButton->setEnabled(custom);
 }

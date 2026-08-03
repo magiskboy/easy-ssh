@@ -4,6 +4,7 @@
 
 #include "gui/MainWindow.h"
 #include "gui/terminal/QTermWidgetResources.h"
+#include "gui/theme/ThemeManager.h"
 
 #include "core/fs/SftpTypes.h"
 #include "core/ssh/SshWorker.h"
@@ -32,6 +33,9 @@ void configureAds()
 
 int main(int argc, char *argv[])
 {
+    // Cross-platform look; call before QApplication per Qt docs.
+    QApplication::setStyle(QStringLiteral("Fusion"));
+
     QApplication app(argc, argv);
     QApplication::setOrganizationName(QStringLiteral("easy-ssh"));
     QApplication::setApplicationName(QStringLiteral("easy-ssh"));
@@ -40,6 +44,8 @@ int main(int argc, char *argv[])
     QApplication::setOrganizationDomain(QStringLiteral("github.com/magiskboy/easy-ssh"));
     QApplication::setDesktopFileName(QStringLiteral("io.github.magiskboy.easy-ssh"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app-256.png")));
+
+    ThemeManager::applyFromSettings();
 
     configureAds();
 

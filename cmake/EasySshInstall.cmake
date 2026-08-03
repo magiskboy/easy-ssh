@@ -34,6 +34,14 @@ foreach(_icon_size IN ITEMS 16 22 24 32 48 64 128 256 512)
     )
 endforeach()
 
+# App chrome themes (qt-themes JSON palettes).
+if(EXISTS "${CMAKE_SOURCE_DIR}/resources/themes")
+    install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/themes/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/themes"
+        FILES_MATCHING PATTERN "*.json"
+    )
+endif()
+
 # QTermWidget color schemes + keyboard layouts (bundled; not the system qtermwidget prefix).
 if(DEFINED EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
     install(DIRECTORY "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/"
@@ -65,6 +73,12 @@ if(APPLE)
                 PATTERN "*.keytab"
                 PATTERN "historic"
                 PATTERN "README" EXCLUDE
+        )
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/resources/themes")
+        install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/themes/"
+            DESTINATION "easy-ssh.app/Contents/Resources/themes"
+            FILES_MATCHING PATTERN "*.json"
         )
     endif()
 endif()

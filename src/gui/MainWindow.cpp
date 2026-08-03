@@ -25,6 +25,7 @@
 #include "gui/session/SessionPage.h"
 #include "gui/session/SessionSideBar.h"
 #include "gui/session/SessionTabWidget.h"
+#include "gui/theme/ThemeManager.h"
 #include "gui/tunnel/TunnelListWidget.h"
 
 #include <QAbstractItemModel>
@@ -860,6 +861,7 @@ void MainWindow::openLogFile()
 
 void MainWindow::applyAppSettings()
 {
+    ThemeManager::applyFromSettings();
     if (m_sessionTabs) {
         m_sessionTabs->applySettingsToAllSessions();
     }

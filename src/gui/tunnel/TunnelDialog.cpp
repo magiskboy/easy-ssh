@@ -132,7 +132,6 @@ void TunnelDialog::setupUi()
 
     m_hintLabel = new QLabel(this);
     m_hintLabel->setWordWrap(true);
-    m_hintLabel->setStyleSheet(QStringLiteral("color: palette(mid);"));
 
     m_form->addRow(tr("Name"), m_nameEdit);
     m_form->addRow(tr("Type"), m_typeCombo);

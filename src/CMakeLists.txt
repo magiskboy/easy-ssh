@@ -124,6 +124,10 @@ set(EASY_SSH_GUI_SOURCES
     gui/dialogs/CommandPaletteDialog.h
     gui/dialogs/SettingsDialog.cpp
     gui/dialogs/SettingsDialog.h
+    gui/theme/Theme.cpp
+    gui/theme/Theme.h
+    gui/theme/ThemeManager.cpp
+    gui/theme/ThemeManager.h
     gui/widgets/CategoryDialogShell.cpp
     gui/widgets/CategoryDialogShell.h
 )
@@ -219,13 +223,18 @@ if(DEFINED EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR)
                 "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
             COMMAND ${CMAKE_COMMAND} -E make_directory
                 "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/themes"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes"
                 "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts"
                 "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
-            COMMENT "Copy QTermWidget data into app bundle Resources"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_BINARY_DIR}/share/easy-ssh/themes"
+                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/themes"
+            COMMENT "Copy QTermWidget data and themes into app bundle Resources"
         )
     endif()
 endif()
