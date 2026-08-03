@@ -102,6 +102,9 @@ QWidget *ConnectionEditor::createSessionPage()
         m_passwordEdit->setPlaceholderText(tr("Leave blank to keep existing"));
     }
 
+    m_savePasswordCheck = new QCheckBox(tr("Save password in system keychain"), authGroup);
+    m_savePasswordCheck->setChecked(false);
+
     m_privateKeyEdit = new QLineEdit(authGroup);
     m_privateKeyEdit->setPlaceholderText(
         tr("Optional — leave empty to use ssh-agent / default identities"));
@@ -127,6 +130,7 @@ QWidget *ConnectionEditor::createSessionPage()
 
     m_authForm->addRow(tr("Method"), m_authTypeCombo);
     m_authForm->addRow(tr("Password"), m_passwordEdit);
+    m_authForm->addRow(QString(), m_savePasswordCheck);
     m_authForm->addRow(tr("Private Key"), m_privateKeyRow);
     m_authForm->addRow(tr("Passphrase"), m_passphraseEdit);
     m_authForm->addRow(QString(), m_authAgentHint);
@@ -430,6 +434,8 @@ void ConnectionEditor::setConnection(const Connection &connection)
     m_startupDirEdit->setText(connection.startupDirectory);
     m_passwordEdit->clear();
     m_passphraseEdit->clear();
+    m_initialSavePassword = connection.savePassword;
+    m_savePasswordCheck->setChecked(connection.savePassword);
 
     m_jumpHops = connection.jumpHops;
     if (m_jumpHops.isEmpty()) {
@@ -467,6 +473,8 @@ Connection ConnectionEditor::connection() const
     connection.port = static_cast<quint16>(m_portSpin->value());
     connection.username = m_usernameEdit->text().trimmed();
     connection.authType = static_cast<AuthType>(m_authTypeCombo->currentData().toInt());
+    connection.savePassword =
+        connection.authType == AuthType::Password && m_savePasswordCheck->isChecked();
     connection.privateKeyPath = m_privateKeyEdit->text().trimmed();
     connection.startupDirectory = m_startupDirEdit->text().trimmed();
 
@@ -506,6 +514,10 @@ bool ConnectionEditor::passwordProvided() const
 bool ConnectionEditor::passphraseProvided() const
 {
     return !m_passphraseEdit->text().isEmpty();
+}
+bool ConnectionEditor::savePassword() const
+{
+    return m_savePasswordCheck->isChecked();
 }
 
 QString ConnectionEditor::gatewayPassword() const
@@ -689,6 +701,17 @@ bool ConnectionEditor::validate()
         return false;
     }
 
+    const auto authType = static_cast<AuthType>(m_authTypeCombo->currentData().toInt());
+    if (authType == AuthType::Password && m_savePasswordCheck->isChecked() &&
+        m_passwordEdit->text().isEmpty() &&
+        (m_mode == Mode::Create || !m_initialSavePassword)) {
+        QMessageBox::warning(
+            this, tr("Validation"), tr("Password is required when saving to the keychain."));
+        m_shell->selectById(QStringLiteral("session"));
+        m_passwordEdit->setFocus();
+        return false;
+    }
+
     if (m_proxyMode == SshProxyMode::ProxyJump) {
         syncCurrentHopFromEditor();
         for (int i = 0; i < m_jumpHops.size(); ++i) {
@@ -755,7 +778,7 @@ void ConnectionEditor::updateAuthFieldsVisibility()
         }
         QWidget *field = fieldItem->widget();
 
-        if (field == m_passwordEdit) {
+        if (field == m_passwordEdit || field == m_savePasswordCheck) {
             m_authForm->setRowVisible(i, usePassword);
         } else if (field == m_privateKeyRow || field == m_passphraseEdit ||
                    field == m_authAgentHint) {
@@ -927,6 +950,8 @@ void ConnectionEditor::clear()
     m_passwordEdit->clear();
     m_privateKeyEdit->clear();
     m_passphraseEdit->clear();
+    m_initialSavePassword = false;
+    m_savePasswordCheck->setChecked(false);
     m_startupDirEdit->clear();
     m_agentForwardingCheck->setChecked(false);
     m_jumpHops.clear();
@@ -1033,6 +1058,7 @@ void ConnectionEditor::wireDirtyTracking()
     }
 
     for (QCheckBox *box : {m_agentForwardingCheck,
+                           m_savePasswordCheck,
                            m_useTargetCredentialsCheck,
                            m_compressionCheck,
                            m_allowScpFallbackCheck,

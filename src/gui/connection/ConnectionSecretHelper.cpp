@@ -35,8 +35,10 @@ void persistSecrets(SecretStore *secretStore,
     }
 
     if (connection.authType == AuthType::Password) {
-        if (passwordProvided) {
+        if (connection.savePassword && passwordProvided) {
             secretStore->storeSecret(connection.id, SecretStore::Kind::Password, password);
+        } else if (!connection.savePassword) {
+            secretStore->deleteSecret(connection.id, SecretStore::Kind::Password);
         }
         if (isEdit) {
             secretStore->deleteSecret(connection.id, SecretStore::Kind::Passphrase);

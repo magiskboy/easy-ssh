@@ -56,6 +56,7 @@ public:
     QString passphrase() const;
     bool passwordProvided() const;
     bool passphraseProvided() const;
+    bool savePassword() const;
 
     QString gatewayPassword() const;
     QString gatewayPassphrase() const;
@@ -106,6 +107,7 @@ private:
     bool m_dirty = false;
     bool m_readOnly = false;
     bool m_blockDirty = false;
+    bool m_initialSavePassword = false;
 
     CategoryDialogShell *m_shell = nullptr;
     QFormLayout *m_authForm = nullptr;
@@ -117,6 +119,7 @@ private:
     QLineEdit *m_usernameEdit = nullptr;
     QComboBox *m_authTypeCombo = nullptr;
     QLineEdit *m_passwordEdit = nullptr;
+    QCheckBox *m_savePasswordCheck = nullptr;
     QLineEdit *m_privateKeyEdit = nullptr;
     QWidget *m_privateKeyRow = nullptr;
     QLineEdit *m_passphraseEdit = nullptr;

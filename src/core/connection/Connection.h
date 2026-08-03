@@ -73,6 +73,9 @@ struct Connection
     quint16 port = 22;
     QString username;
     AuthType authType = AuthType::Password;
+    /// When false, password auth secrets are not written to the keychain.
+    /// Defaults to false for new connections; load migrates missing keys to true.
+    bool savePassword = false;
     QString privateKeyPath;
     QString startupDirectory;
     ConnectionSource source = ConnectionSource::App;

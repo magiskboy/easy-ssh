@@ -87,6 +87,11 @@ QList<Connection> ConnectionStore::load()
         connection.username = settings.value(QStringLiteral("username")).toString();
         connection.authType =
             authTypeFromString(settings.value(QStringLiteral("authType")).toString());
+        // Pre-opt-in stores always persisted passwords; keep that behavior when the key is absent.
+        connection.savePassword =
+            settings.contains(QStringLiteral("savePassword"))
+                ? settings.value(QStringLiteral("savePassword")).toBool()
+                : true;
         connection.privateKeyPath = settings.value(QStringLiteral("privateKeyPath")).toString();
         connection.startupDirectory = settings.value(QStringLiteral("startupDirectory")).toString();
         connection.keepAliveIntervalSec =
@@ -164,6 +169,7 @@ void ConnectionStore::save(const QList<Connection> &connections)
         settings.setValue(QStringLiteral("port"), connection.port);
         settings.setValue(QStringLiteral("username"), connection.username);
         settings.setValue(QStringLiteral("authType"), authTypeToString(connection.authType));
+        settings.setValue(QStringLiteral("savePassword"), connection.savePassword);
         settings.setValue(QStringLiteral("privateKeyPath"), connection.privateKeyPath);
         settings.setValue(QStringLiteral("startupDirectory"), connection.startupDirectory);
         settings.setValue(QStringLiteral("keepAliveIntervalSec"), connection.keepAliveIntervalSec);

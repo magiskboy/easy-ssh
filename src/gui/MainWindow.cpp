@@ -36,8 +36,10 @@
 #include <QFrame>
 #include <QGuiApplication>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -295,17 +297,15 @@ void MainWindow::setupUi()
                 m_pendingCredentials.targetSecret = value;
 
                 if (connection->authType == AuthType::Password && value.isEmpty()) {
-                    ErrorNotifier::notify(this,
-                                          tr("Credentials"),
-                                          tr("No password stored for connection \"%1\". "
-                                             "Edit the connection and set a password.")
-                                              .arg(connection->name),
-                                          ErrorNotifier::Level::Warning);
-                    clearPendingConnect();
-                    if (m_restoringWorkspace) {
-                        advanceWorkspaceRestore();
+                    QString password;
+                    if (!promptPasswordForConnect(*connection, &password)) {
+                        clearPendingConnect();
+                        if (m_restoringWorkspace) {
+                            advanceWorkspaceRestore();
+                        }
+                        return;
                     }
-                    return;
+                    m_pendingCredentials.targetSecret = password;
                 }
 
                 finishConnect(*connection, m_pendingCredentials);
@@ -804,7 +804,24 @@ void MainWindow::createConnectionFromQuery(const QString &query)
         }
         setStatusText(tr("Created connection: %1").arg(connection.name),
                       ErrorNotifier::Level::Success);
-        openConnectionById(connection.id);
+
+        // Avoid racing the async keychain write / skip keychain when the user opted out.
+        if (connection.authType == AuthType::Password && dialog->passwordProvided()) {
+            SessionCredentials credentials;
+            credentials.targetSecret = dialog->password();
+            if (connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials) {
+                if (connection.jumpHops.first().authType == AuthType::Password &&
+                    dialog->gatewayPasswordProvided()) {
+                    credentials.gatewaySecret = dialog->gatewayPassword();
+                } else if (connection.jumpHops.first().authType == AuthType::PrivateKey &&
+                           dialog->gatewayPassphraseProvided()) {
+                    credentials.gatewaySecret = dialog->gatewayPassphrase();
+                }
+            }
+            finishConnect(connection, credentials);
+        } else {
+            openConnectionById(connection.id);
+        }
     });
     dialog->show();
     dialog->raise();
@@ -934,9 +951,43 @@ void MainWindow::openConnectionById(const QUuid &id)
 
 void MainWindow::readTargetSecretForConnect(const Connection &connection)
 {
+    if (connection.authType == AuthType::Password && !connection.savePassword) {
+        QString password;
+        if (!promptPasswordForConnect(connection, &password)) {
+            clearPendingConnect();
+            if (m_restoringWorkspace) {
+                advanceWorkspaceRestore();
+            }
+            return;
+        }
+        m_pendingCredentials.targetSecret = password;
+        finishConnect(connection, m_pendingCredentials);
+        return;
+    }
+
     const auto kind = connection.authType == AuthType::PrivateKey ? SecretStore::Kind::Passphrase
                                                                   : SecretStore::Kind::Password;
     m_secretStore->readSecret(connection.id, kind);
+}
+
+bool MainWindow::promptPasswordForConnect(const Connection &connection, QString *passwordOut)
+{
+    bool ok = false;
+    const QString password = QInputDialog::getText(
+        this,
+        tr("Password"),
+        tr("Password for %1 (%2@%3):").arg(connection.name, connection.username, connection.host),
+        QLineEdit::Password,
+        QString(),
+        &ok);
+    if (!ok || password.isEmpty()) {
+        setStatusText(tr("Connection cancelled."), ErrorNotifier::Level::Status);
+        return false;
+    }
+    if (passwordOut) {
+        *passwordOut = password;
+    }
+    return true;
 }
 
 void MainWindow::finishConnect(const Connection &connection, const SessionCredentials &credentials)

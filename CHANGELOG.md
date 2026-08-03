@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Transfer stall timeout and auto-resume-after-reconnect settings (General → Transfers)
 - Session auto-reconnect when connection is lost (honors existing setting)
 - File Explorer Resume / Discard controls for interrupted transfers; conflict prompts for existing finals vs partials
+- Optional “Save password” when creating/editing password auth connections (off by default; prompts at connect if not stored)
 
 ### Changed
 

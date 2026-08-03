@@ -837,7 +837,8 @@ void ConnectionManagerDialog::emitEditSideEffects(const Connection &before,
 {
     const bool secretsTouched = editor->passwordProvided() || editor->passphraseProvided() ||
                                 editor->gatewayPasswordProvided() ||
-                                editor->gatewayPassphraseProvided();
+                                editor->gatewayPassphraseProvided() ||
+                                before.savePassword != after.savePassword;
     const bool connectivityChanged =
         before.host != after.host || before.port != after.port ||
         before.username != after.username || before.authType != after.authType ||

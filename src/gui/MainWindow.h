@@ -60,6 +60,7 @@ private:
     void syncSidePanelsToActiveSession();
     void openConnectionById(const QUuid &id);
     void readTargetSecretForConnect(const Connection &connection);
+    bool promptPasswordForConnect(const Connection &connection, QString *passwordOut);
     void finishConnect(const Connection &connection, const SessionCredentials &credentials);
     void clearPendingConnect();
     void saveWorkspaceState();

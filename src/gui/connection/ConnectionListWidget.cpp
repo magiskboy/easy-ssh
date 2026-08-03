@@ -176,7 +176,8 @@ void ConnectionListWidget::editConnectionById(const QUuid &id)
 
         const bool secretsTouched = dialog->passwordProvided() || dialog->passphraseProvided() ||
                                     dialog->gatewayPasswordProvided() ||
-                                    dialog->gatewayPassphraseProvided();
+                                    dialog->gatewayPassphraseProvided() ||
+                                    before.savePassword != connection.savePassword;
         const bool connectivityChanged =
             before.host != connection.host || before.port != connection.port ||
             before.username != connection.username || before.authType != connection.authType ||
