@@ -159,9 +159,10 @@ void WelcomeWidget::rebuildRecentList()
     m_recentHeading->setVisible(true);
 }
 
-void WelcomeWidget::addShortcutHintRow(int row, const QString &actionId, const QString &fallbackLabel)
+void WelcomeWidget::addShortcutHintRow(int row, QStringView actionId, const QString &fallbackLabel)
 {
-    QString label = AppSettings::shortcutLabel(actionId);
+    const QString actionIdStr = actionId.toString();
+    QString label = AppSettings::shortcutLabel(actionIdStr);
     if (label.isEmpty()) {
         label = fallbackLabel;
     }
@@ -169,7 +170,7 @@ void WelcomeWidget::addShortcutHintRow(int row, const QString &actionId, const Q
     nameLabel->setEnabled(false);
 
     const QString keys =
-        AppSettings::instance().shortcut(actionId).toString(QKeySequence::NativeText);
+        AppSettings::instance().shortcut(actionIdStr).toString(QKeySequence::NativeText);
     auto *keysLabel = new QLabel(keys, this);
     keysLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 

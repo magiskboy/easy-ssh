@@ -8,6 +8,7 @@
 
 #include "gui/ErrorNotifier.h"
 
+#include <QStringView>
 #include <QUuid>
 #include <QWidget>
 
@@ -39,7 +40,7 @@ private slots:
 private:
     void openCurrentRecent();
     void rebuildRecentList();
-    void addShortcutHintRow(int row, const QString &actionId, const QString &fallbackLabel);
+    void addShortcutHintRow(int row, QStringView actionId, const QString &fallbackLabel);
 
     ConnectionModel *m_model = nullptr;
     QLabel *m_recentHeading = nullptr;
