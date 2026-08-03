@@ -39,6 +39,8 @@ Easy SSH is designed around the SSH protocol itself: each capability maps to a f
 - Saved connections with search; password or OpenSSH private-key auth
 - Secrets in the system keychain; optional startup directory
 - Per-connection tunnel list with live status
+- Workspace restore — reopen last sessions and shell dock layouts on launch (opt-out in Settings)
+- Command palette, Quick Connect, and Go to Shell shortcuts for fast navigation
 
 ## Platforms
 

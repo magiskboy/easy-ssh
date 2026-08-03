@@ -87,7 +87,7 @@ QList<TunnelChannelState> Session::tunnels() const
     return m_tunnels.values();
 }
 
-void Session::connectTransport(int cols, int rows)
+void Session::connectTransport(int cols, int rows, const QUuid &initialShellId)
 {
     if (m_state == SessionState::Connecting) {
         return;
@@ -116,9 +116,9 @@ void Session::connectTransport(int cols, int rows)
 
     ensureWorker();
 
-    const QUuid initialShellId = QUuid::createUuid();
+    const QUuid shellId = initialShellId.isNull() ? QUuid::createUuid() : initialShellId;
     ShellChannelState shell;
-    shell.id = initialShellId;
+    shell.id = shellId;
     shell.serial = nextShellSerial();
     shell.title = QStringLiteral("Shell %1").arg(shell.serial);
     shell.state = ChannelState::Opening;
@@ -126,7 +126,7 @@ void Session::connectTransport(int cols, int rows)
     shell.rows = rows;
     shell.createdAt = QDateTime::currentDateTimeUtc();
     m_shells.append(shell);
-    m_activeShellId = initialShellId;
+    m_activeShellId = shellId;
     emit shellsChanged();
     emit activeShellChanged(m_activeShellId);
 
@@ -134,8 +134,8 @@ void Session::connectTransport(int cols, int rows)
     const SessionCredentials credentials = m_credentials;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, connection, credentials, initialShellId, cols, rows]() {
-            worker->connectToHost(connection, credentials, initialShellId, cols, rows);
+        [worker = m_worker, connection, credentials, shellId, cols, rows]() {
+            worker->connectToHost(connection, credentials, shellId, cols, rows);
         },
         Qt::QueuedConnection);
 }
@@ -210,7 +210,7 @@ void Session::shutdown()
     emit tunnelsChanged();
 }
 
-QUuid Session::newShell(int cols, int rows)
+QUuid Session::newShell(int cols, int rows, const QUuid &shellId)
 {
     if (m_state != SessionState::Connected || m_worker == nullptr) {
         return {};
@@ -221,9 +221,13 @@ QUuid Session::newShell(int cols, int rows)
         return {};
     }
 
-    const QUuid shellId = QUuid::createUuid();
+    const QUuid id = shellId.isNull() ? QUuid::createUuid() : shellId;
+    if (findShell(id) != nullptr) {
+        return id;
+    }
+
     ShellChannelState shell;
-    shell.id = shellId;
+    shell.id = id;
     shell.serial = nextShellSerial();
     shell.title = QStringLiteral("Shell %1").arg(shell.serial);
     shell.state = ChannelState::Opening;
@@ -235,9 +239,9 @@ QUuid Session::newShell(int cols, int rows)
 
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, shellId, cols, rows]() { worker->openShell(shellId, cols, rows); },
+        [worker = m_worker, id, cols, rows]() { worker->openShell(id, cols, rows); },
         Qt::QueuedConnection);
-    return shellId;
+    return id;
 }
 
 void Session::closeShell(const QUuid &shellId)

@@ -52,7 +52,8 @@ void SessionTabWidget::refreshWelcome()
 }
 
 void SessionTabWidget::openSshSession(const Connection &connection,
-                                      const SessionCredentials &credentials)
+                                      const SessionCredentials &credentials,
+                                      const std::optional<WorkspaceSessionEntry> &restore)
 {
     if (!m_sessionManager) {
         return;
@@ -100,7 +101,15 @@ void SessionTabWidget::openSshSession(const Connection &connection,
 
     const int index = addTab(page, session->displayName());
     setCurrentIndex(index);
-    session->connectTransport();
+
+    QUuid initialShellId;
+    if (restore) {
+        page->beginWorkspaceRestore(*restore);
+        if (!restore->shells.isEmpty()) {
+            initialShellId = restore->shells.first().id;
+        }
+    }
+    session->connectTransport(80, 24, initialShellId);
     updateTabPresentation(page);
     emit sessionOpened(session->displayName());
 }
@@ -176,6 +185,26 @@ bool SessionTabWidget::activateConnection(const QUuid &connectionId)
     }
     setCurrentIndex(index);
     return true;
+}
+
+WorkspaceState SessionTabWidget::captureWorkspaceState() const
+{
+    WorkspaceState state;
+    if (Session *active = activeSession()) {
+        state.activeConnectionId = active->connectionId();
+    }
+
+    for (int i = 0; i < count(); ++i) {
+        if (isWelcomeTab(i)) {
+            continue;
+        }
+        SessionPage *page = pageAt(i);
+        if (!page || !page->session()) {
+            continue;
+        }
+        state.sessions.append(page->captureWorkspaceEntry());
+    }
+    return state;
 }
 
 QList<SessionPage *> SessionTabWidget::allSessionPages() const

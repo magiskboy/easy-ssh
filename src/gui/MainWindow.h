@@ -8,6 +8,7 @@
 
 #include "ErrorNotifier.h"
 #include "core/connection/Connection.h"
+#include "core/session/WorkspaceState.h"
 
 #include <QHash>
 #include <QList>
@@ -15,6 +16,7 @@
 #include <QPointer>
 #include <QString>
 #include <QUuid>
+#include <optional>
 
 class QAction;
 class QLabel;
@@ -59,6 +61,12 @@ private:
     void openConnectionById(const QUuid &id);
     void readTargetSecretForConnect(const Connection &connection);
     void finishConnect(const Connection &connection, const SessionCredentials &credentials);
+    void clearPendingConnect();
+    void saveWorkspaceState();
+    void scheduleWorkspaceSave();
+    void beginWorkspaceRestore();
+    void advanceWorkspaceRestore();
+    std::optional<WorkspaceSessionEntry> takePendingRestoreEntry(const QUuid &connectionId);
     void wireActiveSessionStateSync(Session *session);
     void editConnection(const QUuid &id);
     void onConnectionEdited(const QUuid &id,
@@ -106,6 +114,11 @@ private:
     QUuid m_pendingConnectId;
     SessionCredentials m_pendingCredentials;
     bool m_pendingNeedTargetSecret = false;
+
+    bool m_restoringWorkspace = false;
+    WorkspaceState m_workspaceRestore;
+    QList<QUuid> m_restoreQueue;
+    QTimer *m_workspaceSaveTimer = nullptr;
 
     QPointer<ConnectionManagerDialog> m_connectionManager;
     QPointer<SettingsDialog> m_settingsDialog;

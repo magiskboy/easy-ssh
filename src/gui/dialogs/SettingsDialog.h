@@ -67,6 +67,7 @@ private:
 
     // General
     QCheckBox *m_autoReconnect = nullptr;
+    QCheckBox *m_restoreWorkspace = nullptr;
     QSpinBox *m_stallTimeout = nullptr;
     QCheckBox *m_autoResumeTransfer = nullptr;
 

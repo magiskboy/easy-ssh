@@ -29,6 +29,8 @@ constexpr auto kConfirmMultilinePaste = "terminal/confirmMultilinePaste";
 constexpr auto kSmartLayout = "terminal/smartLayout";
 
 constexpr auto kAutoReconnect = "session/autoReconnect";
+constexpr auto kRestoreWorkspace = "session/restoreWorkspace";
+constexpr auto kWorkspaceState = "session/workspaceState";
 constexpr auto kTransferStallTimeoutSec = "transfer/stallTimeoutSec";
 constexpr auto kAutoResumeTransfer = "transfer/autoResumeAfterReconnect";
 constexpr auto kRecentConnections = "session/recentConnectionIds";
@@ -308,6 +310,28 @@ bool AppSettings::autoReconnect() const
 void AppSettings::setAutoReconnect(bool enabled)
 {
     setBoolValue(QLatin1String(kAutoReconnect), enabled);
+}
+
+bool AppSettings::restoreWorkspace() const
+{
+    return boolValue(QLatin1String(kRestoreWorkspace), true);
+}
+
+void AppSettings::setRestoreWorkspace(bool enabled)
+{
+    setBoolValue(QLatin1String(kRestoreWorkspace), enabled);
+}
+
+QByteArray AppSettings::workspaceState() const
+{
+    QSettings settings;
+    return settings.value(QLatin1String(kWorkspaceState)).toByteArray();
+}
+
+void AppSettings::setWorkspaceState(const QByteArray &state)
+{
+    QSettings settings;
+    settings.setValue(QLatin1String(kWorkspaceState), state);
 }
 
 int AppSettings::transferStallTimeoutSec() const

@@ -32,6 +32,8 @@ set(EASY_SSH_CORE_SOURCES
     core/session/Session.h
     core/session/SessionManager.cpp
     core/session/SessionManager.h
+    core/session/WorkspaceState.cpp
+    core/session/WorkspaceState.h
     core/shell/SshShell.cpp
     core/shell/SshShell.h
     core/fs/FsEngine.h

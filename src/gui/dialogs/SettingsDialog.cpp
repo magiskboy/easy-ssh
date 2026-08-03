@@ -218,6 +218,10 @@ QWidget *SettingsDialog::createGeneralPage()
     auto *sessionLayout = new QVBoxLayout(sessionGroup);
     m_autoReconnect = new QCheckBox(tr("Auto reconnect when connection is lost"), sessionGroup);
     sessionLayout->addWidget(m_autoReconnect);
+    m_restoreWorkspace = new QCheckBox(tr("Restore previous workspace on launch"), sessionGroup);
+    m_restoreWorkspace->setToolTip(
+        tr("Reopen the last open connections and shell dock layout when Easy SSH starts."));
+    sessionLayout->addWidget(m_restoreWorkspace);
 
     auto *transferGroup = new QGroupBox(tr("Transfers"), page);
     auto *transferForm = new QFormLayout(transferGroup);
@@ -294,6 +298,7 @@ void SettingsDialog::loadFromSettings()
     m_smartLayout->setChecked(s.smartLayout());
 
     m_autoReconnect->setChecked(s.autoReconnect());
+    m_restoreWorkspace->setChecked(s.restoreWorkspace());
     m_stallTimeout->setValue(s.transferStallTimeoutSec());
     m_autoResumeTransfer->setChecked(s.autoResumeTransferAfterReconnect());
 
@@ -324,6 +329,7 @@ void SettingsDialog::saveToSettings()
     s.setSmartLayout(m_smartLayout->isChecked());
 
     s.setAutoReconnect(m_autoReconnect->isChecked());
+    s.setRestoreWorkspace(m_restoreWorkspace->isChecked());
     s.setTransferStallTimeoutSec(m_stallTimeout->value());
     s.setAutoResumeTransferAfterReconnect(m_autoResumeTransfer->isChecked());
 

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Workspace restore: reopen last sessions and shell dock layouts on launch (Settings → General)
 - SFTP transfer resume via `.filepart` + SHA-256 prefix/full verification after cancel, stall, or disconnect
 - Transfer stall timeout and auto-resume-after-reconnect settings (General → Transfers)
 - Session auto-reconnect when connection is lost (honors existing setting)

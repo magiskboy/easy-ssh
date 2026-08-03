@@ -7,12 +7,14 @@
 #pragma once
 
 #include "core/connection/Connection.h"
+#include "core/session/WorkspaceState.h"
 #include "gui/ErrorNotifier.h"
 
 #include <QHash>
 #include <QList>
 #include <QTabWidget>
 #include <QUuid>
+#include <optional>
 
 class ConnectionModel;
 class Session;
@@ -31,7 +33,9 @@ public:
     void setSessionManager(SessionManager *manager);
     void refreshWelcome();
 
-    void openSshSession(const Connection &connection, const SessionCredentials &credentials);
+    void openSshSession(const Connection &connection,
+                        const SessionCredentials &credentials,
+                        const std::optional<WorkspaceSessionEntry> &restore = std::nullopt);
     void disconnectCurrentSession();
     void reconnectCurrentSession();
     void closeCurrentSession();
@@ -44,6 +48,7 @@ public:
     Session *activeSession() const;
     QList<SessionPage *> allSessionPages() const;
     bool activateConnection(const QUuid &connectionId);
+    WorkspaceState captureWorkspaceState() const;
 
 signals:
     void sessionOpened(const QString &displayName);

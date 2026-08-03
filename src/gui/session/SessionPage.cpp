@@ -8,6 +8,7 @@
 #include "ShellLayoutPlanner.h"
 #include "core/session/Session.h"
 #include "core/settings/AppSettings.h"
+#include "core/util/Logging.h"
 #include "gui/ErrorNotifier.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
@@ -103,6 +104,32 @@ void SessionPage::setLayoutActive(bool active)
     }
 }
 
+void SessionPage::beginWorkspaceRestore(const WorkspaceSessionEntry &entry)
+{
+    m_restoreEntry = entry;
+    m_restoringWorkspace = !entry.shells.isEmpty() || !entry.dockState.isEmpty();
+}
+
+WorkspaceSessionEntry SessionPage::captureWorkspaceEntry() const
+{
+    WorkspaceSessionEntry entry;
+    if (!m_session) {
+        return entry;
+    }
+    entry.connectionId = m_session->connectionId();
+    entry.activeShellId = m_session->activeShellId();
+    for (const ShellChannelState &shell : m_session->shells()) {
+        WorkspaceShellEntry shellEntry;
+        shellEntry.id = shell.id;
+        shellEntry.title = shell.title;
+        entry.shells.append(shellEntry);
+    }
+    if (m_dockHost) {
+        entry.dockState = m_dockHost->saveLayout();
+    }
+    return entry;
+}
+
 void SessionPage::onSessionStateChanged(SessionState state)
 {
     switch (state) {
@@ -112,17 +139,27 @@ void SessionPage::onSessionStateChanged(SessionState state)
     case SessionState::Connected:
         m_overlay->hide();
         m_dockHost->show();
-        // Initial shell is created while Connecting; pin it now so it always
-        // appears on the main screen (smart layout on or off).
-        onActiveShellChanged(m_session->activeShellId());
+        if (m_restoringWorkspace) {
+            continueWorkspaceRestore();
+        } else {
+            // Initial shell is created while Connecting; pin it now so it always
+            // appears on the main screen (smart layout on or off).
+            onActiveShellChanged(m_session->activeShellId());
+        }
         break;
     case SessionState::Disconnected:
+        m_restoringWorkspace = false;
+        m_workspaceRestoreBusy = false;
+        m_restoreEntry = {};
         if (m_dockHost) {
             m_dockHost->clearLayout();
         }
         showOverlay(tr("Disconnected from %1.").arg(m_session->displayName()), true);
         break;
     case SessionState::Failed:
+        m_restoringWorkspace = false;
+        m_workspaceRestoreBusy = false;
+        m_restoreEntry = {};
         if (m_dockHost) {
             m_dockHost->clearLayout();
         }
@@ -155,6 +192,13 @@ void SessionPage::onShellsChanged()
         }
     }
 
+    if (m_restoringWorkspace) {
+        if (m_session->state() == SessionState::Connected) {
+            continueWorkspaceRestore();
+        }
+        return;
+    }
+
     if (m_session->state() == SessionState::Connected && !newborn.isNull()) {
         m_pendingSmartPinId = newborn;
         if (m_session->activeShellId() != newborn) {
@@ -184,6 +228,74 @@ void SessionPage::onShellsChanged()
         m_overlay->hide();
         m_dockHost->show();
     }
+}
+
+void SessionPage::continueWorkspaceRestore()
+{
+    if (!m_restoringWorkspace || !m_session || !m_dockHost || m_workspaceRestoreBusy) {
+        return;
+    }
+    if (m_session->state() != SessionState::Connected) {
+        return;
+    }
+
+    m_workspaceRestoreBusy = true;
+
+    QSet<QUuid> alive;
+    for (const ShellChannelState &shell : m_session->shells()) {
+        alive.insert(shell.id);
+    }
+
+    for (const WorkspaceShellEntry &spec : m_restoreEntry.shells) {
+        if (alive.contains(spec.id)) {
+            continue;
+        }
+        m_session->newShell(kDefaultCols, kDefaultRows, spec.id);
+        alive.insert(spec.id);
+    }
+
+    for (const WorkspaceShellEntry &spec : m_restoreEntry.shells) {
+        if (spec.title.isEmpty()) {
+            continue;
+        }
+        for (const ShellChannelState &shell : m_session->shells()) {
+            if (shell.id == spec.id && shell.title != spec.title) {
+                m_session->renameShell(spec.id, spec.title);
+                break;
+            }
+        }
+    }
+
+    for (const WorkspaceShellEntry &spec : m_restoreEntry.shells) {
+        ensurePane(spec.id);
+        if (!m_dockHost->isPinned(spec.id)) {
+            pinShellToLayout(spec.id);
+        }
+        if (!spec.title.isEmpty()) {
+            m_dockHost->setShellTitle(spec.id, spec.title);
+        }
+    }
+
+    if (m_restoreEntry.shells.isEmpty()) {
+        onActiveShellChanged(m_session->activeShellId());
+    } else if (!m_restoreEntry.dockState.isEmpty()) {
+        if (!m_dockHost->restoreLayout(m_restoreEntry.dockState)) {
+            qCWarning(lcGui) << "workspace dock restore failed for" << m_session->connectionId();
+        }
+    }
+
+    const QUuid focusId = m_restoreEntry.activeShellId.isNull() ? m_session->activeShellId()
+                                                                : m_restoreEntry.activeShellId;
+    if (!focusId.isNull()) {
+        m_session->setActiveShell(focusId);
+        m_dockHost->focusShell(focusId);
+    }
+
+    m_restoringWorkspace = false;
+    m_restoreEntry = {};
+    m_workspaceRestoreBusy = false;
+    m_overlay->hide();
+    m_dockHost->show();
 }
 
 void SessionPage::onActiveShellChanged(const QUuid &shellId)

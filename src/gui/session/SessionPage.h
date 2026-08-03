@@ -7,6 +7,7 @@
 #pragma once
 
 #include "core/session/SessionTypes.h"
+#include "core/session/WorkspaceState.h"
 #include "core/ssh/SshWorker.h"
 #include "gui/ErrorNotifier.h"
 
@@ -40,6 +41,9 @@ public:
     void saveLog();
     void saveScreenshot();
     void setLayoutActive(bool active);
+
+    void beginWorkspaceRestore(const WorkspaceSessionEntry &entry);
+    WorkspaceSessionEntry captureWorkspaceEntry() const;
 
 signals:
     void statusMessage(const QString &message, ErrorNotifier::Level level);
@@ -88,6 +92,7 @@ private:
     void schedulePtySizeSync();
     QSize readTerminalSize(QTermWidget *term) const;
     QString shellTitle(const QUuid &shellId) const;
+    void continueWorkspaceRestore();
 
     Session *m_session = nullptr;
     ShellDockHost *m_dockHost = nullptr;
@@ -98,4 +103,7 @@ private:
     QTimer *m_resizeDebounce = nullptr;
     /// Shell created in the latest shellsChanged; may use smart layout when activated.
     QUuid m_pendingSmartPinId;
+    bool m_restoringWorkspace = false;
+    bool m_workspaceRestoreBusy = false;
+    WorkspaceSessionEntry m_restoreEntry;
 };

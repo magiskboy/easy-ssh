@@ -70,6 +70,13 @@ public:
     bool autoReconnect() const;
     void setAutoReconnect(bool enabled);
 
+    /// When true, reopen the previous workspace (sessions + shell docks) on launch.
+    bool restoreWorkspace() const;
+    void setRestoreWorkspace(bool enabled);
+
+    QByteArray workspaceState() const;
+    void setWorkspaceState(const QByteArray &state);
+
     // --- Transfers ---
     /// Seconds without progress before aborting a transfer; 0 disables.
     int transferStallTimeoutSec() const;

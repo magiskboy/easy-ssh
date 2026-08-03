@@ -10,6 +10,7 @@
 #include "core/connection/SecretStore.h"
 #include "core/session/Session.h"
 #include "core/session/SessionManager.h"
+#include "core/session/WorkspaceState.h"
 #include "core/settings/AppSettings.h"
 #include "core/util/Logging.h"
 #include "gui/connection/ConnectionDialog.h"
@@ -66,10 +67,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             &AppSettings::settingsChanged,
             this,
             &MainWindow::applyAppSettings);
+
+    m_workspaceSaveTimer = new QTimer(this);
+    m_workspaceSaveTimer->setSingleShot(true);
+    m_workspaceSaveTimer->setInterval(500);
+    connect(m_workspaceSaveTimer, &QTimer::timeout, this, &MainWindow::saveWorkspaceState);
+
+    QTimer::singleShot(0, this, &MainWindow::beginWorkspaceRestore);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    saveWorkspaceState();
     AppSettings::instance().setWindowGeometry(saveGeometry());
     QMainWindow::closeEvent(event);
 }
@@ -267,9 +276,10 @@ void MainWindow::setupUi()
                                           tr("Credentials"),
                                           tr("Failed to read credentials: %1").arg(error),
                                           ErrorNotifier::Level::Warning);
-                    m_pendingConnectId = {};
-                    m_pendingNeedTargetSecret = false;
-                    m_pendingCredentials = {};
+                    clearPendingConnect();
+                    if (m_restoringWorkspace) {
+                        advanceWorkspaceRestore();
+                    }
                     return;
                 }
 
@@ -291,9 +301,10 @@ void MainWindow::setupUi()
                                              "Edit the connection and set a password.")
                                               .arg(connection->name),
                                           ErrorNotifier::Level::Warning);
-                    m_pendingConnectId = {};
-                    m_pendingNeedTargetSecret = false;
-                    m_pendingCredentials = {};
+                    clearPendingConnect();
+                    if (m_restoringWorkspace) {
+                        advanceWorkspaceRestore();
+                    }
                     return;
                 }
 
@@ -347,12 +358,14 @@ void MainWindow::setupUi()
         updateTerminalActionsEnabled();
         syncSidePanelsToActiveSession();
         updateSessionStatusInfo();
+        scheduleWorkspaceSave();
     });
 
     connect(m_sessionTabs, &SessionTabWidget::sessionOpened, this, [this](const QString &) {
         updateTerminalActionsEnabled();
         updateSessionStatusInfo();
         syncSidePanelsToActiveSession();
+        scheduleWorkspaceSave();
     });
 
     connect(
@@ -894,6 +907,9 @@ void MainWindow::openConnectionById(const QUuid &id)
     const auto connection = m_connectionModel->connectionById(id);
     if (!connection) {
         setStatusText(tr("Connection not found."), ErrorNotifier::Level::Warning);
+        if (m_restoringWorkspace) {
+            advanceWorkspaceRestore();
+        }
         return;
     }
 
@@ -925,12 +941,103 @@ void MainWindow::readTargetSecretForConnect(const Connection &connection)
 
 void MainWindow::finishConnect(const Connection &connection, const SessionCredentials &credentials)
 {
-    m_sessionTabs->openSshSession(connection, credentials);
+    const auto restore = takePendingRestoreEntry(connection.id);
+    m_sessionTabs->openSshSession(connection, credentials, restore);
     AppSettings::instance().recordRecentConnection(connection.id);
     m_sessionTabs->refreshWelcome();
+    clearPendingConnect();
+    if (m_restoringWorkspace) {
+        advanceWorkspaceRestore();
+    }
+}
+
+void MainWindow::clearPendingConnect()
+{
     m_pendingConnectId = {};
     m_pendingNeedTargetSecret = false;
     m_pendingCredentials = {};
+}
+
+void MainWindow::saveWorkspaceState()
+{
+    if (!m_sessionTabs) {
+        return;
+    }
+    const WorkspaceState state = m_sessionTabs->captureWorkspaceState();
+    AppSettings::instance().setWorkspaceState(state.toJson());
+}
+
+void MainWindow::scheduleWorkspaceSave()
+{
+    if (m_restoringWorkspace || !m_workspaceSaveTimer) {
+        return;
+    }
+    m_workspaceSaveTimer->start();
+}
+
+void MainWindow::beginWorkspaceRestore()
+{
+    if (!AppSettings::instance().restoreWorkspace()) {
+        return;
+    }
+
+    bool ok = false;
+    m_workspaceRestore = WorkspaceState::fromJson(AppSettings::instance().workspaceState(), &ok);
+    if (!ok || m_workspaceRestore.isEmpty()) {
+        m_workspaceRestore = {};
+        return;
+    }
+
+    m_restoreQueue.clear();
+    for (const WorkspaceSessionEntry &entry : m_workspaceRestore.sessions) {
+        if (!m_connectionModel->connectionById(entry.connectionId)) {
+            qCWarning(lcGui) << "workspace restore skipped missing connection"
+                             << entry.connectionId;
+            continue;
+        }
+        m_restoreQueue.append(entry.connectionId);
+    }
+    if (m_restoreQueue.isEmpty()) {
+        m_workspaceRestore = {};
+        return;
+    }
+
+    m_restoringWorkspace = true;
+    setStatusText(tr("Restoring workspace…"), ErrorNotifier::Level::Status);
+    advanceWorkspaceRestore();
+}
+
+void MainWindow::advanceWorkspaceRestore()
+{
+    if (!m_restoringWorkspace) {
+        return;
+    }
+
+    if (!m_restoreQueue.isEmpty()) {
+        const QUuid nextId = m_restoreQueue.takeFirst();
+        openConnectionById(nextId);
+        return;
+    }
+
+    const QUuid activeId = m_workspaceRestore.activeConnectionId;
+    m_restoringWorkspace = false;
+    m_workspaceRestore = {};
+    if (!activeId.isNull()) {
+        m_sessionTabs->activateConnection(activeId);
+    }
+    scheduleWorkspaceSave();
+}
+
+std::optional<WorkspaceSessionEntry>
+MainWindow::takePendingRestoreEntry(const QUuid &connectionId)
+{
+    if (!m_restoringWorkspace || connectionId.isNull()) {
+        return std::nullopt;
+    }
+    if (const WorkspaceSessionEntry *entry = m_workspaceRestore.sessionFor(connectionId)) {
+        return *entry;
+    }
+    return std::nullopt;
 }
 
 void MainWindow::updateSessionStatusInfo()

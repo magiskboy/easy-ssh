@@ -48,6 +48,9 @@ public:
     void setLayoutActive(bool active);
     void setShellTitle(const QUuid &shellId, const QString &title);
 
+    QByteArray saveLayout() const;
+    bool restoreLayout(const QByteArray &state);
+
 signals:
     void shellFocused(const QUuid &shellId);
     void dropShellRequested(const QUuid &shellId, int dockArea);

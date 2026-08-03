@@ -229,6 +229,22 @@ void ShellDockHost::setShellTitle(const QUuid &shellId, const QString &title)
     }
 }
 
+QByteArray ShellDockHost::saveLayout() const
+{
+    if (!m_manager || m_docks.isEmpty()) {
+        return {};
+    }
+    return m_manager->saveState();
+}
+
+bool ShellDockHost::restoreLayout(const QByteArray &state)
+{
+    if (!m_manager || state.isEmpty()) {
+        return false;
+    }
+    return m_manager->restoreState(state);
+}
+
 ads::CDockWidget *ShellDockHost::dockForShell(const QUuid &shellId) const
 {
     return m_docks.value(shellId, nullptr);
