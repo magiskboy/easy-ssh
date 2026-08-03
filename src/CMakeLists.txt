@@ -5,11 +5,14 @@
 set(EASY_SSH_CORE_SOURCES
     core/util/Logging.cpp
     core/util/Logging.h
+    core/util/FuzzyMatch.h
     core/settings/AppSettings.cpp
     core/settings/AppSettings.h
     core/connection/Connection.h
     core/connection/ConnectionStore.cpp
     core/connection/ConnectionStore.h
+    core/connection/ConnectionQuery.cpp
+    core/connection/ConnectionQuery.h
     core/connection/SecretStore.cpp
     core/connection/SecretStore.h
     core/connection/SshConfigParser.cpp
@@ -115,6 +118,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/tunnel/TunnelDialog.h
     gui/dialogs/AboutDialog.cpp
     gui/dialogs/AboutDialog.h
+    gui/dialogs/CommandPaletteDialog.cpp
+    gui/dialogs/CommandPaletteDialog.h
     gui/dialogs/SettingsDialog.cpp
     gui/dialogs/SettingsDialog.h
     gui/widgets/CategoryDialogShell.cpp

@@ -50,12 +50,14 @@ struct ShortcutDef
 constexpr ShortcutDef kShortcutDefs[] = {
     {"general.newConnection", "General", "New Connection", "Ctrl+N"},
     {"general.connectionManager", "General", "Connection Manager", "Ctrl+Shift+O"},
-    {"general.searchConnection", "General", "Search Connection", "Ctrl+F"},
+    {"general.quickConnect", "General", "Quick Connect", "Ctrl+K"},
+    {"general.commandPalette", "General", "Command Palette", "Ctrl+Shift+P"},
     {"general.settings", "General", "Settings", "Ctrl+,"},
     {"general.shortcuts", "General", "Keyboard Shortcuts", "Ctrl+Shift+,"},
     {"general.about", "General", "About", "F1"},
 
     {"session.newSession", "Terminal", "New Shell", "Ctrl+T"},
+    {"session.goToShell", "Windows", "Go to Shell", "Ctrl+P"},
     {"session.nextTab", "Windows", "Next Tab", "Ctrl+Tab"},
     {"session.previousTab", "Windows", "Previous Tab", "Ctrl+Shift+Tab"},
     {"shell.close", "Terminal", "Close Shell", "Ctrl+Shift+W"},

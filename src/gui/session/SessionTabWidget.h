@@ -43,6 +43,7 @@ public:
     SessionPage *activeSessionPage() const;
     Session *activeSession() const;
     QList<SessionPage *> allSessionPages() const;
+    bool activateConnection(const QUuid &connectionId);
 
 signals:
     void sessionOpened(const QString &displayName);

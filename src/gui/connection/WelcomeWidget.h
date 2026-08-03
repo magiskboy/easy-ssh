@@ -14,6 +14,7 @@
 class ConnectionModel;
 class QLabel;
 class QListWidget;
+class QGridLayout;
 
 class WelcomeWidget final : public QWidget
 {
@@ -33,13 +34,17 @@ signals:
 
 private slots:
     void onRecentActivated();
+    void refreshShortcutHints();
 
 private:
     void openCurrentRecent();
     void rebuildRecentList();
+    void addShortcutHintRow(int row, const QString &actionId, const QString &fallbackLabel);
 
     ConnectionModel *m_model = nullptr;
     QLabel *m_recentHeading = nullptr;
     QListWidget *m_recentList = nullptr;
     QLabel *m_emptyRecentLabel = nullptr;
+    QLabel *m_shortcutsHeading = nullptr;
+    QGridLayout *m_shortcutsGrid = nullptr;
 };

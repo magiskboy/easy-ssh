@@ -168,6 +168,16 @@ Session *SessionTabWidget::activeSession() const
     return nullptr;
 }
 
+bool SessionTabWidget::activateConnection(const QUuid &connectionId)
+{
+    const int index = indexForConnection(connectionId);
+    if (index < 0) {
+        return false;
+    }
+    setCurrentIndex(index);
+    return true;
+}
+
 QList<SessionPage *> SessionTabWidget::allSessionPages() const
 {
     return m_pagesByConnection.values();

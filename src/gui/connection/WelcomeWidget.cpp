@@ -9,7 +9,9 @@
 #include "gui/models/ConnectionModel.h"
 
 #include <QAbstractItemView>
+#include <QGridLayout>
 #include <QHBoxLayout>
+#include <QKeySequence>
 #include <QLabel>
 #include <QListWidget>
 #include <QListWidgetItem>
@@ -63,6 +65,16 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent)
     m_emptyRecentLabel->setAlignment(Qt::AlignCenter);
     m_emptyRecentLabel->setEnabled(false);
 
+    m_shortcutsHeading = new QLabel(tr("Keyboard"), this);
+    QFont shortcutsFont = m_shortcutsHeading->font();
+    shortcutsFont.setBold(true);
+    m_shortcutsHeading->setFont(shortcutsFont);
+
+    m_shortcutsGrid = new QGridLayout();
+    m_shortcutsGrid->setHorizontalSpacing(24);
+    m_shortcutsGrid->setVerticalSpacing(4);
+    m_shortcutsGrid->setAlignment(Qt::AlignHCenter);
+
     layout->addStretch(1);
     layout->addWidget(title);
     layout->addWidget(hint);
@@ -72,9 +84,18 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent)
     layout->addWidget(m_recentHeading);
     layout->addWidget(m_recentList);
     layout->addWidget(m_emptyRecentLabel);
+    layout->addSpacing(16);
+    layout->addWidget(m_shortcutsHeading);
+    layout->addLayout(m_shortcutsGrid);
     layout->addStretch(2);
 
+    connect(&AppSettings::instance(),
+            &AppSettings::settingsChanged,
+            this,
+            &WelcomeWidget::refreshShortcutHints);
+
     rebuildRecentList();
+    refreshShortcutHints();
 }
 
 void WelcomeWidget::setConnectionModel(ConnectionModel *model)
@@ -86,6 +107,7 @@ void WelcomeWidget::setConnectionModel(ConnectionModel *model)
 void WelcomeWidget::refresh()
 {
     rebuildRecentList();
+    refreshShortcutHints();
 }
 
 void WelcomeWidget::onRecentActivated()
@@ -135,4 +157,41 @@ void WelcomeWidget::rebuildRecentList()
     m_recentList->setVisible(hasRecent);
     m_emptyRecentLabel->setVisible(!hasRecent);
     m_recentHeading->setVisible(true);
+}
+
+void WelcomeWidget::addShortcutHintRow(int row, const QString &actionId, const QString &fallbackLabel)
+{
+    QString label = AppSettings::shortcutLabel(actionId);
+    if (label.isEmpty()) {
+        label = fallbackLabel;
+    }
+    auto *nameLabel = new QLabel(label, this);
+    nameLabel->setEnabled(false);
+
+    const QString keys =
+        AppSettings::instance().shortcut(actionId).toString(QKeySequence::NativeText);
+    auto *keysLabel = new QLabel(keys, this);
+    keysLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    m_shortcutsGrid->addWidget(nameLabel, row, 0);
+    m_shortcutsGrid->addWidget(keysLabel, row, 1);
+}
+
+void WelcomeWidget::refreshShortcutHints()
+{
+    if (!m_shortcutsGrid) {
+        return;
+    }
+
+    while (QLayoutItem *item = m_shortcutsGrid->takeAt(0)) {
+        if (QWidget *widget = item->widget()) {
+            widget->deleteLater();
+        }
+        delete item;
+    }
+
+    addShortcutHintRow(0, QStringLiteral("general.quickConnect"), tr("Quick Connect"));
+    addShortcutHintRow(1, QStringLiteral("general.newConnection"), tr("New Connection"));
+    addShortcutHintRow(2, QStringLiteral("general.commandPalette"), tr("Command Palette"));
+    addShortcutHintRow(3, QStringLiteral("general.settings"), tr("Settings"));
 }

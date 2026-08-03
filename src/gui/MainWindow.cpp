@@ -6,14 +6,18 @@
 
 #include "ErrorNotifier.h"
 #include "core/connection/Connection.h"
+#include "core/connection/ConnectionQuery.h"
 #include "core/connection/SecretStore.h"
 #include "core/session/Session.h"
 #include "core/session/SessionManager.h"
 #include "core/settings/AppSettings.h"
 #include "core/util/Logging.h"
+#include "gui/connection/ConnectionDialog.h"
 #include "gui/connection/ConnectionListWidget.h"
 #include "gui/connection/ConnectionManagerDialog.h"
+#include "gui/connection/ConnectionSecretHelper.h"
 #include "gui/dialogs/AboutDialog.h"
+#include "gui/dialogs/CommandPaletteDialog.h"
 #include "gui/dialogs/SettingsDialog.h"
 #include "gui/explorer/FileExplorerWidget.h"
 #include "gui/models/ConnectionModel.h"
@@ -400,6 +404,11 @@ void MainWindow::setupMenus()
     connect(
         newAction, &QAction::triggered, m_connectionList, &ConnectionListWidget::createConnection);
 
+    auto *quickConnectAction = connectionsMenu->addAction(tr("&Quick Connect…"));
+    registerAction(QStringLiteral("general.quickConnect"), quickConnectAction);
+    addAction(quickConnectAction);
+    connect(quickConnectAction, &QAction::triggered, this, &MainWindow::openQuickConnect);
+
     auto *managerAction = connectionsMenu->addAction(tr("Connection &Manager…"));
     registerAction(QStringLiteral("general.connectionManager"), managerAction);
     connect(managerAction, &QAction::triggered, this, [this]() { openConnectionManager(); });
@@ -474,6 +483,18 @@ void MainWindow::setupMenus()
     m_terminalActions.append(closeShellAction);
 
     auto *windowsMenu = menuBar()->addMenu(tr("&Windows"));
+
+    auto *paletteAction = windowsMenu->addAction(tr("Command &Palette…"));
+    registerAction(QStringLiteral("general.commandPalette"), paletteAction);
+    addAction(paletteAction);
+    connect(paletteAction, &QAction::triggered, this, &MainWindow::openCommandPalette);
+
+    auto *goToShellAction = windowsMenu->addAction(tr("&Go to Shell…"));
+    registerAction(QStringLiteral("session.goToShell"), goToShellAction);
+    addAction(goToShellAction);
+    connect(goToShellAction, &QAction::triggered, this, &MainWindow::openGoToShell);
+
+    windowsMenu->addSeparator();
 
     auto *settingsAction = windowsMenu->addAction(tr("&Settings…"));
     registerAction(QStringLiteral("general.settings"), settingsAction);
@@ -573,6 +594,221 @@ void MainWindow::openConnectionManager(const QUuid &selectId)
 void MainWindow::openShortcuts()
 {
     openSettings(QStringLiteral("shortcuts"));
+}
+
+void MainWindow::ensureCommandPalette()
+{
+    if (m_commandPalette) {
+        return;
+    }
+
+    m_commandPalette = new CommandPaletteDialog(this);
+    connect(m_commandPalette,
+            &CommandPaletteDialog::actionChosen,
+            this,
+            [this](const QString &actionId) {
+                if (actionId == QLatin1String("general.commandPalette") ||
+                    actionId == QLatin1String("general.quickConnect") ||
+                    actionId == QLatin1String("session.goToShell")) {
+                    return;
+                }
+                if (QAction *action = m_shortcutActions.value(actionId)) {
+                    if (action->isEnabled()) {
+                        action->trigger();
+                    }
+                }
+            });
+    connect(m_commandPalette,
+            &CommandPaletteDialog::connectionChosen,
+            this,
+            &MainWindow::openConnectionById);
+    connect(m_commandPalette,
+            &CommandPaletteDialog::createConnectionChosen,
+            this,
+            &MainWindow::createConnectionFromQuery);
+    connect(m_commandPalette,
+            &CommandPaletteDialog::shellChosen,
+            this,
+            &MainWindow::focusShell);
+}
+
+void MainWindow::populatePaletteActions()
+{
+    if (!m_commandPalette) {
+        return;
+    }
+
+    QList<CommandPaletteDialog::ActionItem> items;
+    items.reserve(m_shortcutActions.size());
+    for (const QString &actionId : AppSettings::shortcutActionIds()) {
+        QAction *action = m_shortcutActions.value(actionId);
+        if (!action) {
+            continue;
+        }
+        if (actionId == QLatin1String("general.commandPalette") ||
+            actionId == QLatin1String("general.quickConnect") ||
+            actionId == QLatin1String("session.goToShell")) {
+            continue;
+        }
+
+        CommandPaletteDialog::ActionItem item;
+        item.actionId = actionId;
+        item.label = AppSettings::shortcutLabel(actionId);
+        item.group = AppSettings::shortcutGroup(actionId);
+        item.shortcutText =
+            AppSettings::instance().shortcut(actionId).toString(QKeySequence::NativeText);
+        item.enabled = action->isEnabled();
+        items.append(item);
+    }
+    m_commandPalette->setActionItems(items);
+}
+
+void MainWindow::populatePaletteConnections()
+{
+    if (!m_commandPalette || !m_connectionModel) {
+        return;
+    }
+
+    const QList<QUuid> recentIds = AppSettings::instance().recentConnectionIds();
+    QHash<QUuid, int> recentRank;
+    for (int i = 0; i < recentIds.size(); ++i) {
+        recentRank.insert(recentIds.at(i), i);
+    }
+
+    QList<CommandPaletteDialog::ConnectionItem> items;
+    for (const Connection &connection : m_connectionModel->connections()) {
+        CommandPaletteDialog::ConnectionItem item;
+        item.id = connection.id;
+        item.name = connection.name.isEmpty() ? connection.displayText() : connection.name;
+        item.subtitle = QStringLiteral("%1@%2:%3")
+                            .arg(connection.username, connection.host)
+                            .arg(connection.port);
+        item.searchFields = {connection.name,
+                             connection.host,
+                             connection.username,
+                             connection.configAlias,
+                             QString::number(connection.port),
+                             item.subtitle};
+        item.recentRank = recentRank.value(connection.id, -1);
+        items.append(item);
+    }
+    m_commandPalette->setConnectionItems(items);
+}
+
+void MainWindow::populatePaletteShells()
+{
+    if (!m_commandPalette || !m_sessionManager) {
+        return;
+    }
+
+    QList<CommandPaletteDialog::ShellItem> items;
+    const QUuid activeConnectionId =
+        m_sessionManager->active() ? m_sessionManager->active()->connectionId() : QUuid();
+    const QUuid activeShellId =
+        m_sessionManager->active() ? m_sessionManager->active()->activeShellId() : QUuid();
+
+    for (Session *session : m_sessionManager->all()) {
+        if (!session) {
+            continue;
+        }
+        const Connection connection = session->connection();
+        const QString sessionLabel =
+            connection.name.isEmpty()
+                ? QStringLiteral("%1@%2").arg(connection.username, connection.host)
+                : connection.name;
+        for (const ShellChannelState &shell : session->shells()) {
+            CommandPaletteDialog::ShellItem item;
+            item.connectionId = session->connectionId();
+            item.shellId = shell.id;
+            item.title = shell.title.isEmpty() ? tr("Shell") : shell.title;
+            item.subtitle = sessionLabel;
+            item.searchFields = {item.title,
+                                 sessionLabel,
+                                 connection.name,
+                                 connection.host,
+                                 connection.username};
+            item.isActive =
+                session->connectionId() == activeConnectionId && shell.id == activeShellId;
+            items.append(item);
+        }
+    }
+    m_commandPalette->setShellItems(items);
+}
+
+void MainWindow::openCommandPalette()
+{
+    ensureCommandPalette();
+    populatePaletteActions();
+    m_commandPalette->openMode(CommandPaletteDialog::Mode::Actions);
+}
+
+void MainWindow::openQuickConnect()
+{
+    ensureCommandPalette();
+    populatePaletteConnections();
+    m_commandPalette->openMode(CommandPaletteDialog::Mode::Connections);
+}
+
+void MainWindow::openGoToShell()
+{
+    ensureCommandPalette();
+    populatePaletteShells();
+    m_commandPalette->openMode(CommandPaletteDialog::Mode::Shells);
+}
+
+void MainWindow::createConnectionFromQuery(const QString &query)
+{
+    auto *dialog = new ConnectionDialog(ConnectionDialog::Mode::Create, this);
+    if (!query.trimmed().isEmpty()) {
+        dialog->setConnection(ConnectionQuery::draftFromQuery(query));
+    }
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        const Connection connection = dialog->connection();
+        if (!m_connectionModel->add(connection)) {
+            ErrorNotifier::notify(this,
+                                  tr("Error"),
+                                  tr("Failed to create connection."),
+                                  ErrorNotifier::Level::Warning);
+            return;
+        }
+
+        ConnectionSecretHelper::persistSecrets(m_secretStore,
+                                               connection,
+                                               AuthType::Password,
+                                               false,
+                                               dialog->password(),
+                                               dialog->passwordProvided(),
+                                               dialog->passphrase(),
+                                               dialog->passphraseProvided(),
+                                               dialog->gatewayPassword(),
+                                               dialog->gatewayPasswordProvided(),
+                                               dialog->gatewayPassphrase(),
+                                               dialog->gatewayPassphraseProvided());
+
+        rebuildConnectionsListMenu();
+        if (m_sessionTabs) {
+            m_sessionTabs->refreshWelcome();
+        }
+        setStatusText(tr("Created connection: %1").arg(connection.name),
+                      ErrorNotifier::Level::Success);
+        openConnectionById(connection.id);
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+
+void MainWindow::focusShell(const QUuid &connectionId, const QUuid &shellId)
+{
+    if (!m_sessionTabs || connectionId.isNull() || shellId.isNull()) {
+        return;
+    }
+    if (!m_sessionTabs->activateConnection(connectionId)) {
+        return;
+    }
+    if (Session *session = m_sessionManager->get(connectionId)) {
+        session->setActiveShell(shellId);
+    }
 }
 
 void MainWindow::openAbout()
