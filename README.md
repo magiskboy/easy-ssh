@@ -1,12 +1,21 @@
-# Easy SSH
+<p align="center">
+  <img width="96" src="./icon.png" style="display: block" />
+</p>
+<h1 align="center">
+  Easy SSH
+</h1>
+<p align="center">
+  <em>A lightweight, native SSH client that puts the full SSH protocol to work</em>
+</p>
 
-[CI](https://github.com/magiskboy/easy-ssh/actions/workflows/ci.yml)
-[License: GPL-3.0](LICENSE)
-[REUSE status](https://api.reuse.software/info/github.com/magiskboy/easy-ssh)
-
-A lightweight, native SSH client that puts the full SSH protocol to work — shell, file transfer, and every form of forwarding — in one desktop app.
-
-Built with **Qt 6** and **libssh** for a native look on Linux, Windows, and macOS.
+<p align="center">
+  <a href="https://github.com/magiskboy/easy-ssh/actions/workflows/ci.yml">
+    <img src="https://github.com/magiskboy/easy-ssh/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0">
+  </a>
+</p>
 
 ## Features
 
