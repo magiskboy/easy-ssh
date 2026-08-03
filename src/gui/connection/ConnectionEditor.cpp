@@ -703,8 +703,7 @@ bool ConnectionEditor::validate()
 
     const auto authType = static_cast<AuthType>(m_authTypeCombo->currentData().toInt());
     if (authType == AuthType::Password && m_savePasswordCheck->isChecked() &&
-        m_passwordEdit->text().isEmpty() &&
-        (m_mode == Mode::Create || !m_initialSavePassword)) {
+        m_passwordEdit->text().isEmpty() && (m_mode == Mode::Create || !m_initialSavePassword)) {
         QMessageBox::warning(
             this, tr("Validation"), tr("Password is required when saving to the keychain."));
         m_shell->selectById(QStringLiteral("session"));

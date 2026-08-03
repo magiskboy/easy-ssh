@@ -639,10 +639,7 @@ void MainWindow::ensureCommandPalette()
             &CommandPaletteDialog::createConnectionChosen,
             this,
             &MainWindow::createConnectionFromQuery);
-    connect(m_commandPalette,
-            &CommandPaletteDialog::shellChosen,
-            this,
-            &MainWindow::focusShell);
+    connect(m_commandPalette, &CommandPaletteDialog::shellChosen, this, &MainWindow::focusShell);
 }
 
 void MainWindow::populatePaletteActions()
@@ -735,11 +732,8 @@ void MainWindow::populatePaletteShells()
             item.shellId = shell.id;
             item.title = shell.title.isEmpty() ? tr("Shell") : shell.title;
             item.subtitle = sessionLabel;
-            item.searchFields = {item.title,
-                                 sessionLabel,
-                                 connection.name,
-                                 connection.host,
-                                 connection.username};
+            item.searchFields = {
+                item.title, sessionLabel, connection.name, connection.host, connection.username};
             item.isActive =
                 session->connectionId() == activeConnectionId && shell.id == activeShellId;
             items.append(item);
@@ -1079,8 +1073,7 @@ void MainWindow::advanceWorkspaceRestore()
     scheduleWorkspaceSave();
 }
 
-std::optional<WorkspaceSessionEntry>
-MainWindow::takePendingRestoreEntry(const QUuid &connectionId)
+std::optional<WorkspaceSessionEntry> MainWindow::takePendingRestoreEntry(const QUuid &connectionId)
 {
     if (!m_restoringWorkspace || connectionId.isNull()) {
         return std::nullopt;

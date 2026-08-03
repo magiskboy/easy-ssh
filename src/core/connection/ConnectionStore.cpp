@@ -88,10 +88,9 @@ QList<Connection> ConnectionStore::load()
         connection.authType =
             authTypeFromString(settings.value(QStringLiteral("authType")).toString());
         // Pre-opt-in stores always persisted passwords; keep that behavior when the key is absent.
-        connection.savePassword =
-            settings.contains(QStringLiteral("savePassword"))
-                ? settings.value(QStringLiteral("savePassword")).toBool()
-                : true;
+        connection.savePassword = settings.contains(QStringLiteral("savePassword"))
+                                      ? settings.value(QStringLiteral("savePassword")).toBool()
+                                      : true;
         connection.privateKeyPath = settings.value(QStringLiteral("privateKeyPath")).toString();
         connection.startupDirectory = settings.value(QStringLiteral("startupDirectory")).toString();
         connection.keepAliveIntervalSec =
