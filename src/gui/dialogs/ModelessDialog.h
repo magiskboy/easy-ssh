@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "gui/widgets/UiMetrics.h"
+
 #include <QDialog>
 
 /// Prepare a modeless secondary window that keeps a normal frame on Wayland.
@@ -16,9 +18,15 @@
 /// server-side decorations and with incomplete client-side decorations, so the
 /// surface looks frameless. Qt::Window requests a normal decorated top-level
 /// instead (same class of window as QMainWindow).
-inline void configureModelessDialog(QDialog *dialog)
+///
+/// @p minWidth defaults to UiMetrics::dialogMinWidth so form content stays usable;
+/// pass 0 to skip (e.g. compact About).
+inline void configureModelessDialog(QDialog *dialog, int minWidth = UiMetrics::dialogMinWidth)
 {
     dialog->setWindowFlags(Qt::Window);
     dialog->setWindowModality(Qt::NonModal);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    if (minWidth > 0) {
+        dialog->setMinimumWidth(minWidth);
+    }
 }

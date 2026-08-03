@@ -17,7 +17,7 @@
 
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
-    configureModelessDialog(this);
+    configureModelessDialog(this, 0);
     setWindowTitle(tr("About Easy SSH"));
     setWindowIcon(QIcon(QStringLiteral(":/icons/app-256.png")));
 

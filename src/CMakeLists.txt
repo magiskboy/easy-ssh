@@ -130,6 +130,9 @@ set(EASY_SSH_GUI_SOURCES
     gui/theme/ThemeManager.h
     gui/widgets/CategoryDialogShell.cpp
     gui/widgets/CategoryDialogShell.h
+    gui/widgets/UiHelpers.cpp
+    gui/widgets/UiHelpers.h
+    gui/widgets/UiMetrics.h
 )
 
 if(WIN32)

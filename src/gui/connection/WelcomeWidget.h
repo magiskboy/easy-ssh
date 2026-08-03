@@ -41,8 +41,11 @@ private:
     void openCurrentRecent();
     void rebuildRecentList();
     void addShortcutHintRow(int row, QStringView actionId, const QString &fallbackLabel);
+    void updateContentColumnWidth();
 
     ConnectionModel *m_model = nullptr;
+    QLabel *m_titleLabel = nullptr;
+    QWidget *m_contentColumn = nullptr;
     QLabel *m_recentHeading = nullptr;
     QListWidget *m_recentList = nullptr;
     QLabel *m_emptyRecentLabel = nullptr;

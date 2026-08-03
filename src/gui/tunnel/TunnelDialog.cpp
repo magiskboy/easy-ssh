@@ -5,6 +5,9 @@
 #include "TunnelDialog.h"
 
 #include "core/connection/SecretStore.h"
+#include "gui/dialogs/ModelessDialog.h"
+#include "gui/widgets/UiHelpers.h"
+#include "gui/widgets/UiMetrics.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -12,7 +15,6 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -23,6 +25,7 @@
 TunnelDialog::TunnelDialog(Mode mode, const QUuid &connectionId, QWidget *parent)
     : QDialog(parent), m_mode(mode), m_id(QUuid::createUuid()), m_connectionId(connectionId)
 {
+    configureModelessDialog(this);
     setupUi();
     setWindowTitle(mode == Mode::Create ? tr("New Tunnel") : tr("Edit Tunnel"));
     resize(520, 420);
@@ -35,13 +38,7 @@ void TunnelDialog::setSecretStore(SecretStore *secretStore)
 
 QWidget *TunnelDialog::makeSocketPathRow(QLineEdit *edit, QPushButton *browseButton)
 {
-    auto *row = new QWidget(this);
-    auto *layout = new QHBoxLayout(row);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(6);
-    layout->addWidget(edit, 1);
-    layout->addWidget(browseButton);
-    return row;
+    return UiHelpers::makeBrowseRow(edit, browseButton, this);
 }
 
 QString TunnelDialog::chooseUnixSocketPath(QLineEdit *edit, const QString &caption)
@@ -71,7 +68,12 @@ QString TunnelDialog::chooseUnixSocketPath(QLineEdit *edit, const QString &capti
 void TunnelDialog::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
+    UiHelpers::applyContentMargins(layout, this);
+    layout->setSpacing(UiMetrics::relatedSpacing);
+
     m_form = new QFormLayout();
+    m_form->setHorizontalSpacing(UiMetrics::relatedSpacing);
+    m_form->setVerticalSpacing(UiMetrics::relatedSpacing);
 
     m_nameEdit = new QLineEdit(this);
 

@@ -39,11 +39,9 @@ private slots:
     void resetShortcutsDefaults();
 
 private:
-    QWidget *createFileExplorerPage();
-    QWidget *createAppearancePage();
-    QWidget *createShellAppearancePage();
-    QWidget *createShellBehaviorPage();
     QWidget *createGeneralPage();
+    QWidget *createFileExplorerPage();
+    QWidget *createShellPage();
     QWidget *createShortcutsPage();
     void loadFromSettings();
     void saveToSettings();
@@ -60,12 +58,18 @@ private:
     QCheckBox *m_showHidden = nullptr;
     QLineEdit *m_downloadDir = nullptr;
 
-    // Appearance / app theme
+    // General — Theme
     QComboBox *m_themeCombo = nullptr;
     QLineEdit *m_customThemePath = nullptr;
     QPushButton *m_browseThemeButton = nullptr;
 
-    // Terminal / Shell
+    // General — Session / Transfers
+    QCheckBox *m_autoReconnect = nullptr;
+    QCheckBox *m_restoreWorkspace = nullptr;
+    QSpinBox *m_stallTimeout = nullptr;
+    QCheckBox *m_autoResumeTransfer = nullptr;
+
+    // Shell
     QFontComboBox *m_fontCombo = nullptr;
     QSpinBox *m_fontSize = nullptr;
     QComboBox *m_colorScheme = nullptr;
@@ -74,12 +78,6 @@ private:
     QCheckBox *m_cursorBlink = nullptr;
     QCheckBox *m_confirmMultilinePaste = nullptr;
     QCheckBox *m_smartLayout = nullptr;
-
-    // General
-    QCheckBox *m_autoReconnect = nullptr;
-    QCheckBox *m_restoreWorkspace = nullptr;
-    QSpinBox *m_stallTimeout = nullptr;
-    QCheckBox *m_autoResumeTransfer = nullptr;
 
     // Shortcuts
     QTreeWidget *m_shortcutsTree = nullptr;

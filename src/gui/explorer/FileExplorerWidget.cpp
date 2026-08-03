@@ -11,6 +11,7 @@
 #include "gui/ErrorNotifier.h"
 #include "gui/models/OpenFileTracker.h"
 #include "gui/models/RemoteFileModel.h"
+#include "gui/widgets/UiHelpers.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -25,12 +26,10 @@
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
-#include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
-#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -847,9 +846,7 @@ void FileExplorerWidget::createFolder()
 
     bool ok = false;
     const QString name =
-        QInputDialog::getText(
-            this, tr("New Folder"), tr("Folder name:"), QLineEdit::Normal, QString(), &ok)
-            .trimmed();
+        UiHelpers::getText(this, {tr("New Folder"), tr("Folder name:")}, &ok).trimmed();
     if (!ok || name.isEmpty()) {
         return;
     }
@@ -883,8 +880,7 @@ void FileExplorerWidget::renameSelected()
     const QString oldName = index.siblingAtColumn(0).data().toString();
     bool ok = false;
     const QString newName =
-        QInputDialog::getText(this, tr("Rename"), tr("New name:"), QLineEdit::Normal, oldName, &ok)
-            .trimmed();
+        UiHelpers::getText(this, {tr("Rename"), tr("New name:"), oldName}, &ok).trimmed();
     if (!ok || newName.isEmpty() || newName == oldName) {
         return;
     }

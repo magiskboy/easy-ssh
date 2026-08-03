@@ -6,12 +6,11 @@
 
 #include "ShellDockHost.h"
 #include "core/session/Session.h"
+#include "gui/widgets/UiHelpers.h"
 
 #include <QAbstractItemView>
 #include <QDrag>
 #include <QFrame>
-#include <QInputDialog>
-#include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
 #include <QMimeData>
@@ -164,12 +163,8 @@ void ShellListWidget::renameSelected()
     }
     const QUuid id = m_list->currentItem()->data(Qt::UserRole).toUuid();
     bool ok = false;
-    const QString name = QInputDialog::getText(this,
-                                               tr("Rename Shell"),
-                                               tr("Name:"),
-                                               QLineEdit::Normal,
-                                               m_list->currentItem()->text(),
-                                               &ok);
+    const QString name = UiHelpers::getText(
+        this, {tr("Rename Shell"), tr("Name:"), m_list->currentItem()->text()}, &ok);
     if (ok && !name.trimmed().isEmpty()) {
         m_session->renameShell(id, name.trimmed());
     }

@@ -225,25 +225,27 @@ void TunnelListWidget::addTunnel()
         return;
     }
 
-    TunnelDialog dialog(TunnelDialog::Mode::Create, m_session->connectionId(), this);
-    dialog.setSecretStore(m_secretStore);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
+    auto *dialog = new TunnelDialog(TunnelDialog::Mode::Create, m_session->connectionId(), this);
+    dialog->setSecretStore(m_secretStore);
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        const TunnelDefinition def = dialog->tunnel();
+        const QString socksPassword = dialog->socksPassword();
+        persistSocksPassword(def, socksPassword, true);
+        m_model->upsert(def);
+        persistAll();
+        showList();
+        updateActionsEnabled();
+        emit statusMessage(tr("Tunnel added: %1").arg(def.name), ErrorNotifier::Level::Success);
 
-    const TunnelDefinition def = dialog.tunnel();
-    persistSocksPassword(def, dialog.socksPassword(), true);
-    m_model->upsert(def);
-    persistAll();
-    showList();
-    updateActionsEnabled();
-    emit statusMessage(tr("Tunnel added: %1").arg(def.name), ErrorNotifier::Level::Success);
-
-    if (def.enabled && isSessionConnected()) {
-        TunnelDefinition ready = def;
-        ready.socksPassword = dialog.socksPassword();
-        m_session->startTunnel(ready);
-    }
+        if (def.enabled && isSessionConnected()) {
+            TunnelDefinition ready = def;
+            ready.socksPassword = socksPassword;
+            m_session->startTunnel(ready);
+        }
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 void TunnelListWidget::editSelected()
@@ -262,30 +264,34 @@ void TunnelListWidget::editSelected()
         return;
     }
 
-    TunnelDialog dialog(TunnelDialog::Mode::Edit, m_session->connectionId(), this);
-    dialog.setSecretStore(m_secretStore);
-    dialog.setTunnel(*current);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
+    auto *dialog = new TunnelDialog(TunnelDialog::Mode::Edit, m_session->connectionId(), this);
+    dialog->setSecretStore(m_secretStore);
+    dialog->setTunnel(*current);
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        const TunnelDefinition def = dialog->tunnel();
+        const QString socksPassword = dialog->socksPassword();
+        const bool socksPasswordChanged = dialog->socksPasswordChanged();
+        persistSocksPassword(def, socksPassword, socksPasswordChanged);
+        m_model->upsert(def);
+        persistAll();
+        emit statusMessage(tr("Tunnel updated: %1").arg(def.name), ErrorNotifier::Level::Success);
 
-    const TunnelDefinition def = dialog.tunnel();
-    persistSocksPassword(def, dialog.socksPassword(), dialog.socksPasswordChanged());
-    m_model->upsert(def);
-    persistAll();
-    emit statusMessage(tr("Tunnel updated: %1").arg(def.name), ErrorNotifier::Level::Success);
-
-    if (def.enabled && isSessionConnected()) {
-        TunnelDefinition ready = def;
-        ready.socksPassword = dialog.socksPassword();
-        if (def.type == TunnelType::Dynamic && def.socksAuth == SocksAuthMode::UsernamePassword &&
-            !dialog.socksPasswordChanged() && ready.socksPassword.isEmpty()) {
-            startTunnelWithSecrets(ready);
-        } else {
-            m_session->startTunnel(ready);
+        if (def.enabled && isSessionConnected()) {
+            TunnelDefinition ready = def;
+            ready.socksPassword = socksPassword;
+            if (def.type == TunnelType::Dynamic &&
+                def.socksAuth == SocksAuthMode::UsernamePassword && !socksPasswordChanged &&
+                ready.socksPassword.isEmpty()) {
+                startTunnelWithSecrets(ready);
+            } else {
+                m_session->startTunnel(ready);
+            }
         }
-    }
-    updateActionsEnabled();
+        updateActionsEnabled();
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 void TunnelListWidget::deleteSelected()

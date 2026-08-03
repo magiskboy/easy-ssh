@@ -79,21 +79,11 @@ ConnectionManagerDialog::ConnectionManagerDialog(QWidget *parent) : QDialog(pare
     m_deleteButton = new QPushButton(tr("Delete"), this);
     m_importSelectedButton = new QPushButton(tr("Import to Easy SSH…"), this);
 
-    auto *actionRow = new QHBoxLayout();
-    actionRow->addWidget(m_openButton);
-    actionRow->addWidget(m_saveButton);
-    actionRow->addWidget(m_discardButton);
-    actionRow->addWidget(m_duplicateButton);
-    actionRow->addWidget(m_deleteButton);
-    actionRow->addWidget(m_importSelectedButton);
-    actionRow->addStretch(1);
-
     m_detailPane = new QWidget(this);
     auto *detailLayout = new QVBoxLayout(m_detailPane);
     detailLayout->setContentsMargins(0, 0, 0, 0);
     detailLayout->addWidget(m_emptyLabel, 1);
     detailLayout->addWidget(m_editor, 1);
-    detailLayout->addLayout(actionRow);
 
     auto *splitter = new QSplitter(Qt::Horizontal, this);
     splitter->addWidget(m_listView);
@@ -104,6 +94,12 @@ ConnectionManagerDialog::ConnectionManagerDialog(QWidget *parent) : QDialog(pare
 
     auto *closeButton = new QPushButton(tr("Close"), this);
     auto *footer = new QHBoxLayout();
+    footer->addWidget(m_openButton);
+    footer->addWidget(m_saveButton);
+    footer->addWidget(m_discardButton);
+    footer->addWidget(m_duplicateButton);
+    footer->addWidget(m_deleteButton);
+    footer->addWidget(m_importSelectedButton);
     footer->addStretch(1);
     footer->addWidget(closeButton);
 

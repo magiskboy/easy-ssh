@@ -39,20 +39,9 @@ SettingsDialog::SettingsDialog(QWidget *parent, const QString &initialCategoryId
     m_shell = new CategoryDialogShell(this);
     m_shell->addPage(nullptr, tr("General"), createGeneralPage(), QStringLiteral("general"));
     m_shell->addPage(
-        nullptr, tr("Appearance"), createAppearancePage(), QStringLiteral("appearance"));
-    m_shell->addPage(
         nullptr, tr("File Explorer"), createFileExplorerPage(), QStringLiteral("file-explorer"));
-
-    QTreeWidgetItem *shellGroup = m_shell->addGroup(tr("Shell"));
-    m_shell->addPage(shellGroup,
-                     tr("Appearance"),
-                     createShellAppearancePage(),
-                     QStringLiteral("shell-appearance"));
-    m_shell->addPage(
-        shellGroup, tr("Behavior"), createShellBehaviorPage(), QStringLiteral("shell-behavior"));
-
+    m_shell->addPage(nullptr, tr("Shell"), createShellPage(), QStringLiteral("shell"));
     m_shell->addPage(nullptr, tr("Shortcuts"), createShortcutsPage(), QStringLiteral("shortcuts"));
-    m_shell->expandAll();
 
     if (!initialCategoryId.isEmpty()) {
         m_shell->selectById(initialCategoryId);
@@ -88,12 +77,12 @@ void SettingsDialog::selectCategory(const QString &categoryId)
     }
 }
 
-QWidget *SettingsDialog::createAppearancePage()
+QWidget *SettingsDialog::createGeneralPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
 
-    auto *themeGroup = new QGroupBox(tr("Application theme"), page);
+    auto *themeGroup = new QGroupBox(tr("Theme"), page);
     auto *themeForm = new QFormLayout(themeGroup);
 
     m_themeCombo = new QComboBox(themeGroup);
@@ -132,7 +121,32 @@ QWidget *SettingsDialog::createAppearancePage()
     hint->setWordWrap(true);
     themeForm->addRow(hint);
 
+    auto *sessionGroup = new QGroupBox(tr("Session"), page);
+    auto *sessionLayout = new QVBoxLayout(sessionGroup);
+    m_autoReconnect = new QCheckBox(tr("Auto reconnect when connection is lost"), sessionGroup);
+    sessionLayout->addWidget(m_autoReconnect);
+    m_restoreWorkspace = new QCheckBox(tr("Restore previous workspace on launch"), sessionGroup);
+    m_restoreWorkspace->setToolTip(
+        tr("Reopen the last open connections and shell dock layout when Easy SSH starts."));
+    sessionLayout->addWidget(m_restoreWorkspace);
+
+    auto *transferGroup = new QGroupBox(tr("Transfers"), page);
+    auto *transferForm = new QFormLayout(transferGroup);
+    m_stallTimeout = new QSpinBox(transferGroup);
+    m_stallTimeout->setRange(0, 3600);
+    m_stallTimeout->setSuffix(tr(" sec"));
+    m_stallTimeout->setSpecialValueText(tr("Disabled"));
+    m_stallTimeout->setToolTip(
+        tr("Abort a transfer if no bytes progress for this long. "
+           "Blocking SFTP I/O may delay detection until the next progress tick."));
+    transferForm->addRow(tr("Stall timeout"), m_stallTimeout);
+    m_autoResumeTransfer =
+        new QCheckBox(tr("Auto-resume interrupted transfer after reconnect"), transferGroup);
+    transferForm->addRow(m_autoResumeTransfer);
+
     layout->addWidget(themeGroup);
+    layout->addWidget(sessionGroup);
+    layout->addWidget(transferGroup);
     layout->addStretch(1);
     updateCustomThemeControls();
     return page;
@@ -176,7 +190,7 @@ QWidget *SettingsDialog::createFileExplorerPage()
     return page;
 }
 
-QWidget *SettingsDialog::createShellAppearancePage()
+QWidget *SettingsDialog::createShellPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -222,18 +236,6 @@ QWidget *SettingsDialog::createShellAppearancePage()
     cursorForm->addRow(tr("Cursor shape"), m_cursorShape);
     cursorForm->addRow(QString(), m_cursorBlink);
 
-    layout->addWidget(fontGroup);
-    layout->addWidget(colorGroup);
-    layout->addWidget(cursorGroup);
-    layout->addStretch(1);
-    return page;
-}
-
-QWidget *SettingsDialog::createShellBehaviorPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-
     auto *scrollGroup = new QGroupBox(tr("Scrollback"), page);
     auto *scrollForm = new QFormLayout(scrollGroup);
 
@@ -256,43 +258,12 @@ QWidget *SettingsDialog::createShellBehaviorPage()
            "(alternating right / bottom). Drag from the sidebar to place manually."));
     layoutLayout->addWidget(m_smartLayout);
 
+    layout->addWidget(fontGroup);
+    layout->addWidget(colorGroup);
+    layout->addWidget(cursorGroup);
     layout->addWidget(scrollGroup);
     layout->addWidget(inputGroup);
     layout->addWidget(layoutGroup);
-    layout->addStretch(1);
-    return page;
-}
-
-QWidget *SettingsDialog::createGeneralPage()
-{
-    auto *page = new QWidget(this);
-    auto *layout = new QVBoxLayout(page);
-
-    auto *sessionGroup = new QGroupBox(tr("Session"), page);
-    auto *sessionLayout = new QVBoxLayout(sessionGroup);
-    m_autoReconnect = new QCheckBox(tr("Auto reconnect when connection is lost"), sessionGroup);
-    sessionLayout->addWidget(m_autoReconnect);
-    m_restoreWorkspace = new QCheckBox(tr("Restore previous workspace on launch"), sessionGroup);
-    m_restoreWorkspace->setToolTip(
-        tr("Reopen the last open connections and shell dock layout when Easy SSH starts."));
-    sessionLayout->addWidget(m_restoreWorkspace);
-
-    auto *transferGroup = new QGroupBox(tr("Transfers"), page);
-    auto *transferForm = new QFormLayout(transferGroup);
-    m_stallTimeout = new QSpinBox(transferGroup);
-    m_stallTimeout->setRange(0, 3600);
-    m_stallTimeout->setSuffix(tr(" sec"));
-    m_stallTimeout->setSpecialValueText(tr("Disabled"));
-    m_stallTimeout->setToolTip(
-        tr("Abort a transfer if no bytes progress for this long. "
-           "Blocking SFTP I/O may delay detection until the next progress tick."));
-    transferForm->addRow(tr("Stall timeout"), m_stallTimeout);
-    m_autoResumeTransfer =
-        new QCheckBox(tr("Auto-resume interrupted transfer after reconnect"), transferGroup);
-    transferForm->addRow(m_autoResumeTransfer);
-
-    layout->addWidget(sessionGroup);
-    layout->addWidget(transferGroup);
     layout->addStretch(1);
     return page;
 }
