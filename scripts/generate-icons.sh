@@ -59,42 +59,8 @@ done
   "${ROOT}/resources/windows/easy-ssh.ico"
 rm -rf "$ICO_STAGING"
 
-# VERSIONINFO numbers must be comma-separated; keep in sync with project(VERSION).
-# Keep the .rc portable (no winver.h) so MinGW and MSVC both accept it.
-VERSION_COMMA="0,1,0,0"
-VERSION_STR="0.1.0"
-cat > "${ROOT}/resources/windows/easy-ssh.rc" <<EOF
-IDI_ICON1 ICON "easy-ssh.ico"
-
-1 VERSIONINFO
-FILEVERSION     ${VERSION_COMMA}
-PRODUCTVERSION  ${VERSION_COMMA}
-FILEFLAGSMASK   0x3fL
-FILEFLAGS       0x0L
-FILEOS          0x40004L
-FILETYPE        0x1L
-FILESUBTYPE     0x0L
-BEGIN
-    BLOCK "StringFileInfo"
-    BEGIN
-        BLOCK "040904B0"
-        BEGIN
-            VALUE "CompanyName",      "Easy SSH"
-            VALUE "FileDescription",  "Easy SSH — lightweight SSH / SFTP client"
-            VALUE "FileVersion",      "${VERSION_STR}"
-            VALUE "InternalName",     "easy-ssh"
-            VALUE "LegalCopyright",   "Copyright (C) Easy SSH contributors"
-            VALUE "OriginalFilename", "easy-ssh.exe"
-            VALUE "ProductName",      "Easy SSH"
-            VALUE "ProductVersion",   "${VERSION_STR}"
-        END
-    END
-    BLOCK "VarFileInfo"
-    BEGIN
-        VALUE "Translation", 0x0409, 1200
-    END
-END
-EOF
+# Windows VERSIONINFO comes from resources/windows/easy-ssh.rc.in
+# (configured by CMake from PROJECT_VERSION). Do not emit a duplicate .rc here.
 
 echo "Generating macOS .icns…"
 ICNS_OUT="${ROOT}/resources/macos/easy-ssh.icns"
@@ -150,5 +116,5 @@ fi
 echo "Done."
 echo "  resources/icons/app-256.png"
 echo "  resources/linux/icons/hicolor/*/apps/${APP_ID}.png"
-echo "  resources/windows/easy-ssh.ico + easy-ssh.rc"
+echo "  resources/windows/easy-ssh.ico"
 echo "  resources/macos/easy-ssh.icns"
