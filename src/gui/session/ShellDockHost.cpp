@@ -46,7 +46,7 @@ ShellDockHost::ShellDockHost(QWidget *parent) : QWidget(parent)
             this,
             [this](ads::CDockWidget * /*old*/, ads::CDockWidget *now) {
                 const QUuid id = shellIdForDock(now);
-                if (!id.isNull()) {
+                if (!id.isNull() && m_docks.contains(id)) {
                     emit shellFocused(id);
                 }
             });
@@ -172,6 +172,105 @@ bool ShellDockHost::isPinned(const QUuid &shellId) const
     return m_docks.contains(shellId);
 }
 
+bool ShellDockHost::pinTool(const QString &toolId,
+                            const QString &title,
+                            QWidget *widget,
+                            int dockArea)
+{
+    if (toolId.isEmpty() || !widget || !m_manager) {
+        return false;
+    }
+    if (m_tools.contains(toolId)) {
+        return focusTool(toolId);
+    }
+
+    auto *dock = m_manager->createDockWidget(title.isEmpty() ? tr("Tool") : title);
+    dock->setObjectName(QStringLiteral("tool:%1").arg(toolId));
+    dock->setFeature(ads::CDockWidget::CustomCloseHandling, true);
+    dock->setFeature(ads::CDockWidget::DockWidgetDeleteOnClose, false);
+    dock->setWidget(widget);
+
+    connect(dock, &ads::CDockWidget::closeRequested, this, [this, toolId]() { unpinTool(toolId); });
+
+    // Prefer a full-size tab beside existing shells (not a split pane).
+    ads::CDockAreaWidget *targetArea = nullptr;
+    if (ads::CDockWidget *focused = m_manager->focusedDockWidget()) {
+        if (!focused->isFloating()) {
+            targetArea = focused->dockAreaWidget();
+        }
+    }
+    if (!targetArea) {
+        for (ads::CDockWidget *shellDock : m_docks) {
+            if (shellDock && !shellDock->isFloating()) {
+                targetArea = shellDock->dockAreaWidget();
+                break;
+            }
+        }
+    }
+    if (!targetArea) {
+        for (ads::CDockWidget *toolDock : m_tools) {
+            if (toolDock && !toolDock->isFloating()) {
+                targetArea = toolDock->dockAreaWidget();
+                break;
+            }
+        }
+    }
+
+    if (targetArea) {
+        m_manager->addDockWidgetTabToArea(dock, targetArea);
+    } else {
+        const auto area =
+            static_cast<ads::DockWidgetArea>(dockArea == 0 ? ads::CenterDockWidgetArea : dockArea);
+        m_manager->addDockWidgetTab(area, dock);
+    }
+
+    m_tools.insert(toolId, dock);
+    updateEmptyState();
+    dock->setAsCurrentTab();
+    widget->setFocus(Qt::OtherFocusReason);
+    return true;
+}
+
+bool ShellDockHost::unpinTool(const QString &toolId)
+{
+    ads::CDockWidget *dock = dockForTool(toolId);
+    if (!dock) {
+        return false;
+    }
+
+    QWidget *widget = dock->takeWidget();
+    if (widget) {
+        widget->setParent(nullptr);
+        widget->hide();
+    }
+
+    m_tools.remove(toolId);
+    m_manager->removeDockWidget(dock);
+    dock->deleteLater();
+    updateEmptyState();
+    emit toolClosed(toolId);
+    return true;
+}
+
+bool ShellDockHost::focusTool(const QString &toolId)
+{
+    ads::CDockWidget *dock = dockForTool(toolId);
+    if (!dock) {
+        return false;
+    }
+    dock->toggleView(true);
+    dock->setAsCurrentTab();
+    if (QWidget *w = dock->widget()) {
+        w->setFocus(Qt::OtherFocusReason);
+    }
+    return true;
+}
+
+bool ShellDockHost::isToolPinned(const QString &toolId) const
+{
+    return m_tools.contains(toolId);
+}
+
 QList<QUuid> ShellDockHost::pinnedShellIds() const
 {
     return m_docks.keys();
@@ -199,6 +298,10 @@ QUuid ShellDockHost::focusedShellId() const
 
 void ShellDockHost::clearLayout()
 {
+    const QList<QString> toolIds = m_tools.keys();
+    for (const QString &id : toolIds) {
+        unpinTool(id);
+    }
     const QList<QUuid> ids = m_docks.keys();
     for (const QUuid &id : ids) {
         unpinShell(id);
@@ -216,7 +319,7 @@ void ShellDockHost::setLayoutActive(bool active)
     // the Hidden flag, so parenting QTabWidget show alone will not restore it.
     if (m_layoutActive && !active) {
         m_manager->hideManagerAndFloatingWidgets();
-    } else if (!m_layoutActive && active && !m_docks.isEmpty()) {
+    } else if (!m_layoutActive && active && hasAnyDocks()) {
         m_manager->show(); // showEvent → restoreHiddenFloatingWidgets()
     }
     m_layoutActive = active;
@@ -231,7 +334,7 @@ void ShellDockHost::setShellTitle(const QUuid &shellId, const QString &title)
 
 QByteArray ShellDockHost::saveLayout() const
 {
-    if (!m_manager || m_docks.isEmpty()) {
+    if (!m_manager || !hasAnyDocks()) {
         return {};
     }
     return m_manager->saveState();
@@ -250,6 +353,11 @@ ads::CDockWidget *ShellDockHost::dockForShell(const QUuid &shellId) const
     return m_docks.value(shellId, nullptr);
 }
 
+ads::CDockWidget *ShellDockHost::dockForTool(const QString &toolId) const
+{
+    return m_tools.value(toolId, nullptr);
+}
+
 QUuid ShellDockHost::shellIdForDock(ads::CDockWidget *dock) const
 {
     if (!dock) {
@@ -260,12 +368,34 @@ QUuid ShellDockHost::shellIdForDock(ads::CDockWidget *dock) const
             return it.key();
         }
     }
-    return QUuid(dock->objectName());
+    const QString name = dock->objectName();
+    if (name.startsWith(QLatin1String("tool:"))) {
+        return {};
+    }
+    return QUuid(name);
+}
+
+QString ShellDockHost::toolIdForDock(ads::CDockWidget *dock) const
+{
+    if (!dock) {
+        return {};
+    }
+    for (auto it = m_tools.cbegin(); it != m_tools.cend(); ++it) {
+        if (it.value() == dock) {
+            return it.key();
+        }
+    }
+    const QString name = dock->objectName();
+    constexpr QLatin1String kPrefix("tool:");
+    if (name.startsWith(kPrefix)) {
+        return name.mid(kPrefix.size());
+    }
+    return {};
 }
 
 void ShellDockHost::updateEmptyState()
 {
-    const bool empty = m_docks.isEmpty();
+    const bool empty = !hasAnyDocks();
     if (empty) {
         m_emptyLabel->show();
         m_manager->hide();
@@ -273,6 +403,11 @@ void ShellDockHost::updateEmptyState()
         m_emptyLabel->hide();
         m_manager->show();
     }
+}
+
+bool ShellDockHost::hasAnyDocks() const
+{
+    return !m_docks.isEmpty() || !m_tools.isEmpty();
 }
 
 int ShellDockHost::hitTestDockArea(const QPoint &pos) const

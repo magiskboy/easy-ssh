@@ -81,6 +81,9 @@ public slots:
     void stopTunnel(const QUuid &tunnelId);
     void stopAllTunnels();
 
+    /// One-shot remote exec (no PTY). @p requestId is echoed in commandFinished.
+    void execCommand(const QString &requestId, const QString &command);
+
 signals:
     void connected(const QUuid &initialShellId);
     void dataReceived(const QUuid &shellId, const QByteArray &data);
@@ -110,6 +113,12 @@ signals:
     void tunnelError(const QUuid &tunnelId, const QString &message);
     /// Soft warning (e.g. ForwardAgent ON but no local agent). Must not tear down the session.
     void agentForwardingWarning(const QString &message);
+
+    void commandFinished(const QString &requestId,
+                         int exitStatus,
+                         const QByteArray &stdoutBytes,
+                         const QByteArray &stderrBytes,
+                         const QString &errorMessage);
 
 private slots:
     void pollChannel();

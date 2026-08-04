@@ -508,6 +508,16 @@ void MainWindow::setupMenus()
     addAction(goToShellAction);
     connect(goToShellAction, &QAction::triggered, this, &MainWindow::openGoToShell);
 
+    auto *processExplorerAction = windowsMenu->addAction(tr("&Process Explorer"));
+    registerAction(QStringLiteral("session.processExplorer"), processExplorerAction);
+    addAction(processExplorerAction);
+    connect(processExplorerAction, &QAction::triggered, this, [this]() {
+        if (auto *page = m_sessionTabs->activeSessionPage()) {
+            page->toggleProcessExplorer();
+        }
+    });
+    m_terminalActions.append(processExplorerAction);
+
     windowsMenu->addSeparator();
 
     auto *settingsAction = windowsMenu->addAction(tr("&Settings…"));

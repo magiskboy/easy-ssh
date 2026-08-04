@@ -474,6 +474,18 @@ void Session::stopAllTunnels()
         m_worker, [worker = m_worker]() { worker->stopAllTunnels(); }, Qt::QueuedConnection);
 }
 
+void Session::execCommand(const QString &requestId, const QString &command)
+{
+    if (m_state != SessionState::Connected || m_worker == nullptr) {
+        emit commandFinished(requestId, -1, {}, {}, tr("SSH session is not connected"));
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker,
+        [worker = m_worker, requestId, command]() { worker->execCommand(requestId, command); },
+        Qt::QueuedConnection);
+}
+
 void Session::startEnabledTunnels()
 {
     if (m_state != SessionState::Connected || m_worker == nullptr) {
@@ -608,6 +620,7 @@ void Session::wireWorker()
     connect(m_worker, &SshWorker::agentForwardingWarning, this, [this](const QString &message) {
         emit statusMessage(message, kWarningLevel);
     });
+    connect(m_worker, &SshWorker::commandFinished, this, &Session::commandFinished);
 }
 
 int Session::nextShellSerial()

@@ -85,6 +85,9 @@ public:
     void stopAllTunnels();
     void startEnabledTunnels();
 
+    /// One-shot remote exec (no PTY). @p requestId is echoed in commandFinished.
+    void execCommand(const QString &requestId, const QString &command);
+
     void respondHostKeyTrust(bool accept);
     SshWorker *worker() const { return m_worker; }
 
@@ -113,6 +116,12 @@ signals:
 
     void tunnelStatusChanged(const QUuid &tunnelId, const QString &status, const QString &detail);
     void tunnelError(const QUuid &tunnelId, const QString &message);
+
+    void commandFinished(const QString &requestId,
+                         int exitStatus,
+                         const QByteArray &stdoutBytes,
+                         const QByteArray &stderrBytes,
+                         const QString &errorMessage);
 
 private:
     void setState(SessionState state);

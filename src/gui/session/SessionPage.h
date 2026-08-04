@@ -19,6 +19,7 @@ class QLabel;
 class QPushButton;
 class QTermWidget;
 class QTimer;
+class ExplorerPageWidget;
 class Session;
 class ShellDockHost;
 class TerminalIoBridge;
@@ -41,6 +42,7 @@ public:
     void saveLog();
     void saveScreenshot();
     void setLayoutActive(bool active);
+    void toggleProcessExplorer();
 
     void beginWorkspaceRestore(const WorkspaceSessionEntry &entry);
     WorkspaceSessionEntry captureWorkspaceEntry() const;
@@ -93,9 +95,12 @@ private:
     QSize readTerminalSize(QTermWidget *term) const;
     QString shellTitle(const QUuid &shellId) const;
     void continueWorkspaceRestore();
+    void openProcessExplorer();
+    void closeProcessExplorer();
 
     Session *m_session = nullptr;
     ShellDockHost *m_dockHost = nullptr;
+    ExplorerPageWidget *m_processPage = nullptr;
     QWidget *m_overlay = nullptr;
     QLabel *m_overlayLabel = nullptr;
     QPushButton *m_reconnectButton = nullptr;

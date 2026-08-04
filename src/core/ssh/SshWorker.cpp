@@ -4,6 +4,7 @@
 
 #include "SshWorker.h"
 
+#include "core/fs/ShellExecRunner.h"
 #include "core/fs/TransferJobStore.h"
 #include "core/settings/AppSettings.h"
 #include "core/ssh/AgentForwardHost.h"
@@ -693,4 +694,31 @@ void SshWorker::stopAllTunnels()
             session->deleteLater();
         }
     }
+}
+
+void SshWorker::execCommand(const QString &requestId, const QString &command)
+{
+    if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
+        emit commandFinished(requestId, -1, {}, {}, tr("SSH session is not connected"));
+        return;
+    }
+    if (command.trimmed().isEmpty()) {
+        emit commandFinished(requestId, -1, {}, {}, tr("Empty remote command"));
+        return;
+    }
+
+    ShellExecRunner runner(m_session.handle());
+    ShellExecRunner::Result result;
+    QString error;
+    if (!runner.run(command, &result, &error)) {
+        emit commandFinished(requestId,
+                             result.exitStatus,
+                             result.stdoutBytes,
+                             result.stderrBytes,
+                             error.isEmpty() ? result.errorMessage : error);
+        return;
+    }
+
+    emit commandFinished(
+        requestId, result.exitStatus, result.stdoutBytes, result.stderrBytes, QString());
 }

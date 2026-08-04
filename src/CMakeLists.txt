@@ -51,6 +51,13 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/ShellExecRunner.cpp
     core/fs/ShellExecRunner.h
     core/fs/SftpTypes.h
+    core/explorer/ExplorerTypes.h
+    core/explorer/IExplorerSource.h
+    core/explorer/process/ProcessInfo.h
+    core/explorer/process/ProcessParser.cpp
+    core/explorer/process/ProcessParser.h
+    core/explorer/process/ProcessSource.cpp
+    core/explorer/process/ProcessSource.h
     core/tunnel/Tunnel.h
     core/tunnel/TunnelStore.cpp
     core/tunnel/TunnelStore.h
@@ -114,6 +121,17 @@ set(EASY_SSH_GUI_SOURCES
     gui/connection/WelcomeWidget.h
     gui/explorer/FileExplorerWidget.cpp
     gui/explorer/FileExplorerWidget.h
+    gui/explorer/ExplorerTableModel.cpp
+    gui/explorer/ExplorerTableModel.h
+    gui/explorer/ExplorerPageWidget.cpp
+    gui/explorer/ExplorerPageWidget.h
+    gui/explorer/IExplorerModule.h
+    gui/explorer/process/ProcessTableModel.cpp
+    gui/explorer/process/ProcessTableModel.h
+    gui/explorer/process/ProcessExplorerModule.cpp
+    gui/explorer/process/ProcessExplorerModule.h
+    gui/explorer/process/ProcessDetailFactory.cpp
+    gui/explorer/process/ProcessDetailFactory.h
     gui/tunnel/TunnelListWidget.cpp
     gui/tunnel/TunnelListWidget.h
     gui/tunnel/TunnelDialog.cpp
@@ -130,6 +148,12 @@ set(EASY_SSH_GUI_SOURCES
     gui/theme/ThemeManager.h
     gui/widgets/CategoryDialogShell.cpp
     gui/widgets/CategoryDialogShell.h
+    gui/widgets/ExplorerColumn.h
+    gui/widgets/ExplorerFilterProxy.cpp
+    gui/widgets/ExplorerFilterProxy.h
+    gui/widgets/ExplorerListWidget.cpp
+    gui/widgets/ExplorerListWidget.h
+    gui/widgets/IExplorerDetailFactory.h
     gui/widgets/UiHelpers.cpp
     gui/widgets/UiHelpers.h
     gui/widgets/UiMetrics.h

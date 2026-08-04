@@ -10,6 +10,8 @@
 #include "core/settings/AppSettings.h"
 #include "core/util/Logging.h"
 #include "gui/ErrorNotifier.h"
+#include "gui/explorer/ExplorerPageWidget.h"
+#include "gui/explorer/process/ProcessExplorerModule.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
 #include <QAction>
@@ -29,6 +31,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <memory>
 #include <qtermwidget.h>
 
 namespace
@@ -64,6 +67,15 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     connect(m_dockHost, &ShellDockHost::shellFocused, this, &SessionPage::onDockShellFocused);
     connect(
         m_dockHost, &ShellDockHost::dropShellRequested, this, &SessionPage::onDropShellRequested);
+    connect(m_dockHost, &ShellDockHost::toolClosed, this, [this](const QString &toolId) {
+        if (toolId == QLatin1String("process")) {
+            if (m_processPage) {
+                m_processPage->unbind();
+                m_processPage->deleteLater();
+                m_processPage = nullptr;
+            }
+        }
+    });
 
     m_resizeDebounce = new QTimer(this);
     m_resizeDebounce->setSingleShot(true);
@@ -728,4 +740,55 @@ void SessionPage::showOverlay(const QString &message, bool showReconnect)
     m_overlayLabel->setText(message);
     m_reconnectButton->setVisible(showReconnect);
     m_overlay->show();
+}
+
+void SessionPage::toggleProcessExplorer()
+{
+    if (!m_dockHost || !m_session) {
+        return;
+    }
+    if (m_dockHost->isToolPinned(QStringLiteral("process"))) {
+        m_dockHost->unpinTool(QStringLiteral("process"));
+        return;
+    }
+    openProcessExplorer();
+}
+
+void SessionPage::openProcessExplorer()
+{
+    if (!m_dockHost || !m_session) {
+        return;
+    }
+    if (m_session->state() != SessionState::Connected) {
+        emit statusMessage(tr("Connect to a session to open Process Explorer."),
+                           ErrorNotifier::Level::Warning);
+        return;
+    }
+    if (m_dockHost->isToolPinned(QStringLiteral("process"))) {
+        m_dockHost->focusTool(QStringLiteral("process"));
+        return;
+    }
+
+    if (!m_processPage) {
+        m_processPage = new ExplorerPageWidget(this);
+        m_processPage->bind(std::make_unique<ProcessExplorerModule>(), m_session);
+    }
+
+    m_dockHost->pinTool(QStringLiteral("process"),
+                        tr("Processes"),
+                        m_processPage,
+                        /* ads::CenterDockWidgetArea */ 0x10);
+}
+
+void SessionPage::closeProcessExplorer()
+{
+    if (m_dockHost && m_dockHost->isToolPinned(QStringLiteral("process"))) {
+        m_dockHost->unpinTool(QStringLiteral("process"));
+        return;
+    }
+    if (m_processPage) {
+        m_processPage->unbind();
+        m_processPage->deleteLater();
+        m_processPage = nullptr;
+    }
 }
