@@ -12,9 +12,11 @@
 #include "gui/ErrorNotifier.h"
 
 #include <QHash>
+#include <QPointer>
 #include <QUuid>
 #include <QWidget>
 
+class QDialog;
 class QLabel;
 class QPushButton;
 class QTermWidget;
@@ -45,6 +47,7 @@ public:
     void toggleProcessExplorer();
     void toggleContainerExplorer();
     void toggleServiceExplorer();
+    void toggleSystemInfo();
 
     void beginWorkspaceRestore(const WorkspaceSessionEntry &entry);
     WorkspaceSessionEntry captureWorkspaceEntry() const;
@@ -103,12 +106,14 @@ private:
     void closeContainerExplorer();
     void openServiceExplorer();
     void closeServiceExplorer();
+    void openSystemInfo();
 
     Session *m_session = nullptr;
     ShellDockHost *m_dockHost = nullptr;
     ExplorerPageWidget *m_processPage = nullptr;
     ExplorerPageWidget *m_containerPage = nullptr;
     ExplorerPageWidget *m_servicePage = nullptr;
+    QPointer<QDialog> m_systemInfoDialog;
     QWidget *m_overlay = nullptr;
     QLabel *m_overlayLabel = nullptr;
     QPushButton *m_reconnectButton = nullptr;

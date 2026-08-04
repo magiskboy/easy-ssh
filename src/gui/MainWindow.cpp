@@ -498,7 +498,7 @@ void MainWindow::setupMenus()
 
     auto *explorerMenu = menuBar()->addMenu(tr("&Explorer"));
 
-    auto *processExplorerAction = explorerMenu->addAction(tr("&Process"));
+    auto *processExplorerAction = explorerMenu->addAction(tr("&Processes"));
     registerAction(QStringLiteral("session.processExplorer"), processExplorerAction);
     addAction(processExplorerAction);
     connect(processExplorerAction, &QAction::triggered, this, [this]() {
@@ -508,7 +508,7 @@ void MainWindow::setupMenus()
     });
     m_terminalActions.append(processExplorerAction);
 
-    auto *containerExplorerAction = explorerMenu->addAction(tr("&Container"));
+    auto *containerExplorerAction = explorerMenu->addAction(tr("&Containers"));
     registerAction(QStringLiteral("session.containerExplorer"), containerExplorerAction);
     addAction(containerExplorerAction);
     connect(containerExplorerAction, &QAction::triggered, this, [this]() {
@@ -518,7 +518,7 @@ void MainWindow::setupMenus()
     });
     m_terminalActions.append(containerExplorerAction);
 
-    auto *serviceExplorerAction = explorerMenu->addAction(tr("&Service"));
+    auto *serviceExplorerAction = explorerMenu->addAction(tr("&Services"));
     registerAction(QStringLiteral("session.serviceExplorer"), serviceExplorerAction);
     addAction(serviceExplorerAction);
     connect(serviceExplorerAction, &QAction::triggered, this, [this]() {
@@ -527,6 +527,16 @@ void MainWindow::setupMenus()
         }
     });
     m_terminalActions.append(serviceExplorerAction);
+
+    auto *systemInfoAction = explorerMenu->addAction(tr("System &Information"));
+    registerAction(QStringLiteral("session.systemInfo"), systemInfoAction);
+    addAction(systemInfoAction);
+    connect(systemInfoAction, &QAction::triggered, this, [this]() {
+        if (auto *page = m_sessionTabs->activeSessionPage()) {
+            page->toggleSystemInfo();
+        }
+    });
+    m_terminalActions.append(systemInfoAction);
 
     auto *windowsMenu = menuBar()->addMenu(tr("&Windows"));
 

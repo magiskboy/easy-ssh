@@ -80,6 +80,11 @@ set(EASY_SSH_CORE_SOURCES
     core/explorer/service/ServiceSource.h
     core/explorer/service/backends/SystemdBackend.cpp
     core/explorer/service/backends/SystemdBackend.h
+    core/explorer/systeminfo/SystemInfo.h
+    core/explorer/systeminfo/SystemInfoParser.cpp
+    core/explorer/systeminfo/SystemInfoParser.h
+    core/explorer/systeminfo/SystemInfoSource.cpp
+    core/explorer/systeminfo/SystemInfoSource.h
     core/tunnel/Tunnel.h
     core/tunnel/TunnelStore.cpp
     core/tunnel/TunnelStore.h
@@ -172,6 +177,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/explorer/service/ServiceLogsDialog.h
     gui/explorer/service/ServiceFilterBar.cpp
     gui/explorer/service/ServiceFilterBar.h
+    gui/explorer/systeminfo/SystemInfoDialog.cpp
+    gui/explorer/systeminfo/SystemInfoDialog.h
     gui/tunnel/TunnelListWidget.cpp
     gui/tunnel/TunnelListWidget.h
     gui/tunnel/TunnelDialog.cpp

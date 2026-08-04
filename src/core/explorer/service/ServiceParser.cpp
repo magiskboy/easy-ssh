@@ -118,7 +118,11 @@ bool parseList(const QByteArray &stdoutBytes, QVector<ServiceInfo> *out, QString
     }
     out->clear();
 
-    if (looksLikeJsonDocument(stdoutBytes)) {
+    const QByteArray trimmed = stdoutBytes.trimmed();
+    // systemctl --output=json emits a JSON array. The POSIX awk fallback emits NDJSON
+    // objects (one {...} per line). Both start with '{' or '[', but only arrays belong
+    // in parseJsonInventory — routing NDJSON there yields "garbage at the end".
+    if (!trimmed.isEmpty() && trimmed.startsWith('[')) {
         SystemdBackend systemd;
         return systemd.parseJsonInventory(stdoutBytes, out, error);
     }

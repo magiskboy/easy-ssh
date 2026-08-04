@@ -14,6 +14,7 @@
 #include "gui/explorer/container/ContainerExplorerModule.h"
 #include "gui/explorer/process/ProcessExplorerModule.h"
 #include "gui/explorer/service/ServiceExplorerModule.h"
+#include "gui/explorer/systeminfo/SystemInfoDialog.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
 #include <QAction>
@@ -915,4 +916,37 @@ void SessionPage::closeServiceExplorer()
         m_servicePage->deleteLater();
         m_servicePage = nullptr;
     }
+}
+
+void SessionPage::toggleSystemInfo()
+{
+    if (m_systemInfoDialog) {
+        m_systemInfoDialog->raise();
+        m_systemInfoDialog->activateWindow();
+        return;
+    }
+    openSystemInfo();
+}
+
+void SessionPage::openSystemInfo()
+{
+    if (!m_session) {
+        return;
+    }
+    if (m_session->state() != SessionState::Connected) {
+        emit statusMessage(tr("Connect to a session to open System Info."),
+                           ErrorNotifier::Level::Warning);
+        return;
+    }
+    if (m_systemInfoDialog) {
+        m_systemInfoDialog->raise();
+        m_systemInfoDialog->activateWindow();
+        return;
+    }
+
+    auto *dialog = new SystemInfoDialog(m_session, this);
+    m_systemInfoDialog = dialog;
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
