@@ -518,6 +518,16 @@ void MainWindow::setupMenus()
     });
     m_terminalActions.append(containerExplorerAction);
 
+    auto *serviceExplorerAction = explorerMenu->addAction(tr("&Service"));
+    registerAction(QStringLiteral("session.serviceExplorer"), serviceExplorerAction);
+    addAction(serviceExplorerAction);
+    connect(serviceExplorerAction, &QAction::triggered, this, [this]() {
+        if (auto *page = m_sessionTabs->activeSessionPage()) {
+            page->toggleServiceExplorer();
+        }
+    });
+    m_terminalActions.append(serviceExplorerAction);
+
     auto *windowsMenu = menuBar()->addMenu(tr("&Windows"));
 
     auto *paletteAction = windowsMenu->addAction(tr("Command &Palette…"));

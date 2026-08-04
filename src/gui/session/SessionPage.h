@@ -44,6 +44,7 @@ public:
     void setLayoutActive(bool active);
     void toggleProcessExplorer();
     void toggleContainerExplorer();
+    void toggleServiceExplorer();
 
     void beginWorkspaceRestore(const WorkspaceSessionEntry &entry);
     WorkspaceSessionEntry captureWorkspaceEntry() const;
@@ -100,11 +101,14 @@ private:
     void closeProcessExplorer();
     void openContainerExplorer();
     void closeContainerExplorer();
+    void openServiceExplorer();
+    void closeServiceExplorer();
 
     Session *m_session = nullptr;
     ShellDockHost *m_dockHost = nullptr;
     ExplorerPageWidget *m_processPage = nullptr;
     ExplorerPageWidget *m_containerPage = nullptr;
+    ExplorerPageWidget *m_servicePage = nullptr;
     QWidget *m_overlay = nullptr;
     QLabel *m_overlayLabel = nullptr;
     QPushButton *m_reconnectButton = nullptr;

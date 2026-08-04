@@ -71,6 +71,15 @@ set(EASY_SSH_CORE_SOURCES
     core/explorer/container/backends/DockerBackend.h
     core/explorer/container/backends/ContainerdBackend.cpp
     core/explorer/container/backends/ContainerdBackend.h
+    core/explorer/service/ServiceInfo.h
+    core/explorer/service/ServiceInspectInfo.h
+    core/explorer/service/IServiceBackend.h
+    core/explorer/service/ServiceParser.cpp
+    core/explorer/service/ServiceParser.h
+    core/explorer/service/ServiceSource.cpp
+    core/explorer/service/ServiceSource.h
+    core/explorer/service/backends/SystemdBackend.cpp
+    core/explorer/service/backends/SystemdBackend.h
     core/tunnel/Tunnel.h
     core/tunnel/TunnelStore.cpp
     core/tunnel/TunnelStore.h
@@ -153,6 +162,14 @@ set(EASY_SSH_GUI_SOURCES
     gui/explorer/container/ContainerDetailFactory.h
     gui/explorer/container/ContainerFilterBar.cpp
     gui/explorer/container/ContainerFilterBar.h
+    gui/explorer/service/ServiceTableModel.cpp
+    gui/explorer/service/ServiceTableModel.h
+    gui/explorer/service/ServiceExplorerModule.cpp
+    gui/explorer/service/ServiceExplorerModule.h
+    gui/explorer/service/ServiceDetailFactory.cpp
+    gui/explorer/service/ServiceDetailFactory.h
+    gui/explorer/service/ServiceFilterBar.cpp
+    gui/explorer/service/ServiceFilterBar.h
     gui/tunnel/TunnelListWidget.cpp
     gui/tunnel/TunnelListWidget.h
     gui/tunnel/TunnelDialog.cpp

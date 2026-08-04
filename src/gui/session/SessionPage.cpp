@@ -13,6 +13,7 @@
 #include "gui/explorer/ExplorerPageWidget.h"
 #include "gui/explorer/container/ContainerExplorerModule.h"
 #include "gui/explorer/process/ProcessExplorerModule.h"
+#include "gui/explorer/service/ServiceExplorerModule.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
 #include <QAction>
@@ -80,6 +81,12 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
                 m_containerPage->unbind();
                 m_containerPage->deleteLater();
                 m_containerPage = nullptr;
+            }
+        } else if (toolId == QLatin1String("service")) {
+            if (m_servicePage) {
+                m_servicePage->unbind();
+                m_servicePage->deleteLater();
+                m_servicePage = nullptr;
             }
         }
     });
@@ -848,5 +855,52 @@ void SessionPage::closeContainerExplorer()
         m_containerPage->unbind();
         m_containerPage->deleteLater();
         m_containerPage = nullptr;
+    }
+}
+
+void SessionPage::toggleServiceExplorer()
+{
+    if (!m_dockHost || !m_session) {
+        return;
+    }
+    if (m_dockHost->isToolPinned(QStringLiteral("service"))) {
+        m_dockHost->unpinTool(QStringLiteral("service"));
+        return;
+    }
+    openServiceExplorer();
+}
+
+void SessionPage::openServiceExplorer()
+{
+    if (!m_dockHost || !m_session) {
+        return;
+    }
+    if (m_session->state() != SessionState::Connected) {
+        emit statusMessage(tr("Connect to the session before opening Services."),
+                           ErrorNotifier::Level::Warning);
+        return;
+    }
+
+    if (!m_servicePage) {
+        m_servicePage = new ExplorerPageWidget(this);
+        m_servicePage->bind(std::make_unique<ServiceExplorerModule>(), m_session);
+    }
+
+    m_dockHost->pinTool(QStringLiteral("service"),
+                        tr("Services"),
+                        m_servicePage,
+                        /* ads::CenterDockWidgetArea */ 0x10);
+}
+
+void SessionPage::closeServiceExplorer()
+{
+    if (m_dockHost && m_dockHost->isToolPinned(QStringLiteral("service"))) {
+        m_dockHost->unpinTool(QStringLiteral("service"));
+        return;
+    }
+    if (m_servicePage) {
+        m_servicePage->unbind();
+        m_servicePage->deleteLater();
+        m_servicePage = nullptr;
     }
 }

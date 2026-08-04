@@ -64,6 +64,7 @@ constexpr ShortcutDef kShortcutDefs[] = {
     {"session.goToShell", "Windows", "Go to Shell", "Ctrl+P"},
     {"session.processExplorer", "Explorer", "Process", ""},
     {"session.containerExplorer", "Explorer", "Container", ""},
+    {"session.serviceExplorer", "Explorer", "Service", ""},
     {"session.nextTab", "Windows", "Next Tab", "Ctrl+Tab"},
     {"session.previousTab", "Windows", "Previous Tab", "Ctrl+Shift+Tab"},
     {"shell.close", "Terminal", "Close Shell", "Ctrl+Shift+W"},
