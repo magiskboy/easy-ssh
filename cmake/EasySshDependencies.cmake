@@ -299,7 +299,9 @@ FetchContent_Declare(
 )
 set(BUILD_WITH_QT6 ON CACHE BOOL "" FORCE)
 set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(qtkeychain)
+set(BUILD_TESTING ON CACHE BOOL "" FORCE)
 FetchContent_GetProperties(qtkeychain SOURCE_DIR _qkc_src BINARY_DIR _qkc_bin)
 # Installed package uses include/qt6keychain/; build tree only exposes qtkeychain/.
 set(_qkc_shim "${_qkc_bin}/include_shim")

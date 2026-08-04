@@ -18,7 +18,19 @@ ContainerSource::ContainerSource(Session *session, QObject *parent)
     connect(m_timer, &QTimer::timeout, this, &ContainerSource::onPollTick);
 
     if (m_session) {
-        connect(m_session, &Session::commandFinished, this, &ContainerSource::onCommandFinished);
+        connect(m_session,
+                &Session::commandFinished,
+                this,
+                [this](const QString &requestId,
+                       int exitStatus,
+                       const QByteArray &stdoutBytes,
+                       const QByteArray &stderrBytes,
+                       const QString &errorMessage) {
+                    onCommandFinished(requestId,
+                                      exitStatus,
+                                      CommandStreams{stdoutBytes, stderrBytes},
+                                      errorMessage);
+                });
     }
 }
 
@@ -91,8 +103,7 @@ void ContainerSource::requestList()
 
 void ContainerSource::onCommandFinished(const QString &requestId,
                                         int exitStatus,
-                                        const QByteArray &stdoutBytes,
-                                        const QByteArray &stderrBytes,
+                                        const CommandStreams &streams,
                                         const QString &errorMessage)
 {
     if (requestId != m_activeRequestId) {
@@ -110,8 +121,8 @@ void ContainerSource::onCommandFinished(const QString &requestId,
     const bool transportFailed = !errorMessage.isEmpty() && exitStatus < 0;
     if (transportFailed || exitStatus != 0) {
         QString message;
-        const ExplorerCapability cap =
-            ContainerParser::classifyFailure(exitStatus, stderrBytes, errorMessage, &message);
+        const ExplorerCapability cap = ContainerParser::classifyFailure(
+            exitStatus, streams.stderrBytes, errorMessage, &message);
         setCapability(cap, message);
         if (cap == ExplorerCapability::Error) {
             emit failed(message);
@@ -125,7 +136,7 @@ void ContainerSource::onCommandFinished(const QString &requestId,
 
     QVector<ContainerInfo> containers;
     QString parseError;
-    if (!ContainerParser::parseList(stdoutBytes, &containers, &parseError)) {
+    if (!ContainerParser::parseList(streams.stdoutBytes, &containers, &parseError)) {
         setCapability(ExplorerCapability::Error,
                       parseError.isEmpty() ? tr("Failed to parse container list") : parseError);
         emit failed(m_capabilityMessage);

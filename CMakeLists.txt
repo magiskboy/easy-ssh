@@ -14,8 +14,10 @@ include(cmake/EasySshVersions.cmake)
 include(cmake/EasySshOptions.cmake)
 include(cmake/EasySshDefaults.cmake)
 include(cmake/EasySshDependencies.cmake)
+include(CTest)
 
 add_subdirectory(src)
+add_subdirectory(tests)
 add_subdirectory(resources)
 
 include(cmake/EasySshInstall.cmake)

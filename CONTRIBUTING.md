@@ -120,6 +120,30 @@ cmake --build --preset release
 
 The first configure downloads Qt (currently **6.10.3**) into `.deps/qt` and builds FetchContent deps (libssh, QTermWidget, QtKeychain). That can take several minutes.
 
+### Unit tests
+
+Use the project-local Python/CMake toolchain from `.venv` and keep unit-test
+artifacts in a dedicated binary dir:
+
+```bash
+source .venv/bin/activate
+
+cmake -S . -B build-tests -G Ninja
+cmake --build build-tests
+
+ctest --test-dir build-tests -R '^tst_' --output-on-failure
+```
+
+Notes:
+
+- `-R '^tst_'` limits the run to Easy SSH's own test executables.
+- `build-tests/` keeps unit-test artifacts separate from the normal `debug` and
+  `release` preset trees.
+- To rebuild just one suite, target its executable name, for example
+  `cmake --build build-tests --target tst_ProcessParser`.
+- To run one suite only, filter by its test name, for example
+  `ctest --test-dir build-tests -R '^tst_ProcessParser$' --output-on-failure`.
+
 ### Editor / LSP (clangd)
 
 Recommended extensions are listed in [`.vscode/extensions.json`](.vscode/extensions.json) (clangd, CMake Tools, EditorConfig). Workspace settings in [`.vscode/settings.json`](.vscode/settings.json) disable the Microsoft C/C++ IntelliSense engine so it does not conflict with clangd.
