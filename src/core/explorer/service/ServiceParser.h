@@ -23,6 +23,9 @@ bool parseList(const QByteArray &stdoutBytes, QVector<ServiceInfo> *out, QString
 
 QString inspectCommand(const ServiceInfo &info);
 
+/// Interactive follow command for a unit journal (no trailing newline). Empty if unsupported.
+QString followLogsCommand(const ServiceInfo &info, int lines = 100);
+
 bool parseInspect(const QByteArray &stdoutBytes,
                   const ServiceInfo &seed,
                   ServiceInspectInfo *out,

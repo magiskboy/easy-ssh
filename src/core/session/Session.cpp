@@ -210,7 +210,7 @@ void Session::shutdown()
     emit tunnelsChanged();
 }
 
-QUuid Session::newShell(int cols, int rows, const QUuid &shellId)
+QUuid Session::newShell(int cols, int rows, const QUuid &shellId, bool auxiliary)
 {
     if (m_state != SessionState::Connected || m_worker == nullptr) {
         return {};
@@ -234,6 +234,7 @@ QUuid Session::newShell(int cols, int rows, const QUuid &shellId)
     shell.cols = cols;
     shell.rows = rows;
     shell.createdAt = QDateTime::currentDateTimeUtc();
+    shell.auxiliary = auxiliary;
     m_shells.append(shell);
     emit shellsChanged();
 
@@ -261,7 +262,8 @@ void Session::setActiveShell(const QUuid &shellId)
     if (shellId == m_activeShellId) {
         return;
     }
-    if (findShell(shellId) == nullptr) {
+    const ShellChannelState *shell = findShell(shellId);
+    if (shell == nullptr || shell->auxiliary) {
         return;
     }
 
@@ -800,13 +802,21 @@ void Session::onShellClosed(const QUuid &shellId)
     if (wasActive) {
         m_activeShellId = {};
         for (const ShellChannelState &shell : m_shells) {
+            if (shell.auxiliary) {
+                continue;
+            }
             if (shell.state == ChannelState::Open) {
                 m_activeShellId = shell.id;
                 break;
             }
         }
-        if (m_activeShellId.isNull() && !m_shells.isEmpty()) {
-            m_activeShellId = m_shells.first().id;
+        if (m_activeShellId.isNull()) {
+            for (const ShellChannelState &shell : m_shells) {
+                if (!shell.auxiliary) {
+                    m_activeShellId = shell.id;
+                    break;
+                }
+            }
         }
     }
 
@@ -834,13 +844,21 @@ void Session::onShellOpenFailed(const QUuid &shellId, const QString &message)
     if (wasActive) {
         m_activeShellId = {};
         for (const ShellChannelState &shell : m_shells) {
+            if (shell.auxiliary) {
+                continue;
+            }
             if (shell.state == ChannelState::Open) {
                 m_activeShellId = shell.id;
                 break;
             }
         }
-        if (m_activeShellId.isNull() && !m_shells.isEmpty()) {
-            m_activeShellId = m_shells.first().id;
+        if (m_activeShellId.isNull()) {
+            for (const ShellChannelState &shell : m_shells) {
+                if (!shell.auxiliary) {
+                    m_activeShellId = shell.id;
+                    break;
+                }
+            }
         }
     }
 

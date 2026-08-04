@@ -51,6 +51,8 @@ struct ShellChannelState
     int cols = 80;
     int rows = 24;
     QDateTime createdAt;
+    /// Hidden from SessionPage panes / shell list; owned by a secondary UI (e.g. logs dialog).
+    bool auxiliary = false;
 };
 
 struct FileChannelState

@@ -760,6 +760,9 @@ void MainWindow::populatePaletteShells()
                 ? QStringLiteral("%1@%2").arg(connection.username, connection.host)
                 : connection.name;
         for (const ShellChannelState &shell : session->shells()) {
+            if (shell.auxiliary) {
+                continue;
+            }
             CommandPaletteDialog::ShellItem item;
             item.connectionId = session->connectionId();
             item.shellId = shell.id;

@@ -115,6 +115,9 @@ void ShellListWidget::refresh()
     }
     const QUuid active = m_session->activeShellId();
     for (const ShellChannelState &shell : m_session->shells()) {
+        if (shell.auxiliary) {
+            continue;
+        }
         auto *item = new QListWidgetItem(shell.title, m_list);
         item->setData(Qt::UserRole, shell.id);
         item->setFlags(item->flags() | Qt::ItemIsDragEnabled);

@@ -59,7 +59,7 @@ public:
     void reconnect(int cols = 80, int rows = 24);
     void shutdown();
 
-    QUuid newShell(int cols = 80, int rows = 24, const QUuid &shellId = {});
+    QUuid newShell(int cols = 80, int rows = 24, const QUuid &shellId = {}, bool auxiliary = false);
     void closeShell(const QUuid &shellId);
     void setActiveShell(const QUuid &shellId);
     void renameShell(const QUuid &shellId, const QString &title);

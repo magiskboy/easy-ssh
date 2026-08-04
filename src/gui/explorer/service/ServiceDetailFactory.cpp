@@ -8,6 +8,7 @@
 #include "core/explorer/service/ServiceParser.h"
 #include "core/session/Session.h"
 #include "gui/dialogs/ModelessDialog.h"
+#include "gui/explorer/service/ServiceLogsDialog.h"
 #include "gui/explorer/service/ServiceTableModel.h"
 #include "gui/widgets/UiMetrics.h"
 
@@ -18,6 +19,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QLabel>
+#include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QUuid>
@@ -148,6 +150,23 @@ public:
         rebuildContent(seedInspect);
 
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
+        auto *viewLogsButton = buttons->addButton(tr("View logs"), QDialogButtonBox::ActionRole);
+        const QString logsCommand = ServiceParser::followLogsCommand(seed);
+        const bool canViewLogs =
+            m_session && m_session->state() == SessionState::Connected && !logsCommand.isEmpty();
+        viewLogsButton->setEnabled(canViewLogs);
+        if (!canViewLogs) {
+            viewLogsButton->setToolTip(tr("Live logs require a connected session and systemd."));
+        }
+        connect(viewLogsButton, &QPushButton::clicked, this, [this]() {
+            if (!m_session) {
+                return;
+            }
+            auto *logs = new ServiceLogsDialog(m_session, m_seed, window());
+            logs->show();
+            logs->raise();
+            logs->activateWindow();
+        });
         connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
         connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
         root->addWidget(buttons);

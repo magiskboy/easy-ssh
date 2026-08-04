@@ -168,6 +168,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/explorer/service/ServiceExplorerModule.h
     gui/explorer/service/ServiceDetailFactory.cpp
     gui/explorer/service/ServiceDetailFactory.h
+    gui/explorer/service/ServiceLogsDialog.cpp
+    gui/explorer/service/ServiceLogsDialog.h
     gui/explorer/service/ServiceFilterBar.cpp
     gui/explorer/service/ServiceFilterBar.h
     gui/tunnel/TunnelListWidget.cpp

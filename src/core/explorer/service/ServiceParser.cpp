@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QtGlobal>
 #include <memory>
 #include <vector>
 
@@ -270,6 +271,20 @@ QString inspectCommand(const ServiceInfo &info)
                           "-p Type -p Restart -p RemainAfterExit "
                           "--no-pager")
         .arg(unit);
+}
+
+QString followLogsCommand(const ServiceInfo &info, int lines)
+{
+    if (info.unit.isEmpty()) {
+        return {};
+    }
+    if (info.manager != QLatin1String("systemd") && !info.manager.isEmpty()) {
+        return {};
+    }
+
+    const int safeLines = qMax(1, lines);
+    const QString unit = ShellCommandSet::shellQuote(info.unit);
+    return QStringLiteral("journalctl --no-pager -f -n %1 -u %2").arg(safeLines).arg(unit);
 }
 
 bool parseInspect(const QByteArray &stdoutBytes,

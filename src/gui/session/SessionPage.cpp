@@ -145,6 +145,9 @@ WorkspaceSessionEntry SessionPage::captureWorkspaceEntry() const
     entry.connectionId = m_session->connectionId();
     entry.activeShellId = m_session->activeShellId();
     for (const ShellChannelState &shell : m_session->shells()) {
+        if (shell.auxiliary) {
+            continue;
+        }
         WorkspaceShellEntry shellEntry;
         shellEntry.id = shell.id;
         shellEntry.title = shell.title;
@@ -201,8 +204,13 @@ void SessionPage::onShellsChanged()
     const QList<ShellChannelState> shells = m_session->shells();
     QSet<QUuid> alive;
     QUuid newborn;
+    int visibleShellCount = 0;
     for (const ShellChannelState &shell : shells) {
         alive.insert(shell.id);
+        if (shell.auxiliary) {
+            continue;
+        }
+        ++visibleShellCount;
         if (!previousPaneIds.contains(shell.id)) {
             newborn = shell.id;
         }
@@ -211,10 +219,12 @@ void SessionPage::onShellsChanged()
             m_dockHost->setShellTitle(shell.id, shell.title);
         }
     }
+    bool removedPane = false;
     const QList<QUuid> existing = m_panes.keys();
     for (const QUuid &id : existing) {
         if (!alive.contains(id)) {
             removePane(id);
+            removedPane = true;
         }
     }
 
@@ -225,6 +235,8 @@ void SessionPage::onShellsChanged()
         return;
     }
 
+    // Only re-focus dock when a visible shell is born or a pane closes.
+    // Auxiliary shells (e.g. service logs dialog) must not steal focus from tool tabs.
     if (m_session->state() == SessionState::Connected && !newborn.isNull()) {
         m_pendingSmartPinId = newborn;
         if (m_session->activeShellId() != newborn) {
@@ -232,11 +244,11 @@ void SessionPage::onShellsChanged()
         } else {
             onActiveShellChanged(newborn);
         }
-    } else {
+    } else if (removedPane) {
         onActiveShellChanged(m_session->activeShellId());
     }
 
-    if (m_session->state() == SessionState::Connected && shells.isEmpty()) {
+    if (m_session->state() == SessionState::Connected && visibleShellCount == 0) {
         showOverlay(tr("No shells open.\nClick New Shell in the sidebar or Terminal menu."), false);
         m_reconnectButton->setText(tr("New Shell"));
         m_reconnectButton->setVisible(true);
