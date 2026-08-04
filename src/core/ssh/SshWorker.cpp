@@ -42,6 +42,7 @@ SshWorker::SshWorker(QObject *parent) : QObject(parent)
     m_session.setHostKeyVerifier([this](ssh_session session, const QString &contextLabel) {
         return verifyKnownHostForSession(session, contextLabel);
     });
+    m_session.setCancelChecker([this]() { return m_cancelRequested.load(); });
 }
 
 SshWorker::~SshWorker()
@@ -65,23 +66,41 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
+    m_cancelRequested.store(false);
     cleanup();
 
     m_agentForwarding = connection.agentForwarding;
 
     QString error;
     if (!m_session.establish(connection, credentials, &error)) {
+        if (m_cancelRequested.load()) {
+            return;
+        }
         if (!error.isEmpty()) {
             emit errorOccurred(error);
         }
         return;
     }
 
+    if (m_cancelRequested.load()) {
+        cleanup();
+        return;
+    }
+
     if (!openShellLocked(initialShellId, cols, rows, &error)) {
+        if (m_cancelRequested.load()) {
+            cleanup();
+            return;
+        }
         if (!error.isEmpty()) {
             emit errorOccurred(error);
         }
         m_session.cleanup();
+        return;
+    }
+
+    if (m_cancelRequested.load()) {
+        cleanup();
         return;
     }
 
@@ -90,6 +109,11 @@ void SshWorker::connectToHost(const Connection &connection,
     m_fs.setStallTimeoutSec(AppSettings::instance().transferStallTimeoutSec());
     m_fs.setShellCommands(connection.shellCommands);
     const bool fsReady = m_fs.open(m_session.handle(), &sftpFailure);
+
+    if (m_cancelRequested.load()) {
+        cleanup();
+        return;
+    }
 
     m_running = true;
     qCWarning(lcSsh) << "Connected to" << connection.host << "fs:"
@@ -242,6 +266,9 @@ void SshWorker::changePtySize(const QUuid &shellId, int cols, int rows)
 
 void SshWorker::disconnectSession()
 {
+    m_cancelRequested.store(true);
+    respondHostKeyTrust(false);
+
     if (m_ioTimer) {
         m_ioTimer->stop();
     }
@@ -257,6 +284,12 @@ void SshWorker::disconnectSession()
         qCWarning(lcSsh) << "Session disconnected";
         emit disconnected();
     }
+}
+
+void SshWorker::requestCancel()
+{
+    m_cancelRequested.store(true);
+    respondHostKeyTrust(false);
 }
 
 void SshWorker::respondHostKeyTrust(bool accept)

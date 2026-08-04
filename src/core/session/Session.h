@@ -127,6 +127,8 @@ private:
     void setState(SessionState state);
     void ensureWorker();
     void teardownWorker();
+    /// Cancel + quit worker thread without blocking the GUI thread.
+    void releaseWorkerAsync();
     void wireWorker();
     int nextShellSerial();
     ShellChannelState *findShell(const QUuid &shellId);

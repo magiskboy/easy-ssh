@@ -26,6 +26,8 @@
 #include <QVector>
 #include <QWaitCondition>
 
+#include <atomic>
+
 #if defined(LIBSSH_VERSION_INT) && (LIBSSH_VERSION_INT < SSH_VERSION_INT(0, 11, 0))
 #error "easy-ssh requires libssh >= 0.11 for ProxyJump (SSH_OPTIONS_PROXYJUMP)"
 #endif
@@ -63,6 +65,8 @@ public slots:
     void changePtySize(const QUuid &shellId, int cols, int rows);
     /// Tear down transport (all shells, SFTP, tunnels, SshSession). Not domain Session destroy.
     void disconnectSession();
+    /// Thread-safe: abort in-flight connect / host-key wait. Safe from any thread.
+    void requestCancel();
     void respondHostKeyTrust(bool accept);
 
     void listDirectory(const QString &path);
@@ -146,6 +150,7 @@ private:
     bool m_agentForwardRequested = false;
     class QTimer *m_ioTimer = nullptr;
     bool m_running = false;
+    std::atomic<bool> m_cancelRequested{false};
 
     QMutex m_hostKeyMutex;
     QWaitCondition m_hostKeyCondition;

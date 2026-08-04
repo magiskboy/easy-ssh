@@ -148,23 +148,50 @@ void Session::disconnectTransport()
 
     m_userDisconnect = true;
     m_autoReconnectAttempted = false;
+    m_shuttingDown = true;
 
-    if (m_worker == nullptr) {
-        for (ShellChannelState &shell : m_shells) {
-            shell.state = ChannelState::Closed;
-        }
-        m_activeShellId = {};
-        markFileUnavailable(m_file);
-        setState(SessionState::Disconnected);
-        emit shellsChanged();
-        emit activeShellChanged(m_activeShellId);
-        emit fileChanged();
-        emit statusMessage(tr("Disconnected: %1").arg(displayName()), kWarningLevel);
+    // Abort slow ssh_connect / host-key wait immediately (thread-safe).
+    if (m_worker != nullptr) {
+        m_worker->requestCancel();
+    }
+
+    // Optimistic UI: never wait on connect timeout / worker teardown.
+    for (ShellChannelState &shell : m_shells) {
+        shell.state = ChannelState::Closed;
+    }
+    m_activeShellId = {};
+    markFileUnavailable(m_file);
+    setState(SessionState::Disconnected);
+    emit shellsChanged();
+    emit activeShellChanged(m_activeShellId);
+    emit fileChanged();
+    emit statusMessage(tr("Disconnected: %1").arg(displayName()), kWarningLevel);
+
+    // Tear down worker asynchronously so the GUI thread is not blocked.
+    releaseWorkerAsync();
+    m_userDisconnect = false;
+}
+
+void Session::releaseWorkerAsync()
+{
+    if (m_worker != nullptr) {
+        disconnect(m_worker, nullptr, this, nullptr);
+        m_worker->requestCancel();
+        QMetaObject::invokeMethod(
+            m_worker, [worker = m_worker]() { worker->disconnectSession(); }, Qt::QueuedConnection);
+    }
+
+    if (m_thread != nullptr) {
+        QThread *thread = m_thread;
+        m_thread = nullptr;
+        m_worker = nullptr;
+        thread->setParent(nullptr);
+        connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+        thread->quit();
         return;
     }
 
-    QMetaObject::invokeMethod(
-        m_worker, [worker = m_worker]() { worker->disconnectSession(); }, Qt::QueuedConnection);
+    m_worker = nullptr;
 }
 
 void Session::reconnect(int cols, int rows)
@@ -179,8 +206,12 @@ void Session::reconnect(int cols, int rows)
         return;
     }
 
-    if (m_worker != nullptr) {
-        disconnectTransport();
+    if (m_worker != nullptr || m_thread != nullptr) {
+        m_userDisconnect = true;
+        m_shuttingDown = true;
+        if (m_worker != nullptr) {
+            m_worker->requestCancel();
+        }
         teardownWorker();
     }
     m_shuttingDown = false;
@@ -552,14 +583,16 @@ void Session::teardownWorker()
 {
     if (m_worker != nullptr) {
         disconnect(m_worker, nullptr, this, nullptr);
-        m_worker->respondHostKeyTrust(false);
+        m_worker->requestCancel();
         QMetaObject::invokeMethod(
             m_worker, [worker = m_worker]() { worker->disconnectSession(); }, Qt::QueuedConnection);
     }
 
     if (m_thread != nullptr) {
         m_thread->quit();
-        if (!m_thread->wait(5000)) {
+        // Connect is cancellable in ~100ms slices; keep a short wait so UI stays responsive.
+        if (!m_thread->wait(2000)) {
+            qCWarning(lcSsh) << "SSH worker thread did not exit in time; terminating";
             m_thread->terminate();
             m_thread->wait(1000);
         }
@@ -699,7 +732,8 @@ void Session::onWorkerDisconnected()
     }
     if (m_thread != nullptr) {
         m_thread->quit();
-        if (!m_thread->wait(5000)) {
+        if (!m_thread->wait(2000)) {
+            qCWarning(lcSsh) << "SSH worker thread did not exit in time; terminating";
             m_thread->terminate();
             m_thread->wait(1000);
         }
@@ -767,13 +801,15 @@ void Session::onWorkerError(const QString &message)
     m_shuttingDown = true;
     if (m_worker != nullptr) {
         disconnect(m_worker, nullptr, this, nullptr);
+        m_worker->requestCancel();
         QMetaObject::invokeMethod(
             m_worker, [worker = m_worker]() { worker->disconnectSession(); }, Qt::QueuedConnection);
         m_worker = nullptr;
     }
     if (m_thread != nullptr) {
         m_thread->quit();
-        if (!m_thread->wait(5000)) {
+        if (!m_thread->wait(2000)) {
+            qCWarning(lcSsh) << "SSH worker thread did not exit in time; terminating";
             m_thread->terminate();
             m_thread->wait(1000);
         }

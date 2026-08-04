@@ -18,7 +18,19 @@ ProcessSource::ProcessSource(Session *session, QObject *parent)
     connect(m_timer, &QTimer::timeout, this, &ProcessSource::onPollTick);
 
     if (m_session) {
-        connect(m_session, &Session::commandFinished, this, &ProcessSource::onCommandFinished);
+        connect(m_session,
+                &Session::commandFinished,
+                this,
+                [this](const QString &requestId,
+                       int exitStatus,
+                       const QByteArray &stdoutBytes,
+                       const QByteArray &stderrBytes,
+                       const QString &errorMessage) {
+                    onCommandFinished(requestId,
+                                      exitStatus,
+                                      CommandStreams{stdoutBytes, stderrBytes},
+                                      errorMessage);
+                });
     }
 }
 
@@ -91,8 +103,7 @@ void ProcessSource::requestList()
 
 void ProcessSource::onCommandFinished(const QString &requestId,
                                       int exitStatus,
-                                      const QByteArray &stdoutBytes,
-                                      const QByteArray &stderrBytes,
+                                      const CommandStreams &streams,
                                       const QString &errorMessage)
 {
     if (requestId != m_activeRequestId) {
@@ -111,7 +122,7 @@ void ProcessSource::onCommandFinished(const QString &requestId,
     if (transportFailed || exitStatus != 0) {
         QString message;
         const ExplorerCapability cap =
-            ProcessParser::classifyFailure(exitStatus, stderrBytes, errorMessage, &message);
+            ProcessParser::classifyFailure(exitStatus, streams.stderrBytes, errorMessage, &message);
         setCapability(cap, message);
         if (cap == ExplorerCapability::Error) {
             emit failed(message);
@@ -125,7 +136,7 @@ void ProcessSource::onCommandFinished(const QString &requestId,
 
     QVector<ProcessInfo> processes;
     QString parseError;
-    if (!ProcessParser::parsePsList(stdoutBytes, &processes, &parseError)) {
+    if (!ProcessParser::parsePsList(streams.stdoutBytes, &processes, &parseError)) {
         setCapability(ExplorerCapability::Error,
                       parseError.isEmpty() ? tr("Failed to parse process list") : parseError);
         emit failed(m_capabilityMessage);

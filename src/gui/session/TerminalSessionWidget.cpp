@@ -823,14 +823,14 @@ void TerminalSessionWidget::shutdownWorker()
 
     if (m_worker) {
         disconnect(m_worker, nullptr, this, nullptr);
-        m_worker->respondHostKeyTrust(false);
+        m_worker->requestCancel();
         QMetaObject::invokeMethod(
             m_worker, [worker = m_worker]() { worker->disconnectSession(); }, Qt::QueuedConnection);
     }
 
     if (m_thread) {
         m_thread->quit();
-        if (!m_thread->wait(5000)) {
+        if (!m_thread->wait(2000)) {
             m_thread->terminate();
             m_thread->wait(1000);
         }

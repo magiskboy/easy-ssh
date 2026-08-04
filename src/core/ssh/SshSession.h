@@ -28,6 +28,8 @@ class SshSession
 {
 public:
     using HostKeyVerifyFn = std::function<bool(ssh_session session, const QString &contextLabel)>;
+    /// Return true to abort an in-flight establish()/ssh_connect loop.
+    using CancelFn = std::function<bool()>;
 
     SshSession() = default;
     ~SshSession();
@@ -36,11 +38,13 @@ public:
     SshSession &operator=(const SshSession &) = delete;
 
     void setHostKeyVerifier(HostKeyVerifyFn verifier);
+    void setCancelChecker(CancelFn checker);
 
     ssh_session handle() const { return m_session; }
     bool isConnected() const;
 
     /// Create session, apply options, connect (+jump), verify host key, authenticate.
+    /// Polls in short slices so @ref setCancelChecker can abort a slow connect.
     bool establish(const Connection &connection,
                    const SessionCredentials &credentials,
                    QString *errorOut);
@@ -67,6 +71,9 @@ private:
     void applyAdvancedOptions(const Connection &connection);
     void registerJumpCallbacks(const Connection &connection);
     bool connectWithFallback(const Connection &connection, QString *errorOut);
+    /// Non-blocking ssh_connect loop with cancel checks (restores blocking on success).
+    bool connectCancellable(QString *errorOut);
+    bool isCancelRequested() const;
     void applyWindowsAlgorithmFallback();
     void logSessionOptions(const char *stage) const;
 
@@ -83,6 +90,7 @@ private:
     Connection m_connection;
     SessionCredentials m_credentials;
     HostKeyVerifyFn m_hostKeyVerifier;
+    CancelFn m_cancelChecker;
 
     std::vector<JumpHopContext> m_jumpContexts;
     std::vector<ssh_jump_callbacks_struct> m_jumpCallbacks;

@@ -9,6 +9,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QThread>
 #include <QtGlobal>
 
 #include <libssh/server.h>
@@ -16,6 +17,7 @@
 namespace
 {
 constexpr auto kClientInitBufferError = "Failed to construct client init buffer";
+constexpr int kConnectPollMs = 100;
 
 QString trSession(const char *text)
 {
@@ -42,6 +44,16 @@ SshSession::~SshSession()
 void SshSession::setHostKeyVerifier(HostKeyVerifyFn verifier)
 {
     m_hostKeyVerifier = std::move(verifier);
+}
+
+void SshSession::setCancelChecker(CancelFn checker)
+{
+    m_cancelChecker = std::move(checker);
+}
+
+bool SshSession::isCancelRequested() const
+{
+    return m_cancelChecker && m_cancelChecker();
 }
 
 bool SshSession::isConnected() const
@@ -128,6 +140,13 @@ bool SshSession::establish(const Connection &connection,
 
     QString connectError;
     if (!connectWithFallback(connection, &connectError)) {
+        if (isCancelRequested()) {
+            if (errorOut) {
+                *errorOut = trSession("Connection canceled");
+            }
+            cleanup();
+            return false;
+        }
         QString err = connectError.isEmpty() ? sessionError() : connectError;
         if (connection.usesJumpHost()) {
             err = trSession("Gateway: %1").arg(err);
@@ -142,7 +161,23 @@ bool SshSession::establish(const Connection &connection,
         return false;
     }
 
+    if (isCancelRequested()) {
+        if (errorOut) {
+            *errorOut = trSession("Connection canceled");
+        }
+        cleanup();
+        return false;
+    }
+
     if (!m_hostKeyVerifier || !m_hostKeyVerifier(m_session, QString())) {
+        cleanup();
+        return false;
+    }
+
+    if (isCancelRequested()) {
+        if (errorOut) {
+            *errorOut = trSession("Connection canceled");
+        }
         cleanup();
         return false;
     }
@@ -161,6 +196,14 @@ bool SshSession::establish(const Connection &connection,
         return false;
     }
     mutableSecret.fill(QChar(u'\0'));
+
+    if (isCancelRequested()) {
+        if (errorOut) {
+            *errorOut = trSession("Connection canceled");
+        }
+        cleanup();
+        return false;
+    }
 
     resetKeepAliveClock();
     return true;
@@ -277,19 +320,85 @@ void SshSession::registerJumpCallbacks(const Connection &connection)
     }
 }
 
+bool SshSession::connectCancellable(QString *errorOut)
+{
+    if (m_session == nullptr) {
+        if (errorOut) {
+            *errorOut = trSession("Failed to create SSH session");
+        }
+        return false;
+    }
+
+    ssh_set_blocking(m_session, 0);
+
+    ssh_event event = ssh_event_new();
+    bool sessionAdded = false;
+
+    int rc = SSH_ERROR;
+    for (;;) {
+        if (isCancelRequested()) {
+            if (event) {
+                if (sessionAdded) {
+                    ssh_event_remove_session(event, m_session);
+                }
+                ssh_event_free(event);
+            }
+            if (errorOut) {
+                *errorOut = trSession("Connection canceled");
+            }
+            return false;
+        }
+
+        rc = ssh_connect(m_session);
+        if (rc != SSH_AGAIN) {
+            break;
+        }
+
+        if (event != nullptr && !sessionAdded && ssh_get_fd(m_session) != SSH_INVALID_SOCKET) {
+            if (ssh_event_add_session(event, m_session) == SSH_OK) {
+                sessionAdded = true;
+            }
+        }
+
+        if (sessionAdded) {
+            ssh_event_dopoll(event, kConnectPollMs);
+        } else {
+            QThread::msleep(static_cast<unsigned long>(kConnectPollMs));
+        }
+    }
+
+    if (event) {
+        if (sessionAdded) {
+            ssh_event_remove_session(event, m_session);
+        }
+        ssh_event_free(event);
+    }
+
+    if (rc == SSH_OK) {
+        ssh_set_blocking(m_session, 1);
+        return true;
+    }
+
+    if (errorOut) {
+        *errorOut = sessionError();
+    }
+    return false;
+}
+
 bool SshSession::connectWithFallback(const Connection &connection, QString *errorOut)
 {
     Q_UNUSED(connection);
 
     logSessionOptions("before-connect");
-    if (ssh_connect(m_session) == SSH_OK) {
+    if (connectCancellable(errorOut)) {
         return true;
     }
 
-    const QString firstError = sessionError();
-    if (errorOut) {
-        *errorOut = firstError;
+    if (isCancelRequested()) {
+        return false;
     }
+
+    const QString firstError = errorOut && !errorOut->isEmpty() ? *errorOut : sessionError();
 
 #ifdef Q_OS_WIN
     if (firstError.contains(QLatin1String(kClientInitBufferError), Qt::CaseInsensitive)) {
@@ -313,14 +422,12 @@ bool SshSession::connectWithFallback(const Connection &connection, QString *erro
 
         applyWindowsAlgorithmFallback();
         logSessionOptions("fallback-connect");
-        if (ssh_connect(m_session) == SSH_OK) {
+        if (connectCancellable(errorOut)) {
             return true;
         }
-
-        if (errorOut) {
-            *errorOut = sessionError();
-        }
     }
+#else
+    Q_UNUSED(firstError);
 #endif
 
     return false;

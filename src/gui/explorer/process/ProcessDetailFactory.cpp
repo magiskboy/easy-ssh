@@ -13,12 +13,31 @@
 #include <QDialogButtonBox>
 #include <QFont>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QScreen>
+#include <QScrollArea>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 
 namespace
 {
+/// QScrollArea::sizeHint() follows the child widget, which would force the dialog
+/// to grow to the full command list and defeat max-height / scrolling.
+class ConstrainedScrollArea final : public QScrollArea
+{
+public:
+    explicit ConstrainedScrollArea(QWidget *parent = nullptr) : QScrollArea(parent)
+    {
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
+
+    QSize sizeHint() const override { return {UiMetrics::dialogMinWidth, 240}; }
+
+    QSize minimumSizeHint() const override { return {0, 0}; }
+};
+
 QWidget *makeKeyValueRow(const QPair<QString, QString> &entry, QWidget *parent)
 {
     auto *row = new QWidget(parent);
@@ -128,12 +147,39 @@ QDialog *ProcessDetailFactory::createDetailDialog(QAbstractItemModel *source,
     configureModelessDialog(dialog);
     dialog->setWindowTitle(ProcessParser::displayName(*process));
 
+    QScreen *screen = parent ? parent->screen() : nullptr;
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    const int screenHeight = screen ? screen->availableGeometry().height() : 900;
+    const int maxHeight = qMax(360, qRound(screenHeight * 0.7));
+    const int minHeight = qMin(360, maxHeight);
+    const int initialHeight = qMin(480, maxHeight);
+    dialog->setMinimumHeight(minHeight);
+    dialog->setMaximumHeight(maxHeight);
+    dialog->resize(UiMetrics::dialogMinWidth, initialHeight);
+
     auto *root = new QVBoxLayout(dialog);
     root->setContentsMargins(UiMetrics::sectionSpacing,
                              UiMetrics::sectionSpacing,
                              UiMetrics::sectionSpacing,
                              UiMetrics::sectionSpacing);
     root->setSpacing(UiMetrics::sectionSpacing);
+    root->setSizeConstraint(QLayout::SetMinimumSize);
+
+    auto *scroll = new ConstrainedScrollArea(dialog);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setFocusPolicy(Qt::StrongFocus);
+    auto *content = new QWidget(scroll);
+    content->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    auto *contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(UiMetrics::sectionSpacing);
+    scroll->setWidget(content);
+    root->addWidget(scroll, 1);
 
     const QList<QPair<QString, QString>> details = {
         {QObject::tr("Process ID"), QString::number(process->pid)},
@@ -157,12 +203,12 @@ QDialog *ProcessDetailFactory::createDetailDialog(QAbstractItemModel *source,
         {QObject::tr("Shared Memory"), QStringLiteral("—")},
     };
 
-    root->addWidget(makeGroup(QObject::tr("Details"), details, dialog));
-    root->addWidget(makeGroup(QObject::tr("Status"), status, dialog));
-    root->addWidget(makeGroup(QObject::tr("Usage"), usage, dialog));
+    contentLayout->addWidget(makeGroup(QObject::tr("Details"), details, content));
+    contentLayout->addWidget(makeGroup(QObject::tr("Status"), status, content));
+    contentLayout->addWidget(makeGroup(QObject::tr("Usage"), usage, content));
 
     if (!process->command.isEmpty()) {
-        root->addWidget(makeCommandGroup(process->command, dialog));
+        contentLayout->addWidget(makeCommandGroup(process->command, content));
     }
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
@@ -170,6 +216,5 @@ QDialog *ProcessDetailFactory::createDetailDialog(QAbstractItemModel *source,
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
     root->addWidget(buttons);
 
-    dialog->adjustSize();
     return dialog;
 }
