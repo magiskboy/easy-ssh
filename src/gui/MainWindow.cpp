@@ -496,6 +496,28 @@ void MainWindow::setupMenus()
     });
     m_terminalActions.append(closeShellAction);
 
+    auto *explorerMenu = menuBar()->addMenu(tr("&Explorer"));
+
+    auto *processExplorerAction = explorerMenu->addAction(tr("&Process"));
+    registerAction(QStringLiteral("session.processExplorer"), processExplorerAction);
+    addAction(processExplorerAction);
+    connect(processExplorerAction, &QAction::triggered, this, [this]() {
+        if (auto *page = m_sessionTabs->activeSessionPage()) {
+            page->toggleProcessExplorer();
+        }
+    });
+    m_terminalActions.append(processExplorerAction);
+
+    auto *containerExplorerAction = explorerMenu->addAction(tr("&Container"));
+    registerAction(QStringLiteral("session.containerExplorer"), containerExplorerAction);
+    addAction(containerExplorerAction);
+    connect(containerExplorerAction, &QAction::triggered, this, [this]() {
+        if (auto *page = m_sessionTabs->activeSessionPage()) {
+            page->toggleContainerExplorer();
+        }
+    });
+    m_terminalActions.append(containerExplorerAction);
+
     auto *windowsMenu = menuBar()->addMenu(tr("&Windows"));
 
     auto *paletteAction = windowsMenu->addAction(tr("Command &Palette…"));
@@ -507,16 +529,6 @@ void MainWindow::setupMenus()
     registerAction(QStringLiteral("session.goToShell"), goToShellAction);
     addAction(goToShellAction);
     connect(goToShellAction, &QAction::triggered, this, &MainWindow::openGoToShell);
-
-    auto *processExplorerAction = windowsMenu->addAction(tr("&Process Explorer"));
-    registerAction(QStringLiteral("session.processExplorer"), processExplorerAction);
-    addAction(processExplorerAction);
-    connect(processExplorerAction, &QAction::triggered, this, [this]() {
-        if (auto *page = m_sessionTabs->activeSessionPage()) {
-            page->toggleProcessExplorer();
-        }
-    });
-    m_terminalActions.append(processExplorerAction);
 
     windowsMenu->addSeparator();
 

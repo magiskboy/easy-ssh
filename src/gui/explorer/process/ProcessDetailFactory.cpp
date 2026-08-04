@@ -43,8 +43,7 @@ QWidget *makeKeyValueRow(const QPair<QString, QString> &entry, QWidget *parent)
     return row;
 }
 
-QWidget *
-makeGroup(const QString &title, const QList<QPair<QString, QString>> &rows, QWidget *parent)
+QFrame *makeGroupFrame(const QString &title, QWidget *parent)
 {
     auto *group = new QFrame(parent);
     group->setObjectName(QStringLiteral("processDetailGroup"));
@@ -69,8 +68,42 @@ makeGroup(const QString &title, const QList<QPair<QString, QString>> &rows, QWid
     layout->addWidget(titleLabel);
     layout->addSpacing(UiMetrics::tightSpacing);
 
+    return group;
+}
+
+QWidget *
+makeGroup(const QString &title, const QList<QPair<QString, QString>> &rows, QWidget *parent)
+{
+    auto *group = makeGroupFrame(title, parent);
+    auto *layout = qobject_cast<QVBoxLayout *>(group->layout());
     for (const auto &row : rows) {
         layout->addWidget(makeKeyValueRow(row, group));
+    }
+    return group;
+}
+
+QWidget *makeCommandGroup(const QString &command, QWidget *parent)
+{
+    const QStringList parts = command.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    auto *group = makeGroupFrame(QObject::tr("Command"), parent);
+    auto *layout = qobject_cast<QVBoxLayout *>(group->layout());
+
+    for (const QString &part : parts) {
+        auto *row = new QWidget(group);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(UiMetrics::relatedSpacing,
+                                      UiMetrics::tightSpacing,
+                                      UiMetrics::relatedSpacing,
+                                      UiMetrics::tightSpacing);
+        rowLayout->setSpacing(0);
+
+        auto *valueLabel = new QLabel(part, row);
+        valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        valueLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        valueLabel->setWordWrap(true);
+        rowLayout->addWidget(valueLabel, 1);
+
+        layout->addWidget(row);
     }
 
     return group;
@@ -129,10 +162,7 @@ QDialog *ProcessDetailFactory::createDetailDialog(QAbstractItemModel *source,
     root->addWidget(makeGroup(QObject::tr("Usage"), usage, dialog));
 
     if (!process->command.isEmpty()) {
-        const QList<QPair<QString, QString>> commandRows = {
-            {QObject::tr("Command"), process->command},
-        };
-        root->addWidget(makeGroup(QObject::tr("Command"), commandRows, dialog));
+        root->addWidget(makeCommandGroup(process->command, dialog));
     }
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);

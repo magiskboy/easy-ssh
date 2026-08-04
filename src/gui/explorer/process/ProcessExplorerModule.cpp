@@ -4,12 +4,14 @@
 
 #include "ProcessExplorerModule.h"
 
+#include "core/explorer/process/ProcessInfo.h"
 #include "core/explorer/process/ProcessSource.h"
 #include "gui/explorer/process/ProcessDetailFactory.h"
 #include "gui/explorer/process/ProcessTableModel.h"
 #include "gui/widgets/ExplorerFilterProxy.h"
 
 #include <QCoreApplication>
+#include <QObject>
 
 QString ProcessExplorerModule::id() const
 {
@@ -66,4 +68,21 @@ QWidget *ProcessExplorerModule::createFilterBar(ExplorerFilterProxy * /*proxy*/,
 std::unique_ptr<IExplorerDetailFactory> ProcessExplorerModule::createDetailFactory()
 {
     return std::make_unique<ProcessDetailFactory>();
+}
+
+void ProcessExplorerModule::connectSource(IExplorerSource *source,
+                                          ExplorerTableModel *model,
+                                          QObject *context)
+{
+    auto *processSource = qobject_cast<ProcessSource *>(source);
+    auto *processModel = qobject_cast<ProcessTableModel *>(model);
+    if (!processSource || !processModel || !context) {
+        return;
+    }
+    QObject::connect(processSource,
+                     &ProcessSource::snapshotReady,
+                     context,
+                     [processModel](const QVector<ProcessInfo> &processes) {
+                         processModel->applySnapshot(processes);
+                     });
 }

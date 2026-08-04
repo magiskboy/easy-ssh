@@ -36,4 +36,7 @@ public:
     /// Optional; return nullptr when search-only is enough.
     virtual QWidget *createFilterBar(class ExplorerFilterProxy *proxy, QWidget *parent) = 0;
     virtual std::unique_ptr<IExplorerDetailFactory> createDetailFactory() = 0;
+    /// Wire domain-specific source signals into the table model.
+    virtual void
+    connectSource(IExplorerSource *source, ExplorerTableModel *model, QObject *context) = 0;
 };

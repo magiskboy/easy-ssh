@@ -58,6 +58,19 @@ set(EASY_SSH_CORE_SOURCES
     core/explorer/process/ProcessParser.h
     core/explorer/process/ProcessSource.cpp
     core/explorer/process/ProcessSource.h
+    core/explorer/container/ContainerInfo.h
+    core/explorer/container/ContainerInspectInfo.h
+    core/explorer/container/IContainerBackend.h
+    core/explorer/container/ContainerParser.cpp
+    core/explorer/container/ContainerParser.h
+    core/explorer/container/ContainerSource.cpp
+    core/explorer/container/ContainerSource.h
+    core/explorer/container/backends/PodmanBackend.cpp
+    core/explorer/container/backends/PodmanBackend.h
+    core/explorer/container/backends/DockerBackend.cpp
+    core/explorer/container/backends/DockerBackend.h
+    core/explorer/container/backends/ContainerdBackend.cpp
+    core/explorer/container/backends/ContainerdBackend.h
     core/tunnel/Tunnel.h
     core/tunnel/TunnelStore.cpp
     core/tunnel/TunnelStore.h
@@ -132,6 +145,14 @@ set(EASY_SSH_GUI_SOURCES
     gui/explorer/process/ProcessExplorerModule.h
     gui/explorer/process/ProcessDetailFactory.cpp
     gui/explorer/process/ProcessDetailFactory.h
+    gui/explorer/container/ContainerTableModel.cpp
+    gui/explorer/container/ContainerTableModel.h
+    gui/explorer/container/ContainerExplorerModule.cpp
+    gui/explorer/container/ContainerExplorerModule.h
+    gui/explorer/container/ContainerDetailFactory.cpp
+    gui/explorer/container/ContainerDetailFactory.h
+    gui/explorer/container/ContainerFilterBar.cpp
+    gui/explorer/container/ContainerFilterBar.h
     gui/tunnel/TunnelListWidget.cpp
     gui/tunnel/TunnelListWidget.h
     gui/tunnel/TunnelDialog.cpp

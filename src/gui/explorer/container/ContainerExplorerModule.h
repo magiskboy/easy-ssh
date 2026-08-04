@@ -8,7 +8,9 @@
 
 #include "gui/explorer/IExplorerModule.h"
 
-class ProcessExplorerModule final : public IExplorerModule
+class Session;
+
+class ContainerExplorerModule final : public IExplorerModule
 {
 public:
     QString id() const override;
@@ -23,4 +25,7 @@ public:
     std::unique_ptr<IExplorerDetailFactory> createDetailFactory() override;
     void
     connectSource(IExplorerSource *source, ExplorerTableModel *model, QObject *context) override;
+
+private:
+    Session *m_session = nullptr;
 };

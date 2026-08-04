@@ -11,6 +11,7 @@
 #include "core/util/Logging.h"
 #include "gui/ErrorNotifier.h"
 #include "gui/explorer/ExplorerPageWidget.h"
+#include "gui/explorer/container/ContainerExplorerModule.h"
 #include "gui/explorer/process/ProcessExplorerModule.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
@@ -73,6 +74,12 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
                 m_processPage->unbind();
                 m_processPage->deleteLater();
                 m_processPage = nullptr;
+            }
+        } else if (toolId == QLatin1String("container")) {
+            if (m_containerPage) {
+                m_containerPage->unbind();
+                m_containerPage->deleteLater();
+                m_containerPage = nullptr;
             }
         }
     });
@@ -790,5 +797,56 @@ void SessionPage::closeProcessExplorer()
         m_processPage->unbind();
         m_processPage->deleteLater();
         m_processPage = nullptr;
+    }
+}
+
+void SessionPage::toggleContainerExplorer()
+{
+    if (!m_dockHost || !m_session) {
+        return;
+    }
+    if (m_dockHost->isToolPinned(QStringLiteral("container"))) {
+        m_dockHost->unpinTool(QStringLiteral("container"));
+        return;
+    }
+    openContainerExplorer();
+}
+
+void SessionPage::openContainerExplorer()
+{
+    if (!m_dockHost || !m_session) {
+        return;
+    }
+    if (m_session->state() != SessionState::Connected) {
+        emit statusMessage(tr("Connect to a session to open Container Explorer."),
+                           ErrorNotifier::Level::Warning);
+        return;
+    }
+    if (m_dockHost->isToolPinned(QStringLiteral("container"))) {
+        m_dockHost->focusTool(QStringLiteral("container"));
+        return;
+    }
+
+    if (!m_containerPage) {
+        m_containerPage = new ExplorerPageWidget(this);
+        m_containerPage->bind(std::make_unique<ContainerExplorerModule>(), m_session);
+    }
+
+    m_dockHost->pinTool(QStringLiteral("container"),
+                        tr("Containers"),
+                        m_containerPage,
+                        /* ads::CenterDockWidgetArea */ 0x10);
+}
+
+void SessionPage::closeContainerExplorer()
+{
+    if (m_dockHost && m_dockHost->isToolPinned(QStringLiteral("container"))) {
+        m_dockHost->unpinTool(QStringLiteral("container"));
+        return;
+    }
+    if (m_containerPage) {
+        m_containerPage->unbind();
+        m_containerPage->deleteLater();
+        m_containerPage = nullptr;
     }
 }

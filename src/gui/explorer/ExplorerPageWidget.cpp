@@ -5,14 +5,14 @@
 #include "ExplorerPageWidget.h"
 
 #include "core/explorer/ExplorerTypes.h"
-#include "core/explorer/process/ProcessSource.h"
+#include "core/explorer/IExplorerSource.h"
 #include "core/session/Session.h"
 #include "gui/explorer/ExplorerTableModel.h"
 #include "gui/explorer/IExplorerModule.h"
-#include "gui/explorer/process/ProcessTableModel.h"
 #include "gui/widgets/ExplorerFilterProxy.h"
 #include "gui/widgets/ExplorerListWidget.h"
 
+#include <QAbstractItemModel>
 #include <QVBoxLayout>
 
 ExplorerPageWidget::ExplorerPageWidget(QWidget *parent) : QWidget(parent)
@@ -56,9 +56,7 @@ void ExplorerPageWidget::bind(std::unique_ptr<IExplorerModule> module, Session *
 
     if (ExplorerFilterProxy *proxy = m_list->filterProxy()) {
         proxy->setSearchColumns(m_module->searchColumns());
-        if (qobject_cast<ProcessTableModel *>(m_model)) {
-            proxy->setSortRole(ProcessTableModel::SortValueRole);
-        }
+        proxy->setSortRole(Qt::UserRole + 10); // SortValueRole used by process/container models
     }
     m_list->setFilterBar(m_module->createFilterBar(m_list->filterProxy(), m_list));
 
@@ -68,18 +66,13 @@ void ExplorerPageWidget::bind(std::unique_ptr<IExplorerModule> module, Session *
             &ExplorerPageWidget::onCapabilityChanged);
     connect(m_source, &IExplorerSource::failed, this, &ExplorerPageWidget::onFailed);
 
-    if (auto *processSource = qobject_cast<ProcessSource *>(m_source)) {
-        auto *processModel = qobject_cast<ProcessTableModel *>(m_model);
-        connect(processSource,
-                &ProcessSource::snapshotReady,
-                this,
-                [this, processModel](const QVector<ProcessInfo> &processes) {
-                    if (processModel) {
-                        processModel->applySnapshot(processes);
-                    }
-                    applyCapabilityUi();
-                });
-    }
+    m_module->connectSource(m_source, m_model, this);
+    connect(
+        m_model, &QAbstractItemModel::rowsInserted, this, &ExplorerPageWidget::onCapabilityChanged);
+    connect(
+        m_model, &QAbstractItemModel::rowsRemoved, this, &ExplorerPageWidget::onCapabilityChanged);
+    connect(
+        m_model, &QAbstractItemModel::modelReset, this, &ExplorerPageWidget::onCapabilityChanged);
 
     applyCapabilityUi();
     m_source->start();
@@ -147,7 +140,8 @@ void ExplorerPageWidget::applyCapabilityUi()
         if (m_model && m_model->rowCount() > 0) {
             m_list->showList();
         } else {
-            m_list->showEmptyState(tr("No processes."));
+            const QString title = m_module ? m_module->title().toLower() : tr("items");
+            m_list->showEmptyState(tr("No %1.").arg(title));
         }
         break;
     }

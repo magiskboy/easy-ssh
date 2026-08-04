@@ -43,6 +43,7 @@ public:
     void saveScreenshot();
     void setLayoutActive(bool active);
     void toggleProcessExplorer();
+    void toggleContainerExplorer();
 
     void beginWorkspaceRestore(const WorkspaceSessionEntry &entry);
     WorkspaceSessionEntry captureWorkspaceEntry() const;
@@ -97,10 +98,13 @@ private:
     void continueWorkspaceRestore();
     void openProcessExplorer();
     void closeProcessExplorer();
+    void openContainerExplorer();
+    void closeContainerExplorer();
 
     Session *m_session = nullptr;
     ShellDockHost *m_dockHost = nullptr;
     ExplorerPageWidget *m_processPage = nullptr;
+    ExplorerPageWidget *m_containerPage = nullptr;
     QWidget *m_overlay = nullptr;
     QLabel *m_overlayLabel = nullptr;
     QPushButton *m_reconnectButton = nullptr;
