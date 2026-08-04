@@ -42,13 +42,18 @@ signals:
 
 private slots:
     void onPollTick();
-    void onCommandFinished(const QString &requestId,
-                           int exitStatus,
-                           const QByteArray &stdoutBytes,
-                           const QByteArray &stderrBytes,
-                           const QString &errorMessage);
 
 private:
+    struct CommandStreams
+    {
+        QByteArray stdoutBytes;
+        QByteArray stderrBytes;
+    };
+
+    void onCommandFinished(const QString &requestId,
+                           int exitStatus,
+                           const CommandStreams &streams,
+                           const QString &errorMessage);
     void setCapability(ExplorerCapability capability, const QString &message = {});
     void setBusy(bool busy);
     void requestList();

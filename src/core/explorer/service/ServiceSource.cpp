@@ -18,7 +18,19 @@ ServiceSource::ServiceSource(Session *session, QObject *parent)
     connect(m_timer, &QTimer::timeout, this, &ServiceSource::onPollTick);
 
     if (m_session) {
-        connect(m_session, &Session::commandFinished, this, &ServiceSource::onCommandFinished);
+        connect(m_session,
+                &Session::commandFinished,
+                this,
+                [this](const QString &requestId,
+                       int exitStatus,
+                       const QByteArray &stdoutBytes,
+                       const QByteArray &stderrBytes,
+                       const QString &errorMessage) {
+                    onCommandFinished(requestId,
+                                      exitStatus,
+                                      CommandStreams{stdoutBytes, stderrBytes},
+                                      errorMessage);
+                });
     }
 }
 
@@ -91,8 +103,7 @@ void ServiceSource::requestList()
 
 void ServiceSource::onCommandFinished(const QString &requestId,
                                       int exitStatus,
-                                      const QByteArray &stdoutBytes,
-                                      const QByteArray &stderrBytes,
+                                      const CommandStreams &streams,
                                       const QString &errorMessage)
 {
     if (requestId != m_activeRequestId) {
@@ -111,7 +122,7 @@ void ServiceSource::onCommandFinished(const QString &requestId,
     if (transportFailed || exitStatus != 0) {
         QString message;
         const ExplorerCapability cap =
-            ServiceParser::classifyFailure(exitStatus, stderrBytes, errorMessage, &message);
+            ServiceParser::classifyFailure(exitStatus, streams.stderrBytes, errorMessage, &message);
         setCapability(cap, message);
         if (cap == ExplorerCapability::Error) {
             emit failed(message);
@@ -125,7 +136,7 @@ void ServiceSource::onCommandFinished(const QString &requestId,
 
     QVector<ServiceInfo> services;
     QString parseError;
-    if (!ServiceParser::parseList(stdoutBytes, &services, &parseError)) {
+    if (!ServiceParser::parseList(streams.stdoutBytes, &services, &parseError)) {
         setCapability(ExplorerCapability::Error,
                       parseError.isEmpty() ? tr("Failed to parse service list") : parseError);
         emit failed(m_capabilityMessage);
