@@ -696,14 +696,15 @@ void SshWorker::stopAllTunnels()
     }
 }
 
-void SshWorker::execCommand(const QString &requestId, const QString &command)
+void SshWorker::execCommand(QStringView requestId, const QString &command)
 {
+    const QString id(requestId);
     if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
-        emit commandFinished(requestId, -1, {}, {}, tr("SSH session is not connected"));
+        emit commandFinished(id, -1, {}, {}, tr("SSH session is not connected"));
         return;
     }
     if (command.trimmed().isEmpty()) {
-        emit commandFinished(requestId, -1, {}, {}, tr("Empty remote command"));
+        emit commandFinished(id, -1, {}, {}, tr("Empty remote command"));
         return;
     }
 
@@ -711,7 +712,7 @@ void SshWorker::execCommand(const QString &requestId, const QString &command)
     ShellExecRunner::Result result;
     QString error;
     if (!runner.run(command, &result, &error)) {
-        emit commandFinished(requestId,
+        emit commandFinished(id,
                              result.exitStatus,
                              result.stdoutBytes,
                              result.stderrBytes,
@@ -719,6 +720,5 @@ void SshWorker::execCommand(const QString &requestId, const QString &command)
         return;
     }
 
-    emit commandFinished(
-        requestId, result.exitStatus, result.stdoutBytes, result.stderrBytes, QString());
+    emit commandFinished(id, result.exitStatus, result.stdoutBytes, result.stderrBytes, QString());
 }

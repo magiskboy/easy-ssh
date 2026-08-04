@@ -21,6 +21,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QStringView>
 #include <QUuid>
 #include <QVector>
 #include <QWaitCondition>
@@ -82,7 +83,7 @@ public slots:
     void stopAllTunnels();
 
     /// One-shot remote exec (no PTY). @p requestId is echoed in commandFinished.
-    void execCommand(const QString &requestId, const QString &command);
+    void execCommand(QStringView requestId, const QString &command);
 
 signals:
     void connected(const QUuid &initialShellId);

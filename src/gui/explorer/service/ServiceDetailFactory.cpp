@@ -22,6 +22,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QStringView>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -102,18 +103,24 @@ QFrame *makeGroupFrame(const QString &title, QWidget *parent, QFormLayout *&form
     return group;
 }
 
-void addRow(QFormLayout *form, const QString &key, const QString &value)
+void addRow(QFormLayout *form, QStringView key, const QString &value)
 {
     if (!form) {
         return;
     }
-    auto *keyLabel = new QLabel(key);
+    auto *keyLabel = new QLabel(QString{key});
     keyLabel->setMinimumWidth(110);
     keyLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *valueLabel = new ElidedLabel(ServiceParser::formatOrDash(value));
     form->addRow(keyLabel, valueLabel);
 }
+
+struct CommandStreams
+{
+    QByteArray stdoutBytes;
+    QByteArray stderrBytes;
+};
 
 class ServiceDetailDialog final : public QDialog
 {
@@ -192,8 +199,10 @@ public:
                        const QByteArray &stdoutBytes,
                        const QByteArray &stderrBytes,
                        const QString &errorMessage) {
-                    onCommandFinished(
-                        requestId, exitStatus, stdoutBytes, stderrBytes, errorMessage);
+                    onCommandFinished(requestId,
+                                      exitStatus,
+                                      CommandStreams{stdoutBytes, stderrBytes},
+                                      errorMessage);
                 });
         m_session->execCommand(m_requestId, command);
     }
@@ -201,8 +210,7 @@ public:
 private:
     void onCommandFinished(const QString &requestId,
                            int exitStatus,
-                           const QByteArray &stdoutBytes,
-                           const QByteArray &stderrBytes,
+                           const CommandStreams &streams,
                            const QString &errorMessage)
     {
         if (requestId != m_requestId) {
@@ -212,14 +220,14 @@ private:
 
         if ((!errorMessage.isEmpty() && exitStatus < 0) || exitStatus != 0) {
             QString message;
-            ServiceParser::classifyFailure(exitStatus, stderrBytes, errorMessage, &message);
+            ServiceParser::classifyFailure(exitStatus, streams.stderrBytes, errorMessage, &message);
             m_statusLabel->setText(message.isEmpty() ? tr("Inspect failed.") : message);
             return;
         }
 
         ServiceInspectInfo inspect;
         QString parseError;
-        if (!ServiceParser::parseInspect(stdoutBytes, m_seed, &inspect, &parseError)) {
+        if (!ServiceParser::parseInspect(streams.stdoutBytes, m_seed, &inspect, &parseError)) {
             m_statusLabel->setText(parseError.isEmpty() ? tr("Failed to parse inspect output.")
                                                         : parseError);
             return;
