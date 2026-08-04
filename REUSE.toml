@@ -43,11 +43,17 @@ precedence = "override"
 SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
 SPDX-License-Identifier = "CC0-1.0"
 
-# Local patches applied on top of lxqt/qtermwidget (our modifications)
+# Vendored lxqt/qtermwidget (upstream licenses; Easy SSH mods documented in EASY_SSH.md)
 [[annotations]]
-path = ["third_party/qtermwidget-patches/**"]
-SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
-SPDX-License-Identifier = "GPL-3.0-only"
+path = ["third_party/qtermwidget/**"]
+SPDX-FileCopyrightText = "Copyright (C) The QTermWidget / Konsole Authors; Easy SSH modifications Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# Vendored lxqt/lxqt-build-tools (unmodified; see EASY_SSH.md)
+[[annotations]]
+path = ["third_party/lxqt-build-tools/**"]
+SPDX-FileCopyrightText = "Copyright (C) The LXQt Authors"
+SPDX-License-Identifier = "BSD-3-Clause"
 
 # Product / phase specs
 [[annotations]]

@@ -77,7 +77,7 @@ jobs:
             .deps/qt
             .deps/venv
             build/_deps
-          key: easy-ssh-tidy-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget-patches/**', '.clang-tidy') }}
+          key: easy-ssh-tidy-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget/**', 'third_party/lxqt-build-tools/**', '.clang-tidy') }}
 
       - name: Configure
         run: cmake --preset debug
@@ -179,7 +179,7 @@ jobs:
             .deps/tools
             .deps/venv
             build-release/_deps
-          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget-patches/**') }}
+          key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget/**', 'third_party/lxqt-build-tools/**') }}
 
       - name: Configure
         run: |

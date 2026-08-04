@@ -206,9 +206,9 @@ src/
   app/          # main() entry
   core/         # SSH, SFTP/SCP, tunnels, connections, settings (no UI)
   gui/          # Qt widgets, models, dialogs
-cmake/          # Versions, deps, install, packaging, patches
+cmake/          # Versions, deps, install, packaging
 resources/      # Icons, desktop/metainfo, platform assets
-third_party/    # Vendored patches (e.g. QTermWidget for Windows)
+third_party/    # Vendored deps (QTermWidget, lxqt-build-tools, …)
 .github/        # CI workflows and helper scripts
 scripts/        # Maintainer utilities (icons, …)
 ```

@@ -24,8 +24,9 @@ remain in effect and are independent of the Easy SSH license.
 
 - Project: https://github.com/lxqt/qtermwidget
 - License: GNU General Public License v2 or later (GPL-2.0+)
-- Used tag: see `EASY_SSH_QTERMWIDGET_GIT_TAG` in `cmake/EasySshVersions.cmake`
-- Easy SSH applies local patches under `third_party/qtermwidget-patches/`
+- Vendored at `third_party/qtermwidget/` (upstream base tag:
+  `EASY_SSH_QTERMWIDGET_GIT_TAG` in `cmake/EasySshVersions.cmake`)
+- Easy SSH modifications: see `third_party/qtermwidget/EASY_SSH.md`
 
 ## Qt Keychain (qt6keychain)
 
@@ -44,8 +45,10 @@ remain in effect and are independent of the Easy SSH license.
 ## lxqt-build-tools
 
 - Project: https://github.com/lxqt/lxqt-build-tools
-- License: BSD 3-Clause License (project files; check upstream tree)
-- Used as a build dependency for QTermWidget (`EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG`)
+- License: BSD 3-Clause License
+- Vendored at `third_party/lxqt-build-tools/` (upstream base tag:
+  `EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG` in `cmake/EasySshVersions.cmake`)
+- Build-only dependency of QTermWidget; see `third_party/lxqt-build-tools/EASY_SSH.md`
 
 ## zlib
 

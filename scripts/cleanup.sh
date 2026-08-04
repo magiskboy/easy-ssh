@@ -12,7 +12,7 @@
 #   ./scripts/cleanup.sh --all        # --deps plus root .venv
 #   ./scripts/cleanup.sh --dry-run    # print paths only (combine with other flags)
 #
-# Does not delete sources, committed resources/, or third_party/ patches.
+# Does not delete sources, committed resources/, or third_party/ trees.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,7 +32,7 @@ Usage:
   ./scripts/cleanup.sh --all        # --deps plus root .venv
   ./scripts/cleanup.sh --dry-run    # print paths only (combine with other flags)
 
-Does not delete sources, committed resources/, or third_party/ patches.
+Does not delete sources, committed resources/, or third_party/ trees.
 EOF
   exit "${1:-0}"
 }

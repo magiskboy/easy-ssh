@@ -59,7 +59,7 @@ if(DEFINED EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC AND EXISTS "${EASY_SSH_QTERMWIDGE
     )
 endif()
 if(APPLE)
-    # macOS looks under Contents/Resources (see qtermwidget patch 0007).
+    # macOS looks under Contents/Resources (see third_party/qtermwidget/EASY_SSH.md).
     if(DEFINED EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
         install(DIRECTORY "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/"
             DESTINATION "easy-ssh.app/Contents/Resources/color-schemes"

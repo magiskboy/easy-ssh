@@ -331,13 +331,14 @@ if(WIN32 AND TARGET qt6keychain)
 endif()
 message(STATUS "EasySshDeps: QtKeychain from FetchContent (${EASY_SSH_QTKEYCHAIN_GIT_TAG})")
 
-# --- lxqt-build-tools (build-only; required when building qtermwidget from source) ---
+# --- lxqt-build-tools (vendored; build-only for QTermWidget) ---
+set(_lxqt_bt_src "${CMAKE_SOURCE_DIR}/third_party/lxqt-build-tools")
+if(NOT EXISTS "${_lxqt_bt_src}/CMakeLists.txt")
+    message(FATAL_ERROR "EasySshDeps: missing vendored lxqt-build-tools at ${_lxqt_bt_src}")
+endif()
 FetchContent_Declare(
     lxqt-build-tools
-    GIT_REPOSITORY https://github.com/lxqt/lxqt-build-tools.git
-    GIT_TAG        ${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG}
-    GIT_SHALLOW    TRUE
-    GIT_PROGRESS   TRUE
+    SOURCE_DIR ${_lxqt_bt_src}
     EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(lxqt-build-tools)
@@ -374,22 +375,17 @@ endif()
 set(lxqt2-build-tools_DIR "${_lxqt_bt_binary_dir}" CACHE PATH "" FORCE)
 list(APPEND CMAKE_PREFIX_PATH "${_lxqt_bt_binary_dir}")
 set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
-message(STATUS "EasySshDeps: lxqt-build-tools from FetchContent (${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG})")
+message(STATUS "EasySshDeps: lxqt-build-tools from third_party (upstream ${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG})")
 
-# --- QTermWidget ---
-set(_qtw_src "${CMAKE_BINARY_DIR}/_deps/qtermwidget-src")
+# --- QTermWidget (vendored under third_party/qtermwidget; based on tag above) ---
+set(_qtw_src "${CMAKE_SOURCE_DIR}/third_party/qtermwidget")
+if(NOT EXISTS "${_qtw_src}/CMakeLists.txt")
+    message(FATAL_ERROR "EasySshDeps: missing vendored QTermWidget at ${_qtw_src}")
+endif()
 FetchContent_Declare(
     qtermwidget
-    GIT_REPOSITORY https://github.com/lxqt/qtermwidget.git
-    GIT_TAG        ${EASY_SSH_QTERMWIDGET_GIT_TAG}
-    GIT_SHALLOW    TRUE
-    GIT_PROGRESS   TRUE
+    SOURCE_DIR ${_qtw_src}
     EXCLUDE_FROM_ALL
-    PATCH_COMMAND
-        ${CMAKE_COMMAND}
-            -DEASY_SSH_REPO_ROOT=${CMAKE_SOURCE_DIR}
-            -DQTERMWIDGET_SOURCE_DIR=${_qtw_src}
-            -P ${CMAKE_SOURCE_DIR}/cmake/patch-qtermwidget.cmake
 )
 set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
 set(USE_UTF8PROC OFF CACHE BOOL "" FORCE)
@@ -397,10 +393,10 @@ FetchContent_MakeAvailable(qtermwidget)
 if(NOT TARGET qtermwidget6)
     message(FATAL_ERROR "FetchContent qtermwidget did not create target 'qtermwidget6'")
 endif()
-message(STATUS "EasySshDeps: QTermWidget from FetchContent (${EASY_SSH_QTERMWIDGET_GIT_TAG})")
+message(STATUS "EasySshDeps: QTermWidget from third_party (upstream ${EASY_SSH_QTERMWIDGET_GIT_TAG})")
 
 # Bundle QTermWidget color schemes + kb-layouts next to the build/install prefix so
-# the app finds them via ../share/easy-ssh from bin/ (see patch 0007).
+# the app finds them via ../share/easy-ssh from bin/ (see third_party/qtermwidget/EASY_SSH.md).
 set(EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC "${_qtw_src}/lib/color-schemes")
 set(EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC "${_qtw_src}/lib/kb-layouts")
 set(EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR "${CMAKE_BINARY_DIR}/share/easy-ssh")
