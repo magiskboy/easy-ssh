@@ -16,6 +16,7 @@
 #include "gui/explorer/service/ServiceExplorerModule.h"
 #include "gui/explorer/systeminfo/SystemInfoWidget.h"
 #include "gui/terminal/TerminalIoBridge.h"
+#include "gui/widgets/UiHelpers.h"
 
 #include <QAction>
 #include <QDir>
@@ -68,8 +69,14 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     root->addWidget(m_dockHost, 1);
 
     connect(m_dockHost, &ShellDockHost::shellFocused, this, &SessionPage::onDockShellFocused);
-    connect(
-        m_dockHost, &ShellDockHost::dropShellRequested, this, &SessionPage::onDropShellRequested);
+    connect(m_dockHost,
+            &ShellDockHost::shellCloseRequested,
+            this,
+            &SessionPage::onDockShellCloseRequested);
+    connect(m_dockHost,
+            &ShellDockHost::shellRenameRequested,
+            this,
+            &SessionPage::onDockShellRenameRequested);
     connect(m_dockHost, &ShellDockHost::toolClosed, this, [this](const QString &toolId) {
         if (toolId == QLatin1String("process")) {
             if (m_processPage) {
@@ -189,6 +196,7 @@ void SessionPage::onSessionStateChanged(SessionState state)
         m_restoringWorkspace = false;
         m_workspaceRestoreBusy = false;
         m_restoreEntry = {};
+        m_closingShellIds.clear();
         if (m_dockHost) {
             m_dockHost->clearLayout();
         }
@@ -198,6 +206,7 @@ void SessionPage::onSessionStateChanged(SessionState state)
         m_restoringWorkspace = false;
         m_workspaceRestoreBusy = false;
         m_restoreEntry = {};
+        m_closingShellIds.clear();
         if (m_dockHost) {
             m_dockHost->clearLayout();
         }
@@ -339,13 +348,13 @@ void SessionPage::continueWorkspaceRestore()
 
 void SessionPage::activateShell(const QUuid &shellId)
 {
-    if (!m_session || shellId.isNull()) {
+    if (!m_session || shellId.isNull() || m_closingShellIds.contains(shellId)) {
         return;
     }
     if (m_session->activeShellId() != shellId) {
         m_session->setActiveShell(shellId);
     } else {
-        // setActiveShell no-ops for the same id; still re-pin after dock close.
+        // setActiveShell no-ops for the same id; still re-pin after clearLayout edge cases.
         onActiveShellChanged(shellId);
     }
 }
@@ -353,6 +362,9 @@ void SessionPage::activateShell(const QUuid &shellId)
 void SessionPage::onActiveShellChanged(const QUuid &shellId)
 {
     if (shellId.isNull() || !m_panes.contains(shellId) || !m_dockHost) {
+        return;
+    }
+    if (m_closingShellIds.contains(shellId)) {
         return;
     }
     if (m_session->state() != SessionState::Connected) {
@@ -379,20 +391,39 @@ void SessionPage::onDockShellFocused(const QUuid &shellId)
     if (!m_session || shellId.isNull() || shellId == m_session->activeShellId()) {
         return;
     }
+    if (m_closingShellIds.contains(shellId)) {
+        return;
+    }
     m_session->setActiveShell(shellId);
 }
 
-void SessionPage::onDropShellRequested(const QUuid &shellId, int dockArea)
+void SessionPage::onDockShellCloseRequested(const QUuid &shellId)
 {
-    if (!m_session || shellId.isNull() || !m_panes.contains(shellId)) {
+    if (!m_session || shellId.isNull()) {
         return;
     }
-    m_session->setActiveShell(shellId);
-    if (m_dockHost->isPinned(shellId)) {
-        m_dockHost->focusShell(shellId);
+    if (m_closingShellIds.contains(shellId)) {
         return;
     }
-    pinShellToLayout(shellId, dockArea);
+    m_closingShellIds.insert(shellId);
+    m_session->closeShell(shellId);
+}
+
+void SessionPage::onDockShellRenameRequested(const QUuid &shellId)
+{
+    if (!m_session || shellId.isNull() || m_closingShellIds.contains(shellId)) {
+        return;
+    }
+    const QString current = shellTitle(shellId);
+    bool ok = false;
+    const QString name = UiHelpers::getText(this, {tr("Rename Shell"), tr("Name:"), current}, &ok);
+    if (!ok || name.trimmed().isEmpty()) {
+        return;
+    }
+    m_session->renameShell(shellId, name.trimmed());
+    if (m_dockHost) {
+        m_dockHost->setShellTitle(shellId, name.trimmed());
+    }
 }
 
 void SessionPage::onTermContextMenuRequested(const QPoint &pos)
@@ -444,6 +475,9 @@ void SessionPage::onTermContextMenuRequested(const QPoint &pos)
 
 void SessionPage::pinShellToLayout(const QUuid &shellId, int dockArea, const QUuid &relativeTo)
 {
+    if (m_closingShellIds.contains(shellId)) {
+        return;
+    }
     auto it = m_panes.find(shellId);
     if (it == m_panes.end() || !m_dockHost) {
         return;
@@ -508,6 +542,7 @@ void SessionPage::ensurePane(const QUuid &shellId)
 
 void SessionPage::removePane(const QUuid &shellId)
 {
+    m_closingShellIds.remove(shellId);
     if (!m_panes.contains(shellId)) {
         return;
     }

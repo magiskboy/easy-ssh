@@ -4,12 +4,17 @@
 
 #include "SessionSideBar.h"
 
-#include "ShellListWidget.h"
 #include "core/settings/AppSettings.h"
 
 #include <QLabel>
 #include <QTabWidget>
 #include <QVBoxLayout>
+
+namespace
+{
+constexpr QLatin1String kTabFile("file");
+constexpr QLatin1String kTabTunnel("tunnel");
+} // namespace
 
 SessionSideBar::SessionSideBar(QWidget *parent) : QWidget(parent)
 {
@@ -29,15 +34,14 @@ SessionSideBar::SessionSideBar(QWidget *parent) : QWidget(parent)
     m_tabs->setMovable(false);
     m_tabs->setUsesScrollButtons(false);
 
-    m_shellList = new ShellListWidget(m_tabs);
-    m_tabs->addTab(m_shellList, tr("Shell"));
-
     m_fileContainer = new QWidget(m_tabs);
+    m_fileContainer->setObjectName(kTabFile);
     auto *fileLayout = new QVBoxLayout(m_fileContainer);
     fileLayout->setContentsMargins(0, 0, 0, 0);
     m_tabs->addTab(m_fileContainer, tr("File"));
 
     m_tunnelContainer = new QWidget(m_tabs);
+    m_tunnelContainer->setObjectName(kTabTunnel);
     auto *tunnelLayout = new QVBoxLayout(m_tunnelContainer);
     tunnelLayout->setContentsMargins(0, 0, 0, 0);
     m_tabs->addTab(m_tunnelContainer, tr("Tunnel"));
@@ -54,27 +58,45 @@ void SessionSideBar::bindSession(Session *session)
     const bool has = session != nullptr;
     m_placeholder->setVisible(!has);
     m_tabs->setVisible(has);
-    m_shellList->bindSession(session);
 }
 
 void SessionSideBar::unbindSession()
 {
-    m_shellList->unbindSession();
     m_placeholder->setVisible(true);
     m_tabs->setVisible(false);
 }
 
 void SessionSideBar::loadTabState()
 {
-    const int index = AppSettings::instance().sidebarTabIndex();
-    if (index >= 0 && index < m_tabs->count()) {
-        m_tabs->setCurrentIndex(index);
-    }
+    setCurrentTabId(AppSettings::instance().sidebarTabId());
 }
 
 void SessionSideBar::saveTabState()
 {
     if (m_tabs) {
-        AppSettings::instance().setSidebarTabIndex(m_tabs->currentIndex());
+        AppSettings::instance().setSidebarTabId(currentTabId());
     }
+}
+
+QString SessionSideBar::currentTabId() const
+{
+    if (!m_tabs || !m_tabs->currentWidget()) {
+        return QString(kTabFile);
+    }
+    const QString id = m_tabs->currentWidget()->objectName();
+    return id.isEmpty() ? QString(kTabFile) : id;
+}
+
+void SessionSideBar::setCurrentTabId(const QString &tabId)
+{
+    if (!m_tabs) {
+        return;
+    }
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (m_tabs->widget(i) && m_tabs->widget(i)->objectName() == tabId) {
+            m_tabs->setCurrentIndex(i);
+            return;
+        }
+    }
+    m_tabs->setCurrentIndex(0);
 }

@@ -13,7 +13,6 @@
 #include <QWidget>
 
 class QLabel;
-class QMimeData;
 class QVBoxLayout;
 
 namespace ads
@@ -27,8 +26,6 @@ class ShellDockHost final : public QWidget
     Q_OBJECT
 
 public:
-    static constexpr const char *kShellMimeType = "application/x-easy-ssh-shell-id";
-
     explicit ShellDockHost(QWidget *parent = nullptr);
     ~ShellDockHost() override;
 
@@ -67,14 +64,13 @@ public:
 
 signals:
     void shellFocused(const QUuid &shellId);
-    void dropShellRequested(const QUuid &shellId, int dockArea);
+    /// Dock close button: host should terminate the shell (Session::closeShell).
+    void shellCloseRequested(const QUuid &shellId);
+    void shellRenameRequested(const QUuid &shellId);
     void toolClosed(const QString &toolId);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
-    void dragEnterEvent(QDragEnterEvent *event) override;
-    void dragMoveEvent(QDragMoveEvent *event) override;
-    void dropEvent(QDropEvent *event) override;
 
 private:
     ads::CDockWidget *dockForShell(const QUuid &shellId) const;
@@ -82,8 +78,6 @@ private:
     QUuid shellIdForDock(ads::CDockWidget *dock) const;
     QString toolIdForDock(ads::CDockWidget *dock) const;
     void updateEmptyState();
-    int hitTestDockArea(const QPoint &pos) const;
-    bool acceptShellDrag(const QMimeData *mime) const;
     bool hasAnyDocks() const;
 
     ads::CDockManager *m_manager = nullptr;

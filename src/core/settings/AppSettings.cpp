@@ -48,7 +48,8 @@ constexpr auto kStartInTray = "ui/window/startInTray";
 constexpr auto kTrayNotifications = "ui/window/trayNotifications";
 constexpr auto kTrayMinimizeHintShown = "ui/window/trayMinimizeHintShown";
 constexpr auto kSidebarWidth = "ui/sidebar/width";
-constexpr auto kSidebarTabIndex = "ui/sidebar/tabIndex";
+constexpr auto kSidebarTabId = "ui/sidebar/tabId";
+constexpr auto kSidebarTabIndexLegacy = "ui/sidebar/tabIndex";
 
 struct ShortcutDef
 {
@@ -485,14 +486,36 @@ void AppSettings::setSidebarWidth(int width)
     setIntValue(QLatin1String(kSidebarWidth), qBound(kSidebarMinWidth, width, kSidebarMaxWidth));
 }
 
-int AppSettings::sidebarTabIndex() const
+QString AppSettings::sidebarTabId() const
 {
-    return intValue(QLatin1String(kSidebarTabIndex), 0);
+    QSettings settings;
+    if (settings.contains(QLatin1String(kSidebarTabId))) {
+        const QString id = settings.value(QLatin1String(kSidebarTabId)).toString();
+        if (id == QLatin1String("file") || id == QLatin1String("tunnel")) {
+            return id;
+        }
+        return QStringLiteral("file");
+    }
+
+    // Migrate legacy 3-tab indices [Shell=0, File=1, Tunnel=2] → file/tunnel.
+    if (settings.contains(QLatin1String(kSidebarTabIndexLegacy))) {
+        const int oldIndex = settings.value(QLatin1String(kSidebarTabIndexLegacy), 0).toInt();
+        const QString migrated =
+            (oldIndex >= 2) ? QStringLiteral("tunnel") : QStringLiteral("file");
+        settings.setValue(QLatin1String(kSidebarTabId), migrated);
+        settings.remove(QLatin1String(kSidebarTabIndexLegacy));
+        return migrated;
+    }
+    return QStringLiteral("file");
 }
 
-void AppSettings::setSidebarTabIndex(int index)
+void AppSettings::setSidebarTabId(const QString &tabId)
 {
-    setIntValue(QLatin1String(kSidebarTabIndex), index);
+    const QString id =
+        (tabId == QLatin1String("tunnel")) ? QStringLiteral("tunnel") : QStringLiteral("file");
+    setStringValue(QLatin1String(kSidebarTabId), id);
+    QSettings settings;
+    settings.remove(QLatin1String(kSidebarTabIndexLegacy));
 }
 
 QKeySequence AppSettings::shortcut(const QString &actionId) const

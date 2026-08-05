@@ -130,8 +130,6 @@ set(EASY_SSH_GUI_SOURCES
     gui/session/TerminalSessionWidget.h
     gui/session/SessionSideBar.cpp
     gui/session/SessionSideBar.h
-    gui/session/ShellListWidget.cpp
-    gui/session/ShellListWidget.h
     gui/session/SessionPage.cpp
     gui/session/SessionPage.h
     gui/session/ShellDockHost.cpp

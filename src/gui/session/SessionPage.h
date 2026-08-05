@@ -12,6 +12,7 @@
 #include "gui/ErrorNotifier.h"
 
 #include <QHash>
+#include <QSet>
 #include <QUuid>
 #include <QWidget>
 
@@ -43,7 +44,7 @@ public:
     void saveLog();
     void saveScreenshot();
     void setLayoutActive(bool active);
-    /// Focus/pin shell in the dock; re-pins if the shell is active but was closed from the dock.
+    /// Focus/pin shell in the dock (e.g. Go to Shell). No-ops while the shell is closing.
     void activateShell(const QUuid &shellId);
     void toggleProcessExplorer();
     void toggleContainerExplorer();
@@ -76,7 +77,8 @@ private slots:
     void syncPtySize();
     void disconnectOrReconnect();
     void onDockShellFocused(const QUuid &shellId);
-    void onDropShellRequested(const QUuid &shellId, int dockArea);
+    void onDockShellCloseRequested(const QUuid &shellId);
+    void onDockShellRenameRequested(const QUuid &shellId);
     void onTermContextMenuRequested(const QPoint &pos);
 
 private:
@@ -121,6 +123,7 @@ private:
     QLabel *m_overlayLabel = nullptr;
     QPushButton *m_reconnectButton = nullptr;
     QHash<QUuid, Pane> m_panes;
+    QSet<QUuid> m_closingShellIds;
     QTimer *m_resizeDebounce = nullptr;
     /// Shell created in the latest shellsChanged; may use smart layout when activated.
     QUuid m_pendingSmartPinId;

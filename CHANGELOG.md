@@ -20,4 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Closing a shell dock tab terminates the shell channel (no longer keeps it running in the background)
+- Session sidebar no longer has a Shell list tab (File and Tunnel only); rename shells from the dock tab context menu
 - Explorer upload/download conflict dialogs support Overwrite / Skip / Cancel (and Resume / Restart for partials)
+
+### Removed
+
+- Sidebar Shell list (activate / rename / close / drag-to-dock from the list)

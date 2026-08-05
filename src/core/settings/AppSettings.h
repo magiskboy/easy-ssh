@@ -134,8 +134,8 @@ public:
 
     int sidebarWidth() const;
     void setSidebarWidth(int width);
-    int sidebarTabIndex() const;
-    void setSidebarTabIndex(int index);
+    QString sidebarTabId() const;
+    void setSidebarTabId(const QString &tabId);
 
     // --- Shortcuts ---
     QKeySequence shortcut(const QString &actionId) const;

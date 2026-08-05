@@ -5,26 +5,16 @@
 #include "ShellDockHost.h"
 
 #include <QContextMenuEvent>
-#include <QDragEnterEvent>
-#include <QDropEvent>
 #include <QLabel>
 #include <QMenu>
-#include <QMimeData>
 #include <QVBoxLayout>
 
 #include <DockManager.h>
 #include <DockWidget.h>
 #include <DockWidgetTab.h>
 
-namespace
-{
-constexpr int kEdgeHitFraction = 4; // outer 1/4 → edge area
-}
-
 ShellDockHost::ShellDockHost(QWidget *parent) : QWidget(parent)
 {
-    setAcceptDrops(true);
-
     m_root = new QVBoxLayout(this);
     m_root->setContentsMargins(0, 0, 0, 0);
     m_root->setSpacing(0);
@@ -32,8 +22,7 @@ ShellDockHost::ShellDockHost(QWidget *parent) : QWidget(parent)
     m_termHolder = new QWidget(this);
     m_termHolder->hide();
 
-    m_emptyLabel =
-        new QLabel(tr("No shell pinned.\nSelect a shell in the sidebar or drop one here."), this);
+    m_emptyLabel = new QLabel(tr("No open shells.\nUse Terminal → New Shell to open one."), this);
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setWordWrap(true);
 
@@ -78,8 +67,9 @@ bool ShellDockHost::pinShell(const QUuid &shellId,
     dock->setFeature(ads::CDockWidget::DockWidgetDeleteOnClose, false);
     dock->setWidget(term);
 
-    connect(
-        dock, &ads::CDockWidget::closeRequested, this, [this, shellId]() { unpinShell(shellId); });
+    connect(dock, &ads::CDockWidget::closeRequested, this, [this, shellId]() {
+        emit shellCloseRequested(shellId);
+    });
 
     const auto area =
         static_cast<ads::DockWidgetArea>(dockArea == 0 ? ads::CenterDockWidgetArea : dockArea);
@@ -127,6 +117,8 @@ bool ShellDockHost::eventFilter(QObject *watched, QEvent *event)
     auto *ce = static_cast<QContextMenuEvent *>(event);
     QMenu menu(tab);
     tab->buildContextMenu(&menu);
+    menu.addSeparator();
+    menu.addAction(tr("Rename…"), this, [this, shellId]() { emit shellRenameRequested(shellId); });
     menu.exec(ce->globalPos());
     ce->accept();
     return true;
@@ -421,66 +413,4 @@ void ShellDockHost::updateEmptyState()
 bool ShellDockHost::hasAnyDocks() const
 {
     return !m_docks.isEmpty() || !m_tools.isEmpty();
-}
-
-int ShellDockHost::hitTestDockArea(const QPoint &pos) const
-{
-    const QRect r = rect();
-    if (!r.isValid() || r.width() < 8 || r.height() < 8) {
-        return ads::CenterDockWidgetArea;
-    }
-    const int ew = r.width() / kEdgeHitFraction;
-    const int eh = r.height() / kEdgeHitFraction;
-    if (pos.x() <= ew) {
-        return ads::LeftDockWidgetArea;
-    }
-    if (pos.x() >= r.width() - ew) {
-        return ads::RightDockWidgetArea;
-    }
-    if (pos.y() <= eh) {
-        return ads::TopDockWidgetArea;
-    }
-    if (pos.y() >= r.height() - eh) {
-        return ads::BottomDockWidgetArea;
-    }
-    return ads::CenterDockWidgetArea;
-}
-
-bool ShellDockHost::acceptShellDrag(const QMimeData *mime) const
-{
-    return mime && mime->hasFormat(QLatin1String(kShellMimeType));
-}
-
-void ShellDockHost::dragEnterEvent(QDragEnterEvent *event)
-{
-    if (acceptShellDrag(event->mimeData())) {
-        event->acceptProposedAction();
-    } else {
-        event->ignore();
-    }
-}
-
-void ShellDockHost::dragMoveEvent(QDragMoveEvent *event)
-{
-    if (acceptShellDrag(event->mimeData())) {
-        event->acceptProposedAction();
-    } else {
-        event->ignore();
-    }
-}
-
-void ShellDockHost::dropEvent(QDropEvent *event)
-{
-    if (!acceptShellDrag(event->mimeData())) {
-        event->ignore();
-        return;
-    }
-    const QByteArray raw = event->mimeData()->data(QLatin1String(kShellMimeType));
-    const QUuid shellId = QUuid(QString::fromUtf8(raw));
-    if (shellId.isNull()) {
-        event->ignore();
-        return;
-    }
-    emit dropShellRequested(shellId, hitTestDockArea(event->position().toPoint()));
-    event->acceptProposedAction();
 }
