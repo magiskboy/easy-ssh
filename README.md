@@ -25,6 +25,9 @@
 - **Shell** — multi-tab sessions with split dock layouts, ANSI / UTF-8, search, logs, and screenshots
 - **Files** — remote explorer over SFTP (with resume); SCP fallback when SFTP is unavailable
 - **Shortcuts** — command palette, Quick Connect, and Go to Shell — VS Code–style keyboard-first navigation
+- **Explorers** — Process, Container (Docker / Podman / containerd), Service (systemd + live logs), and System Information (CPU, RAM, disk, NVIDIA GPU)
+- **Appearance** — built-in light / dark / custom themes; configurable UI font and palette; system tray with live session status
+- **Workspace** — sessions and shell dock layouts restored automatically on next launch
 
 ## Install
 
