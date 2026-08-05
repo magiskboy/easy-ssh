@@ -90,6 +90,41 @@ jobs:
           chmod +x .github/scripts/run-clang-tidy.sh
           .github/scripts/run-clang-tidy.sh
 
+  test:
+    name: unit tests
+    needs: [format, reuse]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Linux build tools
+        run: |
+          sudo apt-get update
+          mapfile -t pkgs < <(grep -vE '^\s*(#|$)' .github/scripts/apt-linux.txt)
+          sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
+          chmod +x .github/scripts/install-pip-toolchains.sh
+          bin="$(.github/scripts/install-pip-toolchains.sh)"
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: Cache dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            .deps/qt
+            .deps/venv
+            build-tests/_deps
+          key: easy-ssh-tests-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget/**', 'third_party/lxqt-build-tools/**') }}
+
+      - name: Configure
+        run: cmake --preset tests
+
+      - name: Build
+        run: cmake --build --preset tests --parallel
+
+      - name: Run unit tests
+        run: ctest --preset tests
+
   build:
     name: ${{ matrix.target }}
     needs: [format, reuse]
@@ -260,7 +295,7 @@ jobs:
   release:
     name: Create release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [build, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
