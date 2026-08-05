@@ -29,6 +29,13 @@
 - **Appearance** — built-in light / dark / custom themes; configurable UI font and palette; system tray with live session status
 - **Workspace** — sessions and shell dock layouts restored automatically on next launch
 
+## Screenshots
+
+| | |
+|:---:|:---:|
+| ![Connection Manager](./screenshots/connection-manager.png)<br>Connection Manager | ![Split Window](./screenshots/split-window.png)<br>Split Window |
+| ![SSH Proxy](./screenshots/ssh-proxy.png)<br>SSH Proxy | ![New Tunnel](./screenshots/new-tunnel.png)<br>New Tunnel |
+
 ## Install
 
 Download the latest build for your platform from

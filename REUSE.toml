@@ -27,6 +27,7 @@ SPDX-License-Identifier = "GPL-3.0-only"
 [[annotations]]
 path = [
   "icon.png",
+  "screenshots/**",
   "resources/icons/**",
   "resources/linux/icons/**",
   "resources/linux/*.desktop",

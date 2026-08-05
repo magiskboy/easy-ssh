@@ -7,6 +7,7 @@
 #include "core/settings/AppSettings.h"
 
 #include <QLabel>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
@@ -33,6 +34,7 @@ SessionSideBar::SessionSideBar(QWidget *parent) : QWidget(parent)
     m_tabs->setTabPosition(QTabWidget::North);
     m_tabs->setMovable(false);
     m_tabs->setUsesScrollButtons(false);
+    m_tabs->tabBar()->setExpanding(true);
 
     m_fileContainer = new QWidget(m_tabs);
     m_fileContainer->setObjectName(kTabFile);
