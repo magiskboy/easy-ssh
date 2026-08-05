@@ -136,6 +136,9 @@ ctest --preset tests
 
 Notes:
 
+- `debug` and `release` set `BUILD_TESTING=OFF`, so unit-test targets are not
+  configured or built there (faster day-to-day builds). Only the `tests` preset
+  enables them.
 - The `tests` preset filters to Easy SSH's own executables (`^tst_`) and
   enables `--output-on-failure`.
 - `build-tests/` keeps unit-test artifacts separate from the normal `debug` and
