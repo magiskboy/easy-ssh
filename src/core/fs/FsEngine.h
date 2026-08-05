@@ -33,6 +33,7 @@ public:
         Canonicalize = 1 << 4,
         Transfer = 1 << 5,
         ResumeTransfer = 1 << 6,
+        Symlink = 1 << 7,
     };
     Q_DECLARE_FLAGS(Capabilities, Capability)
 
@@ -54,8 +55,12 @@ public:
     virtual bool removeFile(const QString &path, QString *error) = 0;
     virtual bool removeDirectory(const QString &path, QString *error) = 0;
     virtual bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error) = 0;
+    /// @p follow false = lstat (do not follow symlinks); true = stat (follow).
+    virtual bool statEntry(const QString &path, RemoteEntry *out, bool follow, QString *error) = 0;
     virtual bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) = 0;
     virtual bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) = 0;
+    virtual bool createSymlink(const QString &target, const QString &linkPath, QString *error) = 0;
+    virtual bool readSymlink(const QString &path, QString &targetOut, QString *error) = 0;
 
     /// Upload. For Fresh/Resume filepart modes, remotePath is the *final* path;
     /// the engine writes to remotePath + ".filepart" and renames on success.

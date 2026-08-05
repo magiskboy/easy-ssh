@@ -15,7 +15,13 @@ struct RemoteEntry
 {
     QString name;
     QString path;
+    /// From lstat/readdir: true only for real directories; symlinks stay false at list time.
     bool isDir = false;
+    bool isSymlink = false;
+    /// When isSymlink: whether the followed target is a directory (icon hint; nav stays lazy).
+    bool linkIsDir = false;
+    /// Raw symlink target (may be relative); empty if unknown / not a symlink.
+    QString linkTarget;
     qint64 size = 0;
     QString permissions;
     /// Unix mtime seconds; 0 if unknown.

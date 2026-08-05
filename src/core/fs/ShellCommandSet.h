@@ -37,6 +37,10 @@ public:
     QString formatRename(const QString &from, const QString &to) const;
     QString formatPwd() const;
     QString formatRealpath(const QString &path) const;
+    QString formatSymlink(const QString &target, const QString &linkPath) const;
+    QString formatReadlink(const QString &path) const;
+    /// Exit 0 if path is a directory after following symlinks.
+    QString formatTestDirectory(const QString &path) const;
 
     /// One-shot startup hygiene (unalias / unset), empty if disabled.
     QString formatStartupCommands() const;

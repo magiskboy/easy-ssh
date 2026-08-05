@@ -118,6 +118,10 @@ QList<Connection> ConnectionStore::load()
             settings.value(QStringLiteral("pwdCommand")).toString();
         connection.shellCommands.realpathCommand =
             settings.value(QStringLiteral("realpathCommand")).toString();
+        connection.shellCommands.symlinkCommand =
+            settings.value(QStringLiteral("symlinkCommand")).toString();
+        connection.shellCommands.readlinkCommand =
+            settings.value(QStringLiteral("readlinkCommand")).toString();
         connection.shellCommands.clearAliases =
             settings.value(QStringLiteral("clearAliases"), true).toBool();
         connection.shellCommands.clearNationalVars =
@@ -190,6 +194,10 @@ void ConnectionStore::save(const QList<Connection> &connections)
         settings.setValue(QStringLiteral("pwdCommand"), connection.shellCommands.pwdCommand);
         settings.setValue(QStringLiteral("realpathCommand"),
                           connection.shellCommands.realpathCommand);
+        settings.setValue(QStringLiteral("symlinkCommand"),
+                          connection.shellCommands.symlinkCommand);
+        settings.setValue(QStringLiteral("readlinkCommand"),
+                          connection.shellCommands.readlinkCommand);
         settings.setValue(QStringLiteral("clearAliases"), connection.shellCommands.clearAliases);
         settings.setValue(QStringLiteral("clearNationalVars"),
                           connection.shellCommands.clearNationalVars);

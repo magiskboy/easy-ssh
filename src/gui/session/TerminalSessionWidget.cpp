@@ -328,6 +328,28 @@ void TerminalSessionWidget::createDirectory(const QString &path)
         Qt::QueuedConnection);
 }
 
+void TerminalSessionWidget::createSymlink(const QString &target, const QString &linkPath)
+{
+    if (m_state != State::Connected || m_worker == nullptr) {
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker,
+        [worker = m_worker, target, linkPath]() { worker->createSymlink(target, linkPath); },
+        Qt::QueuedConnection);
+}
+
+void TerminalSessionWidget::resolveEntry(const QString &path)
+{
+    if (m_state != State::Connected || m_worker == nullptr) {
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker,
+        [worker = m_worker, path]() { worker->resolveEntry(path); },
+        Qt::QueuedConnection);
+}
+
 void TerminalSessionWidget::renamePath(const QString &from, const QString &to)
 {
     if (m_state != State::Connected || m_worker == nullptr) {
@@ -378,13 +400,20 @@ void TerminalSessionWidget::uploadFileTo(const QString &localPath, const QString
 
 void TerminalSessionWidget::downloadPaths(const QStringList &remotePaths, const QString &localDir)
 {
+    downloadPaths(remotePaths, localDir, false);
+}
+
+void TerminalSessionWidget::downloadPaths(const QStringList &remotePaths,
+                                          const QString &localDir,
+                                          bool followSymlinks)
+{
     if (m_state != State::Connected || m_worker == nullptr) {
         return;
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, remotePaths, localDir]() {
-            worker->downloadPaths(remotePaths, localDir);
+        [worker = m_worker, remotePaths, localDir, followSymlinks]() {
+            worker->downloadPaths(remotePaths, localDir, followSymlinks);
         },
         Qt::QueuedConnection);
 }
@@ -511,6 +540,7 @@ void TerminalSessionWidget::beginConnect()
     connect(m_worker, &SshWorker::errorOccurred, this, &TerminalSessionWidget::onErrorOccurred);
     connect(m_worker, &SshWorker::disconnected, this, &TerminalSessionWidget::onDisconnected);
     connect(m_worker, &SshWorker::directoryListed, this, &TerminalSessionWidget::directoryListed);
+    connect(m_worker, &SshWorker::entryResolved, this, &TerminalSessionWidget::entryResolved);
     connect(
         m_worker, &SshWorker::pathCanonicalized, this, &TerminalSessionWidget::pathCanonicalized);
     connect(m_worker, &SshWorker::sftpFinished, this, &TerminalSessionWidget::sftpFinished);

@@ -25,6 +25,8 @@ public:
     {
         PathRole = Qt::UserRole + 1,
         IsDirRole,
+        IsSymlinkRole,
+        LinkTargetRole,
     };
 
     explicit RemoteFileModel(QObject *parent = nullptr);
@@ -38,6 +40,8 @@ public:
     QString rootPath() const;
     void refresh(const QModelIndex &index = {});
     void refreshPath(const QString &path);
+    /// Clear in-flight list state after a failed directory list.
+    void listFailed();
     void setShowHiddenFiles(bool show);
     bool showHiddenFiles() const;
 
@@ -55,6 +59,10 @@ public:
 
     QString pathForIndex(const QModelIndex &index) const;
     bool isDirectory(const QModelIndex &index) const;
+    bool isSymlink(const QModelIndex &index) const;
+    bool isSymlinkToDirectory(const QModelIndex &index) const;
+    QString linkTarget(const QModelIndex &index) const;
+    QString nameForIndex(const QModelIndex &index) const;
     bool isParentNavEntry(const QModelIndex &index) const;
     QModelIndex indexForPath(const QString &path) const;
     QString parentDirectory(const QModelIndex &index) const;

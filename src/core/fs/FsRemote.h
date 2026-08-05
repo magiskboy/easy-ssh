@@ -72,13 +72,21 @@ public:
     bool
     listDirectoryEntries(const QString &path, QVector<RemoteEntry> *outEntries, QString *error);
     bool createDirectory(const QString &path, QString *error);
+    bool createSymlink(const QString &target, const QString &linkPath, QString *error);
     bool renamePath(const QString &from, const QString &to, QString *error);
     bool removePath(const QString &path, bool recursive, QString *error);
     bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error);
+    /// Follow symlinks: report whether the resolved target is a directory.
+    bool resolveEntry(const QString &path, bool *isDir, QString *error);
 
     bool uploadFiles(const QStringList &localPaths, const QString &remoteDir, QString *error);
     bool uploadFileTo(const QString &localPath, const QString &remotePath, QString *error);
-    bool downloadPaths(const QStringList &remotePaths, const QString &localDir, QString *error);
+    /// @p followSymlinks true: download symlink target content as a regular file (Open With).
+    /// false (default): preserve symlinks as local symlinks.
+    bool downloadPaths(const QStringList &remotePaths,
+                       const QString &localDir,
+                       QString *error,
+                       bool followSymlinks = false);
 
     /// Resume the persisted interrupted job for this connection (SFTP only).
     bool resumeInterruptedTransfer(QString *error);
@@ -95,18 +103,18 @@ private:
     qint64 computeLocalBytes(const QStringList &localPaths) const;
     qint64 computeLocalPathBytes(const QString &localPath) const;
     qint64 computeRemoteBytes(const QStringList &remotePaths);
-    qint64 computeRemotePathBytes(const QString &remotePath, bool isDir);
+    qint64 computeRemotePathBytes(const RemoteEntry &entry);
 
     bool removePathRecursive(const QString &path, QString *error);
     bool uploadPathRecursive(const QString &localPath,
                              const QString &remotePath,
                              TransferWriteMode mode,
                              QString *error);
-    bool downloadPathRecursive(const QString &remotePath,
+    bool downloadPathRecursive(const RemoteEntry &entry,
                                const QString &localPath,
-                               bool isDir,
                                TransferWriteMode mode,
-                               QString *error);
+                               QString *error,
+                               bool followSymlinks);
 
     bool transferOneUpload(const QString &localPath,
                            const QString &remoteFinalPath,

@@ -50,6 +50,8 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/ShellCommandSet.h
     core/fs/ShellExecRunner.cpp
     core/fs/ShellExecRunner.h
+    core/fs/Symlink.cpp
+    core/fs/Symlink.h
     core/fs/SftpTypes.h
     core/explorer/ExplorerTypes.h
     core/explorer/IExplorerSource.h

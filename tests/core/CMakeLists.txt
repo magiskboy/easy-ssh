@@ -52,6 +52,10 @@ add_easy_ssh_core_test(tst_ShellCommandSet
     fs/tst_ShellCommandSet.cpp
 )
 
+add_easy_ssh_core_test(tst_Symlink
+    fs/tst_Symlink.cpp
+)
+
 add_easy_ssh_core_test(tst_TransferJobStore
     fs/tst_TransferJobStore.cpp
 )

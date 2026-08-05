@@ -4,6 +4,8 @@
 
 #include "ShellCommandSet.h"
 
+#include "Symlink.h"
+
 #include <QCoreApplication>
 #include <QDate>
 #include <QDateTime>
@@ -44,6 +46,9 @@ const QStringList &aliasedCommands()
         QStringLiteral("mv"),
         QStringLiteral("pwd"),
         QStringLiteral("realpath"),
+        QStringLiteral("readlink"),
+        QStringLiteral("ln"),
+        QStringLiteral("test"),
         QStringLiteral("cd"),
         QStringLiteral("scp"),
         QStringLiteral("unalias"),
@@ -156,7 +161,8 @@ bool parseOneLsLine(const QString &lineIn, RemoteEntry *out, const QString &pare
     if (!isLsTypeChar(perms.at(0))) {
         return false;
     }
-    const bool isDir = perms.at(0) == QLatin1Char('d');
+    const bool isSymlink = perms.at(0) == QLatin1Char('l');
+    const bool isDir = !isSymlink && perms.at(0) == QLatin1Char('d');
 
     bool okSize = false;
     const qint64 size = tokens.at(4).toLongLong(&okSize);
@@ -170,11 +176,13 @@ bool parseOneLsLine(const QString &lineIn, RemoteEntry *out, const QString &pare
         return false;
     }
 
-    QString name = tokens.mid(nameIndex).join(QLatin1Char(' '));
-    // Symlink: "name -> target"
-    const qsizetype arrow = name.indexOf(QStringLiteral(" -> "));
-    if (arrow >= 0) {
-        name = name.left(arrow);
+    QString name;
+    QString linkTarget;
+    {
+        const Symlink::LsNameParts parts =
+            Symlink::splitLsName(tokens.mid(nameIndex).join(QLatin1Char(' ')));
+        name = parts.name;
+        linkTarget = parts.target;
     }
     if (name == QLatin1String(".") || name == QLatin1String("..")) {
         return false;
@@ -189,6 +197,8 @@ bool parseOneLsLine(const QString &lineIn, RemoteEntry *out, const QString &pare
         out->path = parentPath + QLatin1Char('/') + name;
     }
     out->isDir = isDir;
+    out->isSymlink = isSymlink;
+    out->linkTarget = linkTarget;
     out->size = size;
     out->permissions = perms;
     out->mtime = mtime;
@@ -277,6 +287,23 @@ QString ShellCommandSet::formatRealpath(const QString &path) const
 {
     const QString tmpl = resolve(m_config.realpathCommand, QStringLiteral("realpath -e %1"));
     return applyTemplate(tmpl, {shellQuote(path)});
+}
+
+QString ShellCommandSet::formatSymlink(const QString &target, const QString &linkPath) const
+{
+    const QString tmpl = resolve(m_config.symlinkCommand, QStringLiteral("ln -s %1 %2"));
+    return applyTemplate(tmpl, {shellQuote(target), shellQuote(linkPath)});
+}
+
+QString ShellCommandSet::formatReadlink(const QString &path) const
+{
+    const QString tmpl = resolve(m_config.readlinkCommand, QStringLiteral("readlink -n %1"));
+    return applyTemplate(tmpl, {shellQuote(path)});
+}
+
+QString ShellCommandSet::formatTestDirectory(const QString &path) const
+{
+    return QStringLiteral("test -d %1").arg(shellQuote(path));
 }
 
 QString ShellCommandSet::formatStartupCommands() const

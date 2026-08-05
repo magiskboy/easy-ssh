@@ -4,6 +4,7 @@
 
 #include "ScpEngine.h"
 
+#include "Symlink.h"
 #include "TransferTypes.h"
 
 #include <QCoreApplication>
@@ -54,7 +55,7 @@ void ScpEngine::setCommandConfig(const ShellCommandSetConfig &config)
 
 FsEngine::Capabilities ScpEngine::capabilities() const
 {
-    return List | Mkdir | Rename | Remove | Canonicalize | Transfer;
+    return List | Mkdir | Rename | Remove | Canonicalize | Transfer | Symlink;
 }
 
 QString ScpEngine::sessionError() const
@@ -210,28 +211,52 @@ bool ScpEngine::listDirectoryEntries(const QString &path,
                                      QVector<RemoteEntry> *outEntries,
                                      QString *error)
 {
+    const QString listPath = Symlink::directoryListPath(path);
+
     if (!m_commands.config().tryFullTime) {
         m_fullTimeProbed = true;
         m_fullTimeOk = false;
     } else if (!m_fullTimeProbed) {
         m_fullTimeProbed = true;
         ShellExecRunner::Result probe;
-        const QString cmd = m_commands.formatListDirectory(path, QStringLiteral("--full-time"));
+        const QString cmd = m_commands.formatListDirectory(listPath, QStringLiteral("--full-time"));
         if (m_runner->run(cmd, &probe, nullptr) && probe.exitStatus == 0) {
             m_fullTimeOk = true;
-            return ShellCommandSet::parseLsListing(
-                ShellExecRunner::stdoutText(probe), outEntries, path, error);
+            if (!ShellCommandSet::parseLsListing(
+                    ShellExecRunner::stdoutText(probe), outEntries, path, error)) {
+                return false;
+            }
+            annotateSymlinkTargets(outEntries);
+            return true;
         }
         m_fullTimeOk = false;
     }
 
     ShellExecRunner::Result result;
     const bool allowWarn = m_commands.config().ignoreLsWarnings;
-    if (!runChecked(m_commands.formatListDirectory(path, lsOptions()), &result, error, allowWarn)) {
+    if (!runChecked(
+            m_commands.formatListDirectory(listPath, lsOptions()), &result, error, allowWarn)) {
         return false;
     }
-    return ShellCommandSet::parseLsListing(
-        ShellExecRunner::stdoutText(result), outEntries, path, error);
+    if (!ShellCommandSet::parseLsListing(
+            ShellExecRunner::stdoutText(result), outEntries, path, error)) {
+        return false;
+    }
+    annotateSymlinkTargets(outEntries);
+    return true;
+}
+
+void ScpEngine::annotateSymlinkTargets(QVector<RemoteEntry> *entries)
+{
+    if (!entries) {
+        return;
+    }
+    for (RemoteEntry &entry : *entries) {
+        if (!entry.isSymlink) {
+            continue;
+        }
+        entry.linkIsDir = runChecked(m_commands.formatTestDirectory(entry.path), nullptr, nullptr);
+    }
 }
 
 bool ScpEngine::createDirectory(const QString &path, QString *error)
@@ -279,8 +304,40 @@ bool ScpEngine::canonicalizePath(const QString &path, QString &canonicalOut, QSt
     return true;
 }
 
-bool ScpEngine::statEntry(const QString &path, RemoteEntry *out, QString *error)
+bool ScpEngine::statEntry(const QString &path, RemoteEntry *out, bool follow, QString *error)
 {
+    if (!out) {
+        if (error) {
+            *error = trScp("Internal error: missing entry");
+        }
+        return false;
+    }
+
+    if (follow) {
+        ShellExecRunner::Result testResult;
+        const bool isDir = runChecked(m_commands.formatTestDirectory(path), &testResult, nullptr);
+        ShellExecRunner::Result result;
+        const bool allowWarn = m_commands.config().ignoreLsWarnings;
+        if (!runChecked(m_commands.formatListFile(path, lsOptions()), &result, error, allowWarn)) {
+            return false;
+        }
+        if (!ShellCommandSet::parseLsSingle(
+                ShellExecRunner::stdoutText(result), out, path, error)) {
+            return false;
+        }
+        // Followed view: directory-ness from test -d; drop symlink leaf flag.
+        out->isDir = isDir;
+        if (isDir) {
+            out->isSymlink = false;
+            out->linkTarget.clear();
+        } else if (out->isSymlink) {
+            // Symlink to non-dir (or broken): still a symlink leaf for preserve semantics,
+            // but resolveEntry treats isDir=false.
+            out->isDir = false;
+        }
+        return true;
+    }
+
     ShellExecRunner::Result result;
     const bool allowWarn = m_commands.config().ignoreLsWarnings;
     if (!runChecked(m_commands.formatListFile(path, lsOptions()), &result, error, allowWarn)) {
@@ -292,7 +349,7 @@ bool ScpEngine::statEntry(const QString &path, RemoteEntry *out, QString *error)
 bool ScpEngine::isRemoteDirectory(const QString &path, bool *isDir, QString *error)
 {
     RemoteEntry entry;
-    if (!statEntry(path, &entry, error)) {
+    if (!statEntry(path, &entry, true, error)) {
         return false;
     }
     if (isDir) {
@@ -304,12 +361,27 @@ bool ScpEngine::isRemoteDirectory(const QString &path, bool *isDir, QString *err
 bool ScpEngine::remoteFileSize(const QString &path, qint64 *sizeOut, QString *error)
 {
     RemoteEntry entry;
-    if (!statEntry(path, &entry, error)) {
+    if (!statEntry(path, &entry, true, error)) {
         return false;
     }
     if (sizeOut) {
         *sizeOut = entry.size;
     }
+    return true;
+}
+
+bool ScpEngine::createSymlink(const QString &target, const QString &linkPath, QString *error)
+{
+    return runChecked(m_commands.formatSymlink(target, linkPath), nullptr, error);
+}
+
+bool ScpEngine::readSymlink(const QString &path, QString &targetOut, QString *error)
+{
+    ShellExecRunner::Result result;
+    if (!runChecked(m_commands.formatReadlink(path), &result, error)) {
+        return false;
+    }
+    targetOut = Symlink::normalizeTarget(ShellExecRunner::stdoutText(result));
     return true;
 }
 

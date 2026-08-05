@@ -6,6 +6,7 @@
 
 #include "ScpEngine.h"
 #include "SftpEngine.h"
+#include "Symlink.h"
 #include "TransferJobStore.h"
 
 #include <QCoreApplication>
@@ -282,6 +283,17 @@ bool FsRemote::createDirectory(const QString &path, QString *error)
     return m_engine->createDirectory(path, error);
 }
 
+bool FsRemote::createSymlink(const QString &target, const QString &linkPath, QString *error)
+{
+    if (!isOpen()) {
+        if (error) {
+            *error = trFs("Remote FS is not available");
+        }
+        return false;
+    }
+    return m_engine->createSymlink(target, linkPath, error);
+}
+
 bool FsRemote::renamePath(const QString &from, const QString &to, QString *error)
 {
     if (!isOpen()) {
@@ -304,6 +316,17 @@ bool FsRemote::canonicalizePath(const QString &path, QString &canonicalOut, QStr
     return m_engine->canonicalizePath(path, canonicalOut, error);
 }
 
+bool FsRemote::resolveEntry(const QString &path, bool *isDir, QString *error)
+{
+    if (!isOpen()) {
+        if (error) {
+            *error = trFs("Remote FS is not available");
+        }
+        return false;
+    }
+    return m_engine->isRemoteDirectory(path, isDir, error);
+}
+
 bool FsRemote::removePath(const QString &path, bool recursive, QString *error)
 {
     if (!isOpen()) {
@@ -313,12 +336,15 @@ bool FsRemote::removePath(const QString &path, bool recursive, QString *error)
         return false;
     }
 
-    bool isDir = false;
-    if (!m_engine->isRemoteDirectory(path, &isDir, error)) {
+    RemoteEntry entry;
+    if (!m_engine->statEntry(path, &entry, false, error)) {
         return false;
     }
 
-    if (isDir) {
+    if (entry.isSymlink) {
+        return m_engine->removeFile(path, error);
+    }
+    if (entry.isDir) {
         if (recursive) {
             return removePathRecursive(path, error);
         }
@@ -343,6 +369,9 @@ qint64 FsRemote::computeLocalBytes(const QStringList &localPaths) const
 qint64 FsRemote::computeLocalPathBytes(const QString &localPath) const
 {
     const QFileInfo info(localPath);
+    if (info.isSymLink()) {
+        return 0;
+    }
     if (!info.exists()) {
         return 0;
     }
@@ -352,7 +381,8 @@ qint64 FsRemote::computeLocalPathBytes(const QString &localPath) const
 
     qint64 total = 0;
     const QDir dir(localPath);
-    const auto children = dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot);
+    const auto children =
+        dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::System | QDir::NoDotAndDotDot);
     for (const QFileInfo &child : children) {
         const qint64 part = computeLocalPathBytes(child.absoluteFilePath());
         if (part < 0) {
@@ -367,12 +397,12 @@ qint64 FsRemote::computeRemoteBytes(const QStringList &remotePaths)
 {
     qint64 total = 0;
     for (const QString &path : remotePaths) {
-        bool isDir = false;
+        RemoteEntry entry;
         QString error;
-        if (!m_engine->isRemoteDirectory(path, &isDir, &error)) {
+        if (!m_engine->statEntry(path, &entry, false, &error)) {
             return -1;
         }
-        const qint64 part = computeRemotePathBytes(path, isDir);
+        const qint64 part = computeRemotePathBytes(entry);
         if (part < 0) {
             return -1;
         }
@@ -381,12 +411,15 @@ qint64 FsRemote::computeRemoteBytes(const QStringList &remotePaths)
     return total;
 }
 
-qint64 FsRemote::computeRemotePathBytes(const QString &remotePath, bool isDir)
+qint64 FsRemote::computeRemotePathBytes(const RemoteEntry &entry)
 {
-    if (!isDir) {
+    if (entry.isSymlink) {
+        return 0;
+    }
+    if (!entry.isDir) {
         qint64 size = 0;
         QString error;
-        if (!m_engine->remoteFileSize(remotePath, &size, &error)) {
+        if (!m_engine->remoteFileSize(entry.path, &size, &error)) {
             return -1;
         }
         return size;
@@ -394,7 +427,7 @@ qint64 FsRemote::computeRemotePathBytes(const QString &remotePath, bool isDir)
 
     QVector<RemoteEntry> children;
     QString error;
-    if (!m_engine->listDirectoryEntries(remotePath, &children, &error)) {
+    if (!m_engine->listDirectoryEntries(entry.path, &children, &error)) {
         return -1;
     }
 
@@ -403,7 +436,7 @@ qint64 FsRemote::computeRemotePathBytes(const QString &remotePath, bool isDir)
         if (isTransferFilepartName(child.name)) {
             continue;
         }
-        const qint64 part = computeRemotePathBytes(child.path, child.isDir);
+        const qint64 part = computeRemotePathBytes(child);
         if (part < 0) {
             return -1;
         }
@@ -722,7 +755,8 @@ bool FsRemote::uploadFileTo(const QString &localPath, const QString &remotePath,
 
 bool FsRemote::downloadPaths(const QStringList &remotePaths,
                              const QString &localDir,
-                             QString *error)
+                             QString *error,
+                             bool followSymlinks)
 {
     if (!isOpen()) {
         if (error) {
@@ -759,8 +793,8 @@ bool FsRemote::downloadPaths(const QStringList &remotePaths,
             return false;
         }
 
-        bool isDir = false;
-        if (!m_engine->isRemoteDirectory(remotePath, &isDir, error)) {
+        RemoteEntry entry;
+        if (!m_engine->statEntry(remotePath, &entry, false, error)) {
             endTransfer();
             m_lastEndReason = TransferEndReason::Failed;
             return false;
@@ -768,7 +802,7 @@ bool FsRemote::downloadPaths(const QStringList &remotePaths,
 
         const QString name = QFileInfo(remotePath).fileName();
         const QString localPath = local.filePath(name);
-        if (!downloadPathRecursive(remotePath, localPath, isDir, mode, error)) {
+        if (!downloadPathRecursive(entry, localPath, mode, error, followSymlinks)) {
             endTransfer();
             return false;
         }
@@ -837,17 +871,27 @@ bool FsRemote::discardInterruptedTransfer(QString *error)
 
 bool FsRemote::removePathRecursive(const QString &path, QString *error)
 {
-    bool isDir = false;
-    if (!m_engine->isRemoteDirectory(path, &isDir, error)) {
+    RemoteEntry entry;
+    if (!m_engine->statEntry(path, &entry, false, error)) {
         return false;
     }
 
-    if (isDir) {
+    if (entry.isSymlink) {
+        return m_engine->removeFile(path, error);
+    }
+
+    if (entry.isDir) {
         QVector<RemoteEntry> children;
         if (!m_engine->listDirectoryEntries(path, &children, error)) {
             return false;
         }
         for (const RemoteEntry &child : children) {
+            if (child.isSymlink) {
+                if (!m_engine->removeFile(child.path, error)) {
+                    return false;
+                }
+                continue;
+            }
             if (!removePathRecursive(child.path, error)) {
                 return false;
             }
@@ -871,6 +915,19 @@ bool FsRemote::uploadPathRecursive(const QString &localPath,
     }
 
     const QFileInfo info(localPath);
+    if (info.isSymLink()) {
+        QString target;
+        if (!Symlink::read(localPath, target, error)) {
+            m_lastEndReason = TransferEndReason::Failed;
+            return false;
+        }
+        if (!m_engine->createSymlink(target, remotePath, error)) {
+            m_lastEndReason = TransferEndReason::Failed;
+            return false;
+        }
+        return true;
+    }
+
     if (info.isDir()) {
         QString createError;
         if (!m_engine->createDirectory(remotePath, &createError)) {
@@ -889,7 +946,8 @@ bool FsRemote::uploadPathRecursive(const QString &localPath,
         }
 
         const QDir dir(localPath);
-        const auto children = dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot);
+        const auto children =
+            dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::System | QDir::NoDotAndDotDot);
         for (const QFileInfo &child : children) {
             const QString childRemote = joinRemotePath(remotePath, child.fileName());
             if (!uploadPathRecursive(child.absoluteFilePath(), childRemote, mode, error)) {
@@ -902,11 +960,11 @@ bool FsRemote::uploadPathRecursive(const QString &localPath,
     return transferOneUpload(localPath, remotePath, mode, error);
 }
 
-bool FsRemote::downloadPathRecursive(const QString &remotePath,
+bool FsRemote::downloadPathRecursive(const RemoteEntry &entry,
                                      const QString &localPath,
-                                     bool isDir,
                                      TransferWriteMode mode,
-                                     QString *error)
+                                     QString *error,
+                                     bool followSymlinks)
 {
     if (transferShouldStop(error)) {
         if (m_transferCancel.load(std::memory_order_relaxed)) {
@@ -915,7 +973,39 @@ bool FsRemote::downloadPathRecursive(const QString &remotePath,
         return false;
     }
 
-    if (isDir) {
+    if (entry.isSymlink) {
+        if (followSymlinks) {
+            // Open With / follow: sftp_open/scp read through the link to target bytes.
+            if (entry.linkIsDir) {
+                if (error) {
+                    *error = trFs("Cannot follow directory symlink as a file: %1").arg(entry.path);
+                }
+                m_lastEndReason = TransferEndReason::Failed;
+                return false;
+            }
+            return transferOneDownload(entry.path, localPath, mode, error);
+        }
+
+        QString target = entry.linkTarget;
+        if (target.isEmpty() && !m_engine->readSymlink(entry.path, target, error)) {
+            m_lastEndReason = TransferEndReason::Failed;
+            return false;
+        }
+        if (target.isEmpty()) {
+            if (error) {
+                *error = trFs("Cannot read remote symlink: %1").arg(entry.path);
+            }
+            m_lastEndReason = TransferEndReason::Failed;
+            return false;
+        }
+        if (!Symlink::create({.linkPath = localPath, .target = target}, error)) {
+            m_lastEndReason = TransferEndReason::Failed;
+            return false;
+        }
+        return true;
+    }
+
+    if (entry.isDir) {
         QDir local(localPath);
         if (!local.exists() && !QDir().mkpath(localPath)) {
             if (error) {
@@ -927,7 +1017,7 @@ bool FsRemote::downloadPathRecursive(const QString &remotePath,
         }
 
         QVector<RemoteEntry> children;
-        if (!m_engine->listDirectoryEntries(remotePath, &children, error)) {
+        if (!m_engine->listDirectoryEntries(entry.path, &children, error)) {
             m_lastEndReason = TransferEndReason::Failed;
             return false;
         }
@@ -937,12 +1027,12 @@ bool FsRemote::downloadPathRecursive(const QString &remotePath,
                 continue;
             }
             const QString childLocal = QDir(localPath).filePath(child.name);
-            if (!downloadPathRecursive(child.path, childLocal, child.isDir, mode, error)) {
+            if (!downloadPathRecursive(child, childLocal, mode, error, followSymlinks)) {
                 return false;
             }
         }
         return true;
     }
 
-    return transferOneDownload(remotePath, localPath, mode, error);
+    return transferOneDownload(entry.path, localPath, mode, error);
 }

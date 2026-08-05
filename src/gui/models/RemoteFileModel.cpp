@@ -4,11 +4,16 @@
 
 #include "RemoteFileModel.h"
 
+#include "core/fs/Symlink.h"
 #include "core/session/Session.h"
 
 #include <QDateTime>
 #include <QFileIconProvider>
+#include <QIcon>
 #include <QLocale>
+#include <QPainter>
+#include <QPixmap>
+#include <QPolygonF>
 
 namespace
 {
@@ -16,6 +21,55 @@ QFileIconProvider &iconProvider()
 {
     static QFileIconProvider provider;
     return provider;
+}
+
+QIcon overlaySymlinkEmblem(const QIcon &base)
+{
+    QIcon emblem = QIcon::fromTheme(QStringLiteral("emblem-symbolic-link"));
+    if (emblem.isNull()) {
+        emblem = QIcon::fromTheme(QStringLiteral("insert-link"));
+    }
+
+    QIcon result;
+    const QList<QSize> sizes = {{16, 16}, {22, 22}, {32, 32}, {48, 48}};
+    for (const QSize &size : sizes) {
+        QPixmap canvas(size);
+        canvas.fill(Qt::transparent);
+        QPainter painter(&canvas);
+        const QPixmap basePm = base.pixmap(size);
+        painter.drawPixmap(0, 0, basePm);
+        if (!emblem.isNull()) {
+            const int badge = qMax(8, size.width() / 2);
+            const QPixmap badgePm = emblem.pixmap(badge, badge);
+            painter.drawPixmap(size.width() - badge, size.height() - badge, badgePm);
+        } else {
+            // Fallback: small arrow mark when no theme emblem is available.
+            painter.setRenderHint(QPainter::Antialiasing, true);
+            painter.setPen(QPen(QColor(30, 30, 30), 1.5));
+            painter.setBrush(QColor(240, 240, 240));
+            const qreal s = size.width();
+            QPolygonF arrow;
+            arrow << QPointF(s * 0.55, s * 0.35) << QPointF(s * 0.9, s * 0.35)
+                  << QPointF(s * 0.9, s * 0.7);
+            painter.drawPolyline(arrow);
+            painter.drawLine(QPointF(s * 0.9, s * 0.35), QPointF(s * 0.55, s * 0.7));
+        }
+        painter.end();
+        result.addPixmap(canvas);
+    }
+    return result;
+}
+
+QIcon entryIcon(const RemoteEntry &entry)
+{
+    if (entry.isSymlink) {
+        const QIcon base = Symlink::isDirectoryLike(entry)
+                               ? iconProvider().icon(QFileIconProvider::Folder)
+                               : iconProvider().icon(QFileIconProvider::File);
+        return overlaySymlinkEmblem(base);
+    }
+    return entry.isDir ? iconProvider().icon(QFileIconProvider::Folder)
+                       : iconProvider().icon(QFileIconProvider::File);
 }
 } // namespace
 
@@ -77,6 +131,15 @@ void RemoteFileModel::setRootPath(const QString &path)
 QString RemoteFileModel::rootPath() const
 {
     return m_rootPath;
+}
+
+void RemoteFileModel::listFailed()
+{
+    if (!m_root) {
+        return;
+    }
+    m_root->fetching = false;
+    m_root->fetched = false;
 }
 
 void RemoteFileModel::refresh(const QModelIndex &index)
@@ -198,16 +261,24 @@ QVariant RemoteFileModel::data(const QModelIndex &index, int role) const
         }
     case Qt::DecorationRole:
         if (index.column() == 0) {
-            return node->entry.isDir ? iconProvider().icon(QFileIconProvider::Folder)
-                                     : iconProvider().icon(QFileIconProvider::File);
+            return entryIcon(node->entry);
         }
         return {};
     case Qt::ToolTipRole:
+        if (node->entry.isSymlink) {
+            const QString target =
+                node->entry.linkTarget.isEmpty() ? tr("(unknown)") : node->entry.linkTarget;
+            return QStringLiteral("%1 → %2").arg(node->entry.name, target);
+        }
         return node->entry.name;
     case PathRole:
         return node->entry.path;
     case IsDirRole:
         return node->entry.isDir;
+    case IsSymlinkRole:
+        return node->entry.isSymlink;
+    case LinkTargetRole:
+        return node->entry.linkTarget;
     default:
         return {};
     }
@@ -287,6 +358,30 @@ bool RemoteFileModel::isDirectory(const QModelIndex &index) const
 {
     Node *node = nodeFromIndex(index);
     return node && node->entry.isDir;
+}
+
+bool RemoteFileModel::isSymlink(const QModelIndex &index) const
+{
+    Node *node = nodeFromIndex(index);
+    return node && node->entry.isSymlink;
+}
+
+bool RemoteFileModel::isSymlinkToDirectory(const QModelIndex &index) const
+{
+    Node *node = nodeFromIndex(index);
+    return node && node->entry.isSymlink && Symlink::isDirectoryLike(node->entry);
+}
+
+QString RemoteFileModel::linkTarget(const QModelIndex &index) const
+{
+    Node *node = nodeFromIndex(index);
+    return node ? node->entry.linkTarget : QString();
+}
+
+QString RemoteFileModel::nameForIndex(const QModelIndex &index) const
+{
+    Node *node = nodeFromIndex(index);
+    return node ? node->entry.name : QString();
 }
 
 bool RemoteFileModel::isParentNavEntry(const QModelIndex &index) const

@@ -50,9 +50,11 @@ private slots:
     void download();
     void openWith();
     void createFolder();
+    void createSymlink();
     void renameSelected();
     void deleteSelected();
     void onPathCanonicalized(const QString &requested, const QString &canonical);
+    void onEntryResolved(const QString &path, bool isDir, bool ok, const QString &error);
     void onSftpFinished(const QString &message);
     void onSftpError(const QString &message);
     void onSftpCanceled(const QString &message);
@@ -130,11 +132,15 @@ private:
     QAction *m_openWithAction = nullptr;
     QAction *m_copyPathAction = nullptr;
     QAction *m_mkdirAction = nullptr;
+    QAction *m_symlinkAction = nullptr;
     QAction *m_renameAction = nullptr;
     QAction *m_deleteAction = nullptr;
     Session *m_session = nullptr;
     QString m_pendingRootRequest;
     QString m_refreshAfterOp;
+    QString m_pendingResolvePath;
+    QString m_pendingNavPath;
+    QString m_navPreviousPath;
     QStringList m_pendingDeletes;
     QList<OpenWithItem> m_openWithQueue;
     QStringList m_pendingUploadLocal;

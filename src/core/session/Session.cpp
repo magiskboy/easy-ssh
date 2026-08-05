@@ -373,6 +373,28 @@ void Session::createDirectory(const QString &path)
         Qt::QueuedConnection);
 }
 
+void Session::createSymlink(const QString &target, const QString &linkPath)
+{
+    if (m_state != SessionState::Connected || m_worker == nullptr) {
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker,
+        [worker = m_worker, target, linkPath]() { worker->createSymlink(target, linkPath); },
+        Qt::QueuedConnection);
+}
+
+void Session::resolveEntry(const QString &path)
+{
+    if (m_state != SessionState::Connected || m_worker == nullptr) {
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker,
+        [worker = m_worker, path]() { worker->resolveEntry(path); },
+        Qt::QueuedConnection);
+}
+
 void Session::renamePath(const QString &from, const QString &to)
 {
     if (m_state != SessionState::Connected || m_worker == nullptr) {
@@ -423,13 +445,20 @@ void Session::uploadFileTo(const QString &localPath, const QString &remotePath)
 
 void Session::downloadPaths(const QStringList &remotePaths, const QString &localDir)
 {
+    downloadPaths(remotePaths, localDir, false);
+}
+
+void Session::downloadPaths(const QStringList &remotePaths,
+                            const QString &localDir,
+                            bool followSymlinks)
+{
     if (m_state != SessionState::Connected || m_worker == nullptr) {
         return;
     }
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, remotePaths, localDir]() {
-            worker->downloadPaths(remotePaths, localDir);
+        [worker = m_worker, remotePaths, localDir, followSymlinks]() {
+            worker->downloadPaths(remotePaths, localDir, followSymlinks);
         },
         Qt::QueuedConnection);
 }
@@ -614,6 +643,7 @@ void Session::wireWorker()
     connect(m_worker, &SshWorker::shellOpenFailed, this, &Session::onShellOpenFailed);
     connect(m_worker, &SshWorker::hostKeyPrompt, this, &Session::hostKeyPrompt);
     connect(m_worker, &SshWorker::directoryListed, this, &Session::directoryListed);
+    connect(m_worker, &SshWorker::entryResolved, this, &Session::entryResolved);
     connect(m_worker, &SshWorker::pathCanonicalized, this, &Session::pathCanonicalized);
     connect(m_worker, &SshWorker::sftpFinished, this, &Session::sftpFinished);
     connect(m_worker, &SshWorker::sftpError, this, &Session::sftpError);

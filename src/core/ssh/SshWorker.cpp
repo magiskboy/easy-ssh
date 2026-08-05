@@ -360,6 +360,49 @@ void SshWorker::createDirectory(const QString &path)
     emit sftpFinished(tr("Created folder: %1").arg(path));
 }
 
+void SshWorker::createSymlink(const QString &target, const QString &linkPath)
+{
+    if (!m_running || !m_fs.isOpen()) {
+        emit sftpError(tr("SFTP is not available"));
+        return;
+    }
+
+    QString error;
+    if (!m_fs.createSymlink(target, linkPath, &error)) {
+        emit sftpError(error);
+        return;
+    }
+
+    emit sftpFinished(tr("Created symlink: %1").arg(linkPath));
+}
+
+void SshWorker::resolveEntry(const QString &path)
+{
+    if (!m_running || !m_fs.isOpen()) {
+        emit entryResolved(path, false, false, tr("SFTP is not available"));
+        return;
+    }
+
+    bool isDir = false;
+    QString error;
+    if (!m_fs.resolveEntry(path, &isDir, &error)) {
+        emit entryResolved(path, false, false, error);
+        return;
+    }
+
+    // Symlink-to-dir (and any dir resolve): verify the directory is listable before the
+    // UI navigates — otherwise we land on an empty explorer (e.g. Permission denied).
+    if (isDir) {
+        QVector<RemoteEntry> entries;
+        if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
+            emit entryResolved(path, true, false, error);
+            return;
+        }
+    }
+
+    emit entryResolved(path, isDir, true, {});
+}
+
 void SshWorker::renamePath(const QString &from, const QString &to)
 {
     if (!m_running || !m_fs.isOpen()) {
@@ -427,13 +470,20 @@ void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath
 
 void SshWorker::downloadPaths(const QStringList &remotePaths, const QString &localDir)
 {
+    downloadPaths(remotePaths, localDir, false);
+}
+
+void SshWorker::downloadPaths(const QStringList &remotePaths,
+                              const QString &localDir,
+                              bool followSymlinks)
+{
     if (!m_running || !m_fs.isOpen()) {
         emit sftpError(tr("SFTP is not available"));
         return;
     }
 
     QString error;
-    if (!m_fs.downloadPaths(remotePaths, localDir, &error)) {
+    if (!m_fs.downloadPaths(remotePaths, localDir, &error, followSymlinks)) {
         emitTransferFailure(error);
         return;
     }

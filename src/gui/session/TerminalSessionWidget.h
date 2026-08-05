@@ -59,11 +59,15 @@ public:
 
     void listDirectory(const QString &path);
     void createDirectory(const QString &path);
+    void createSymlink(const QString &target, const QString &linkPath);
+    void resolveEntry(const QString &path);
     void renamePath(const QString &from, const QString &to);
     void removePath(const QString &path, bool recursive);
     void uploadFiles(const QStringList &localPaths, const QString &remoteDir);
     void uploadFileTo(const QString &localPath, const QString &remotePath);
     void downloadPaths(const QStringList &remotePaths, const QString &localDir);
+    void
+    downloadPaths(const QStringList &remotePaths, const QString &localDir, bool followSymlinks);
     void canonicalizePath(const QString &path);
     void cancelTransfer();
 
@@ -87,6 +91,7 @@ signals:
     void sessionStateChanged(TerminalSessionWidget::State state);
 
     void directoryListed(const QString &path, const QVector<RemoteEntry> &entries);
+    void entryResolved(const QString &path, bool isDir, bool ok, const QString &error);
     void pathCanonicalized(const QString &requested, const QString &canonical);
     void sftpFinished(const QString &message);
     void sftpError(const QString &message);

@@ -43,8 +43,11 @@ public:
     bool removeFile(const QString &path, QString *error) override;
     bool removeDirectory(const QString &path, QString *error) override;
     bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error) override;
+    bool statEntry(const QString &path, RemoteEntry *out, bool follow, QString *error) override;
     bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) override;
     bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) override;
+    bool createSymlink(const QString &target, const QString &linkPath, QString *error) override;
+    bool readSymlink(const QString &path, QString &targetOut, QString *error) override;
 
     bool uploadFile(const QString &localPath,
                     const CancelCheck &shouldCancel,
@@ -70,7 +73,7 @@ private:
                     ShellExecRunner::Result *result,
                     QString *error,
                     bool allowExitOneWithStdout = false);
-    bool statEntry(const QString &path, RemoteEntry *out, QString *error);
+    void annotateSymlinkTargets(QVector<RemoteEntry> *entries);
     bool probeScp(QString *failureMessage);
     static QString parentRemoteDir(const QString &remotePath);
     static QString remoteBaseName(const QString &remotePath);

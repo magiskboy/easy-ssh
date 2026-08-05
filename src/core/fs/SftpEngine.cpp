@@ -4,6 +4,7 @@
 
 #include "SftpEngine.h"
 
+#include "Symlink.h"
 #include "TransferTypes.h"
 
 #include <QCoreApplication>
@@ -46,7 +47,7 @@ SftpEngine::~SftpEngine()
 
 FsEngine::Capabilities SftpEngine::capabilities() const
 {
-    return List | Mkdir | Rename | Remove | Canonicalize | Transfer | ResumeTransfer;
+    return List | Mkdir | Rename | Remove | Canonicalize | Transfer | ResumeTransfer | Symlink;
 }
 
 bool SftpEngine::open(ssh_session session, QString *failureMessage)
@@ -201,11 +202,69 @@ QString SftpEngine::joinRemotePath(const QString &dir, const QString &name)
     return dir + QLatin1Char('/') + name;
 }
 
+void SftpEngine::fillEntryFromAttributes(RemoteEntry *entry,
+                                         const sftp_attributes attributes,
+                                         const QString &path,
+                                         const QString &name)
+{
+    entry->name = name;
+    entry->path = path;
+    const auto type = static_cast<EntryType>(attributes->type);
+    entry->isSymlink = type == EntryType::Symlink;
+    entry->isDir = !entry->isSymlink && type == EntryType::Directory;
+    entry->size = static_cast<qint64>(attributes->size);
+    entry->permissions = formatPermissions(attributes->permissions, type);
+    if (attributes->flags & SSH_FILEXFER_ATTR_ACMODTIME) {
+        entry->mtime = static_cast<qint64>(attributes->mtime);
+    } else if (attributes->mtime64 != 0) {
+        entry->mtime = static_cast<qint64>(attributes->mtime64);
+    } else {
+        entry->mtime = 0;
+    }
+}
+
+QString SftpEngine::readlinkAt(const QString &path) const
+{
+    const QByteArray remote = path.toUtf8();
+    char *target = sftp_readlink(m_sftp, remote.constData());
+    if (target == nullptr) {
+        return {};
+    }
+    const QString out = QString::fromUtf8(target);
+    ssh_string_free_char(target);
+    return out;
+}
+
+QString SftpEngine::directoryOpenPath(const QString &path)
+{
+    // Some SFTP servers (e.g. Synology) do not follow symlinks in OPENDIR.
+    // If this path is a symlink to a directory, open the canonical target instead
+    // while still attributing child paths under the caller's path.
+    RemoteEntry meta;
+    QString unused;
+    if (!statEntry(path, &meta, false, &unused) || !meta.isSymlink) {
+        return path;
+    }
+    RemoteEntry followed;
+    if (!statEntry(path, &followed, true, &unused) || !followed.isDir) {
+        return path;
+    }
+    QString canonical;
+    if (canonicalizePath(path, canonical, &unused) && !canonical.isEmpty()) {
+        return canonical;
+    }
+    if (!path.endsWith(QLatin1Char('/'))) {
+        return path + QLatin1Char('/');
+    }
+    return path;
+}
+
 bool SftpEngine::listDirectoryEntries(const QString &path,
                                       QVector<RemoteEntry> *outEntries,
                                       QString *error)
 {
-    const QByteArray remote = path.toUtf8();
+    const QString openPath = directoryOpenPath(path);
+    const QByteArray remote = openPath.toUtf8();
     sftp_dir dir = sftp_opendir(m_sftp, remote.constData());
     if (dir == nullptr) {
         if (error) {
@@ -223,16 +282,14 @@ bool SftpEngine::listDirectoryEntries(const QString &path,
         }
 
         RemoteEntry entry;
-        entry.name = name;
-        entry.path = joinRemotePath(path, name);
-        entry.isDir = attributes->type == SSH_FILEXFER_TYPE_DIRECTORY;
-        entry.size = static_cast<qint64>(attributes->size);
-        entry.permissions =
-            formatPermissions(attributes->permissions, static_cast<EntryType>(attributes->type));
-        if (attributes->flags & SSH_FILEXFER_ATTR_ACMODTIME) {
-            entry.mtime = static_cast<qint64>(attributes->mtime);
-        } else if (attributes->mtime64 != 0) {
-            entry.mtime = static_cast<qint64>(attributes->mtime64);
+        fillEntryFromAttributes(&entry, attributes, joinRemotePath(path, name), name);
+        if (entry.isSymlink) {
+            entry.linkTarget = readlinkAt(entry.path);
+            const QByteArray entryRemote = entry.path.toUtf8();
+            if (sftp_attributes followed = sftp_stat(m_sftp, entryRemote.constData())) {
+                entry.linkIsDir = followed->type == SSH_FILEXFER_TYPE_DIRECTORY;
+                sftp_attributes_free(followed);
+            }
         }
         entries.append(entry);
         sftp_attributes_free(attributes);
@@ -254,8 +311,10 @@ bool SftpEngine::listDirectoryEntries(const QString &path,
     }
 
     std::sort(entries.begin(), entries.end(), [](const RemoteEntry &a, const RemoteEntry &b) {
-        if (a.isDir != b.isDir) {
-            return a.isDir;
+        const bool aDir = Symlink::isDirectoryLike(a);
+        const bool bDir = Symlink::isDirectoryLike(b);
+        if (aDir != bDir) {
+            return aDir;
         }
         return QString::localeAwareCompare(a.name, b.name) < 0;
     });
@@ -331,10 +390,18 @@ bool SftpEngine::canonicalizePath(const QString &path, QString &canonicalOut, QS
     return true;
 }
 
-bool SftpEngine::isRemoteDirectory(const QString &path, bool *isDir, QString *error)
+bool SftpEngine::statEntry(const QString &path, RemoteEntry *out, bool follow, QString *error)
 {
+    if (!out) {
+        if (error) {
+            *error = trSftp("Internal error: missing entry");
+        }
+        return false;
+    }
+
     const QByteArray remote = path.toUtf8();
-    sftp_attributes attributes = sftp_stat(m_sftp, remote.constData());
+    sftp_attributes attributes =
+        follow ? sftp_stat(m_sftp, remote.constData()) : sftp_lstat(m_sftp, remote.constData());
     if (attributes == nullptr) {
         if (error) {
             *error = trSftp("Cannot stat path: %1").arg(sftpErrorMessage());
@@ -342,27 +409,64 @@ bool SftpEngine::isRemoteDirectory(const QString &path, bool *isDir, QString *er
         return false;
     }
 
-    if (isDir) {
-        *isDir = attributes->type == SSH_FILEXFER_TYPE_DIRECTORY;
+    const QString name = QFileInfo(path).fileName();
+    fillEntryFromAttributes(out, attributes, path, name.isEmpty() ? path : name);
+    if (out->isSymlink) {
+        out->linkTarget = readlinkAt(path);
+    } else {
+        out->linkTarget.clear();
     }
     sftp_attributes_free(attributes);
     return true;
 }
 
+bool SftpEngine::isRemoteDirectory(const QString &path, bool *isDir, QString *error)
+{
+    RemoteEntry entry;
+    if (!statEntry(path, &entry, true, error)) {
+        return false;
+    }
+    if (isDir) {
+        *isDir = entry.isDir;
+    }
+    return true;
+}
+
 bool SftpEngine::remoteFileSize(const QString &path, qint64 *sizeOut, QString *error)
 {
-    const QByteArray remote = path.toUtf8();
-    sftp_attributes attrs = sftp_stat(m_sftp, remote.constData());
-    if (attrs == nullptr) {
-        if (error) {
-            *error = trSftp("Cannot stat path: %1").arg(sftpErrorMessage());
-        }
+    RemoteEntry entry;
+    if (!statEntry(path, &entry, true, error)) {
         return false;
     }
     if (sizeOut) {
-        *sizeOut = static_cast<qint64>(attrs->size);
+        *sizeOut = entry.size;
     }
-    sftp_attributes_free(attrs);
+    return true;
+}
+
+bool SftpEngine::createSymlink(const QString &target, const QString &linkPath, QString *error)
+{
+    const QByteArray targetBytes = target.toUtf8();
+    const QByteArray linkBytes = linkPath.toUtf8();
+    if (sftp_symlink(m_sftp, targetBytes.constData(), linkBytes.constData()) != SSH_OK) {
+        if (error) {
+            *error = trSftp("Cannot create symlink: %1").arg(sftpErrorMessage());
+        }
+        return false;
+    }
+    return true;
+}
+
+bool SftpEngine::readSymlink(const QString &path, QString &targetOut, QString *error)
+{
+    const QString target = readlinkAt(path);
+    if (target.isEmpty() && sftp_get_error(m_sftp) != SSH_FX_OK) {
+        if (error) {
+            *error = trSftp("Cannot read symlink: %1").arg(sftpErrorMessage());
+        }
+        return false;
+    }
+    targetOut = target;
     return true;
 }
 

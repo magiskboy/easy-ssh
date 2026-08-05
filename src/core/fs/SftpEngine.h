@@ -39,8 +39,11 @@ public:
     bool removeFile(const QString &path, QString *error) override;
     bool removeDirectory(const QString &path, QString *error) override;
     bool canonicalizePath(const QString &path, QString &canonicalOut, QString *error) override;
+    bool statEntry(const QString &path, RemoteEntry *out, bool follow, QString *error) override;
     bool isRemoteDirectory(const QString &path, bool *isDir, QString *error) override;
     bool remoteFileSize(const QString &path, qint64 *sizeOut, QString *error) override;
+    bool createSymlink(const QString &target, const QString &linkPath, QString *error) override;
+    bool readSymlink(const QString &path, QString &targetOut, QString *error) override;
 
     bool uploadFile(const QString &localPath,
                     const CancelCheck &shouldCancel,
@@ -73,6 +76,13 @@ private:
     static QString localIoErrorMessage(const QString &qtErrorString);
     static QString formatPermissions(uint32_t permissions, EntryType type);
     static QString joinRemotePath(const QString &dir, const QString &name);
+    static void fillEntryFromAttributes(RemoteEntry *entry,
+                                        const sftp_attributes attributes,
+                                        const QString &path,
+                                        const QString &name);
+    QString readlinkAt(const QString &path) const;
+    /// Path to pass to sftp_opendir; follows symlink-to-dir via canonicalize.
+    QString directoryOpenPath(const QString &path);
 
     bool
     hashLocalPrefix(const QString &localPath, qint64 length, QString &hexOut, QString *error) const;

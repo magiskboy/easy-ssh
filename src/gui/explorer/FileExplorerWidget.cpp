@@ -79,6 +79,8 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent) : QWidget(parent)
 
     m_mkdirAction = new QAction(tr("New Folder"), this);
 
+    m_symlinkAction = new QAction(tr("Create Symlink…"), this);
+
     m_renameAction = new QAction(tr("Rename"), this);
     m_renameAction->setShortcut(QKeySequence(Qt::Key_F2));
     m_renameAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
@@ -198,6 +200,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent) : QWidget(parent)
     connect(m_openWithAction, &QAction::triggered, this, &FileExplorerWidget::openWith);
     connect(m_copyPathAction, &QAction::triggered, this, &FileExplorerWidget::copySelectedPath);
     connect(m_mkdirAction, &QAction::triggered, this, &FileExplorerWidget::createFolder);
+    connect(m_symlinkAction, &QAction::triggered, this, &FileExplorerWidget::createSymlink);
     connect(m_renameAction, &QAction::triggered, this, &FileExplorerWidget::renameSelected);
     connect(m_deleteAction, &QAction::triggered, this, &FileExplorerWidget::deleteSelected);
     connect(m_tree,
@@ -250,6 +253,9 @@ void FileExplorerWidget::bindSession(Session *session)
     m_pendingRootRequest.clear();
     m_pendingDeletes.clear();
     m_refreshAfterOp.clear();
+    m_pendingResolvePath.clear();
+    m_pendingNavPath.clear();
+    m_navPreviousPath.clear();
     m_openWithQueue.clear();
     m_openWithActive = false;
     m_awaitingSftpResult = false;
@@ -279,6 +285,7 @@ void FileExplorerWidget::bindSession(Session *session)
             this,
             &FileExplorerWidget::onTransferResumableChanged);
     connect(m_session, &Session::directoryListed, this, &FileExplorerWidget::onDirectoryListed);
+    connect(m_session, &Session::entryResolved, this, &FileExplorerWidget::onEntryResolved);
     connect(m_session, &Session::sftpUnavailable, this, [this](const QString &message) {
         showSftpUnavailable(message);
     });
@@ -608,6 +615,11 @@ QStringList FileExplorerWidget::conflictNamesInEntries(const QStringList &localP
 
 void FileExplorerWidget::onDirectoryListed(const QString &path, const QVector<RemoteEntry> &entries)
 {
+    if (!m_pendingNavPath.isEmpty() && path == m_pendingNavPath) {
+        m_pendingNavPath.clear();
+        m_navPreviousPath.clear();
+    }
+
     if (!m_awaitingUploadListing || path != m_pendingUploadRemoteDir) {
         return;
     }
@@ -783,7 +795,7 @@ void FileExplorerWidget::startNextOpenWithDownload()
     emit statusMessage(tr("Downloading %1 for editing…").arg(QFileInfo(item.remotePath).fileName()),
                        ErrorNotifier::Level::Status);
     m_refreshAfterOp.clear();
-    m_session->downloadPaths({item.remotePath}, item.localDir);
+    m_session->downloadPaths({item.remotePath}, item.localDir, /*followSymlinks=*/true);
 }
 
 void FileExplorerWidget::completeOpenWithItem()
@@ -863,6 +875,53 @@ void FileExplorerWidget::createFolder()
     m_awaitingSftpResult = true;
     m_refreshAfterOp = remoteDir;
     m_session->createDirectory(path);
+}
+
+void FileExplorerWidget::createSymlink()
+{
+    if (!m_session || m_opInFlight) {
+        return;
+    }
+
+    const QModelIndex index = currentIndex();
+    if (!index.isValid() || m_model->isParentNavEntry(index) || m_model->isSymlink(index)) {
+        return;
+    }
+
+    const QString remoteDir = targetDirectory();
+    const QString targetName = m_model->nameForIndex(index);
+    if (remoteDir.isEmpty() || targetName.isEmpty()) {
+        return;
+    }
+
+    bool ok = false;
+    const QString defaultName = targetName + QStringLiteral(".link");
+    const QString name =
+        UiHelpers::getText(this, {tr("Create Symlink"), tr("Link name:"), defaultName}, &ok)
+            .trimmed();
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+    if (name.contains(QLatin1Char('/')) || name.contains(QLatin1Char('\\'))) {
+        QMessageBox::warning(
+            this, tr("Create Symlink"), tr("Link name cannot contain path separators."));
+        return;
+    }
+    if (name == targetName) {
+        QMessageBox::warning(
+            this, tr("Create Symlink"), tr("Link name must differ from the source name."));
+        return;
+    }
+
+    const QString linkPath = remoteDir.endsWith(QLatin1Char('/'))
+                                 ? remoteDir + name
+                                 : remoteDir + QLatin1Char('/') + name;
+
+    setOpInFlight(true);
+    m_awaitingSftpResult = true;
+    m_refreshAfterOp = remoteDir;
+    // Relative target so the link stays valid within the same directory.
+    m_session->createSymlink(targetName, linkPath);
 }
 
 void FileExplorerWidget::renameSelected()
@@ -962,6 +1021,12 @@ void FileExplorerWidget::navigateTo(const QString &path)
         return;
     }
 
+    const QString current = m_model ? m_model->rootPath() : QString();
+    if (path != current) {
+        m_navPreviousPath = current;
+        m_pendingNavPath = path;
+    }
+
     m_model->setRootPath(path);
     m_pathLabel->setText(path);
     showTree(true);
@@ -976,7 +1041,26 @@ void FileExplorerWidget::onItemActivated(const QModelIndex &index)
         return;
     }
 
-    if (m_model->isDirectory(index)) {
+    if (m_model->isSymlink(index)) {
+        if (!m_session || m_opInFlight) {
+            return;
+        }
+        const QString path = m_model->pathForIndex(index);
+        if (path.isEmpty()) {
+            return;
+        }
+        if (m_tree->selectionModel() && !m_tree->selectionModel()->isSelected(index)) {
+            m_tree->selectionModel()->select(
+                index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            m_tree->setCurrentIndex(index);
+        }
+        m_pendingResolvePath = path;
+        setOpInFlight(true);
+        m_session->resolveEntry(path);
+        return;
+    }
+
+    if (m_model->isDirectory(index) || m_model->isParentNavEntry(index)) {
         const QString path = m_model->pathForIndex(index);
         if (path.isEmpty()) {
             return;
@@ -987,10 +1071,6 @@ void FileExplorerWidget::onItemActivated(const QModelIndex &index)
         return;
     }
 
-    if (m_model->isParentNavEntry(index)) {
-        return;
-    }
-
     // Ensure the activated file is selected so openWith() uses it.
     if (m_tree->selectionModel() && !m_tree->selectionModel()->isSelected(index)) {
         m_tree->selectionModel()->select(
@@ -998,6 +1078,33 @@ void FileExplorerWidget::onItemActivated(const QModelIndex &index)
         m_tree->setCurrentIndex(index);
     }
 
+    openWith();
+}
+
+void FileExplorerWidget::onEntryResolved(const QString &path,
+                                         bool isDir,
+                                         bool ok,
+                                         const QString &error)
+{
+    if (m_pendingResolvePath.isEmpty() || path != m_pendingResolvePath) {
+        return;
+    }
+    m_pendingResolvePath.clear();
+    setOpInFlight(false);
+
+    if (!ok) {
+        emit statusMessage(error.isEmpty() ? tr("Cannot open symlink") : error,
+                           ErrorNotifier::Level::Error);
+        return;
+    }
+
+    if (isDir) {
+        navigateTo(path);
+        emit statusMessage(tr("Browsing %1").arg(path), ErrorNotifier::Level::Status);
+        return;
+    }
+
+    // Symlink to file (or broken treated as non-dir): open contents via Open With.
     openWith();
 }
 
@@ -1063,6 +1170,28 @@ void FileExplorerWidget::onSftpError(const QString &message)
                               tr("Upload"),
                               tr("Cannot check destination folder:\n%1").arg(message),
                               ErrorNotifier::Level::Warning);
+        updateActionsEnabled();
+        return;
+    }
+
+    // Failed browse/list after navigate — revert to the previous directory.
+    if (!m_pendingNavPath.isEmpty()) {
+        const QString failed = m_pendingNavPath;
+        const QString previous = m_navPreviousPath;
+        m_pendingNavPath.clear();
+        m_navPreviousPath.clear();
+        m_pendingResolvePath.clear();
+        setOpInFlight(false);
+        m_model->listFailed();
+        if (!previous.isEmpty() && previous != failed) {
+            m_pendingNavPath.clear();
+            m_navPreviousPath.clear();
+            m_model->setRootPath(previous);
+            m_pathLabel->setText(previous);
+            showTree(true);
+        }
+        ErrorNotifier::status(tr("Cannot open %1: %2").arg(failed, message),
+                              ErrorNotifier::Level::Error);
         updateActionsEnabled();
         return;
     }
@@ -1309,6 +1438,12 @@ void FileExplorerWidget::onCustomContextMenu(const QPoint &pos)
     menu.addAction(m_copyPathAction);
     menu.addSeparator();
     menu.addAction(m_mkdirAction);
+    const QModelIndex ctxIndex = index.isValid() ? index.siblingAtColumn(0) : currentIndex();
+    const bool canCreateSymlink =
+        ctxIndex.isValid() && !m_model->isParentNavEntry(ctxIndex) && !m_model->isSymlink(ctxIndex);
+    if (canCreateSymlink) {
+        menu.addAction(m_symlinkAction);
+    }
     menu.addAction(m_renameAction);
     menu.addAction(m_deleteAction);
     menu.exec(m_tree->viewport()->mapToGlobal(pos));
@@ -1346,6 +1481,8 @@ void FileExplorerWidget::updateActionsEnabled()
     m_openWithAction->setEnabled(canMutate && hasFileSelection);
     m_copyPathAction->setEnabled(connected && index.isValid());
     m_mkdirAction->setEnabled(canMutate);
+    const bool canCreateSymlink = canMutate && hasSelection && !m_model->isSymlink(index);
+    m_symlinkAction->setEnabled(canCreateSymlink);
     m_renameAction->setEnabled(canMutate && hasSelection);
     m_deleteAction->setEnabled(canMutate && !selectedRemotePaths().isEmpty());
 }
@@ -1400,7 +1537,8 @@ QStringList FileExplorerWidget::selectedRemoteFiles() const
 
     const auto indexes = m_tree->selectionModel()->selectedRows(0);
     for (const QModelIndex &index : indexes) {
-        if (m_model->isDirectory(index) || m_model->isParentNavEntry(index)) {
+        if (m_model->isDirectory(index) || m_model->isParentNavEntry(index) ||
+            m_model->isSymlinkToDirectory(index)) {
             continue;
         }
         const QString path = m_model->pathForIndex(index);

@@ -58,6 +58,8 @@ struct ShellCommandSetConfig
     QString renameCommand;
     QString pwdCommand;
     QString realpathCommand;
+    QString symlinkCommand;
+    QString readlinkCommand;
     bool clearAliases = true;
     bool clearNationalVars = true;
     bool tryFullTime = true;
