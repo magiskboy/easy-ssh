@@ -646,6 +646,7 @@ void SessionPage::applySettingsToTerm(QTermWidget *term)
     term->setTerminalFont(settings.terminalFont());
     term->setColorScheme(settings.colorScheme());
     term->setHistorySize(settings.historySize());
+    term->setScrollBarPosition(QTermWidget::ScrollBarRight);
     term->setBlinkingCursor(settings.cursorBlink());
     term->setConfirmMultilinePaste(settings.confirmMultilinePaste());
 

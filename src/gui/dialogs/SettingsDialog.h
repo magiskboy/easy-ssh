@@ -68,7 +68,6 @@ private:
     QSpinBox *m_uiFontSize = nullptr;
     QComboBox *m_paletteCombo = nullptr;
     QPushButton *m_customizePaletteButton = nullptr;
-    QComboBox *m_styleCombo = nullptr;
     /// Theme id to seed Customize when no custom palette exists yet.
     QString m_paletteSeedThemeId;
 

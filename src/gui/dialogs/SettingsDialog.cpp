@@ -136,14 +136,6 @@ QWidget *SettingsDialog::createGeneralPage()
     paletteRowLayout->addWidget(m_customizePaletteButton);
     appearanceForm->addRow(tr("Palette"), paletteRow);
 
-    m_styleCombo = new QComboBox(appearanceGroup);
-    m_styleCombo->addItem(tr("Apple HIG"));
-    m_styleCombo->addItem(tr("Fluent"));
-    m_styleCombo->addItem(tr("Material 3"));
-    m_styleCombo->setEnabled(false);
-    m_styleCombo->setToolTip(tr("Widget styles will be available in a later release."));
-    appearanceForm->addRow(tr("Style"), m_styleCombo);
-
     auto *sessionGroup = new QGroupBox(tr("Session"), page);
     auto *sessionLayout = new QVBoxLayout(sessionGroup);
     m_autoReconnect = new QCheckBox(tr("Auto reconnect when connection is lost"), sessionGroup);

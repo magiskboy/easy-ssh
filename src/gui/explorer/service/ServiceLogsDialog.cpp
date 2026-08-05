@@ -242,6 +242,7 @@ void ServiceLogsDialog::applySettingsToTerm()
     m_term->setTerminalFont(settings.terminalFont());
     m_term->setColorScheme(settings.colorScheme());
     m_term->setHistorySize(settings.historySize());
+    m_term->setScrollBarPosition(QTermWidget::ScrollBarRight);
     m_term->setBlinkingCursor(settings.cursorBlink());
     m_term->setConfirmMultilinePaste(settings.confirmMultilinePaste());
 

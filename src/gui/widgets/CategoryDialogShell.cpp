@@ -27,7 +27,6 @@ CategoryDialogShell::CategoryDialogShell(QWidget *parent) : QWidget(parent)
     m_tree = new QTreeWidget(this);
     m_tree->setHeaderHidden(true);
     m_tree->setColumnCount(1);
-    m_tree->setFixedWidth(UiMetrics::categorySidebarWidth);
     m_tree->setRootIsDecorated(true);
     m_tree->setUniformRowHeights(true);
     m_tree->setAnimated(false);
@@ -40,7 +39,8 @@ CategoryDialogShell::CategoryDialogShell(QWidget *parent) : QWidget(parent)
 
     auto *sidebar = new QFrame(this);
     sidebar->setObjectName(QStringLiteral("categorySidebar"));
-    sidebar->setFrameShape(QFrame::NoFrame);
+    sidebar->setFrameShape(QFrame::StyledPanel);
+    sidebar->setFrameShadow(QFrame::Plain);
     sidebar->setAutoFillBackground(true);
     sidebar->setFixedWidth(UiMetrics::categorySidebarWidth);
     {
@@ -55,10 +55,28 @@ CategoryDialogShell::CategoryDialogShell(QWidget *parent) : QWidget(parent)
                                    UiMetrics::chromeMargin,
                                    UiMetrics::chromeMargin);
     sideLayout->setSpacing(UiMetrics::chromeSpacing);
-    m_tree->setFixedWidth(UiMetrics::categorySidebarWidth);
     sideLayout->addWidget(m_tree, 1);
 
     m_pages = new QStackedWidget(this);
+
+    auto *content = new QFrame(this);
+    content->setObjectName(QStringLiteral("categoryContent"));
+    content->setFrameShape(QFrame::StyledPanel);
+    content->setFrameShadow(QFrame::Plain);
+    content->setAutoFillBackground(true);
+    {
+        QPalette contentPalette = content->palette();
+        contentPalette.setColor(QPalette::Window, contentPalette.color(QPalette::Base));
+        content->setPalette(contentPalette);
+        content->setBackgroundRole(QPalette::Window);
+    }
+    auto *contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(UiMetrics::chromeMargin,
+                                      UiMetrics::chromeMargin,
+                                      UiMetrics::chromeMargin,
+                                      UiMetrics::chromeMargin);
+    contentLayout->setSpacing(UiMetrics::chromeSpacing);
+    contentLayout->addWidget(m_pages, 1);
 
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(UiMetrics::chromeMargin,
@@ -67,7 +85,7 @@ CategoryDialogShell::CategoryDialogShell(QWidget *parent) : QWidget(parent)
                                UiMetrics::chromeMargin);
     layout->setSpacing(UiMetrics::relatedSpacing);
     layout->addWidget(sidebar);
-    layout->addWidget(m_pages, 1);
+    layout->addWidget(content, 1);
 
     connect(m_tree, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *current) {
         selectCategoryItem(current);
