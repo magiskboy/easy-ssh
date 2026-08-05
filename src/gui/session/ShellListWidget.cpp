@@ -137,7 +137,7 @@ void ShellListWidget::onItemClicked()
         return;
     }
     const QUuid id = m_list->currentItem()->data(Qt::UserRole).toUuid();
-    m_session->setActiveShell(id);
+    emit shellActivationRequested(id);
 }
 
 void ShellListWidget::onContextMenu(const QPoint &pos)

@@ -25,6 +25,7 @@
 #include "gui/session/SessionPage.h"
 #include "gui/session/SessionSideBar.h"
 #include "gui/session/SessionTabWidget.h"
+#include "gui/session/ShellListWidget.h"
 #include "gui/theme/ThemeManager.h"
 #include "gui/tray/TrayController.h"
 #include "gui/tunnel/TunnelListWidget.h"
@@ -529,6 +530,14 @@ void MainWindow::setupUi()
     m_sideBar->tunnelContainer()->layout()->addWidget(m_tunnelList);
 
     m_sessionTabs = new SessionTabWidget(this);
+    connect(m_sideBar->shellList(),
+            &ShellListWidget::shellActivationRequested,
+            this,
+            [this](const QUuid &shellId) {
+                if (SessionPage *page = m_sessionTabs->activeSessionPage()) {
+                    page->activateShell(shellId);
+                }
+            });
     m_sessionTabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_sessionTabs->setConnectionModel(m_connectionModel);
     m_sessionTabs->setSessionManager(m_sessionManager);
@@ -1269,8 +1278,8 @@ void MainWindow::focusShell(const QUuid &connectionId, const QUuid &shellId)
     if (!m_sessionTabs->activateConnection(connectionId)) {
         return;
     }
-    if (Session *session = m_sessionManager->get(connectionId)) {
-        session->setActiveShell(shellId);
+    if (SessionPage *page = m_sessionTabs->activeSessionPage()) {
+        page->activateShell(shellId);
     }
 }
 

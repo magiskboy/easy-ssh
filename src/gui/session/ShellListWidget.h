@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <QUuid>
 #include <QWidget>
 
 class QListWidget;
@@ -23,6 +24,10 @@ public:
 
 public slots:
     void newShell();
+
+signals:
+    /// User asked to show this shell (sidebar click). May repeat for the already-active shell.
+    void shellActivationRequested(const QUuid &shellId);
 
 private slots:
     void refresh();

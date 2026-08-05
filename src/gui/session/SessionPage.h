@@ -44,6 +44,8 @@ public:
     void saveLog();
     void saveScreenshot();
     void setLayoutActive(bool active);
+    /// Focus/pin shell in the dock; re-pins if the shell is active but was closed from the dock.
+    void activateShell(const QUuid &shellId);
     void toggleProcessExplorer();
     void toggleContainerExplorer();
     void toggleServiceExplorer();

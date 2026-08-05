@@ -337,6 +337,19 @@ void SessionPage::continueWorkspaceRestore()
     m_dockHost->show();
 }
 
+void SessionPage::activateShell(const QUuid &shellId)
+{
+    if (!m_session || shellId.isNull()) {
+        return;
+    }
+    if (m_session->activeShellId() != shellId) {
+        m_session->setActiveShell(shellId);
+    } else {
+        // setActiveShell no-ops for the same id; still re-pin after dock close.
+        onActiveShellChanged(shellId);
+    }
+}
+
 void SessionPage::onActiveShellChanged(const QUuid &shellId)
 {
     if (shellId.isNull() || !m_panes.contains(shellId) || !m_dockHost) {
