@@ -221,7 +221,7 @@ void Vt102Emulation::initTokenizer()
         charClass[*s] |= DIG;
     for (s = (quint8 *)"()+*%"; *s; ++s)
         charClass[*s] |= SCS;
-    for (s = (quint8 *)"()+*#[]%"; *s; ++s)
+    for (s = (quint8 *)"()+*#[]%_^PX"; *s; ++s)
         charClass[*s] |= GRP;
 
     resetTokenizer();
@@ -260,10 +260,14 @@ void Vt102Emulation::initTokenizer()
 #define eeq() (p >= 3 && s[2] == '=')
 #define egt() (p >= 3 && s[2] == '>')
 #define esp() (p == 4 && s[3] == ' ')
-#define Xpe (tokenBufferPos >= 2 && tokenBuffer[1] == ']')
-#define Xte                                                                                        \
-    (Xpe && (cc == 7 || (prevCC == 27 && cc == 92))) // 27, 92 => "\e\\" (ST, String Terminator)
-#define ces(C) (cc < 256 && (charClass[cc] & (C)) == (C) && !Xte)
+// ECMA-48 control strings: OSC "ESC]", DCS "ESCP", APC "ESC_", PM "ESC^", SOS "ESCX"
+#define Cse                                                                                        \
+    (tokenBufferPos >= 2 &&                                                                        \
+     (tokenBuffer[1] == ']' || tokenBuffer[1] == 'P' || tokenBuffer[1] == '_' ||                   \
+      tokenBuffer[1] == '^' || tokenBuffer[1] == 'X'))
+// BEL only terminates OSC; ST (ESC \) terminates all control strings
+#define Cte (Cse && ((tokenBuffer[1] == ']' && cc == 7) || (prevCC == 27 && cc == 92)))
+#define ces(C) (cc < 256 && (charClass[cc] & (C)) == (C) && !Cte)
 
 #define CNTL(c) ((c) - '@')
 #define ESC 27
@@ -276,9 +280,11 @@ void Vt102Emulation::receiveChar(wchar_t cc)
         return; // VT100: ignore.
 
     if (ces(CTL)) {
-        // ignore control characters in the text part of Xpe (aka OSC) "ESC]"
-        // escape sequences; this matches what XTERM docs say
-        if (Xpe) {
+        // ignore control characters in the text part of Cse escape sequences, aka: OSC "ESC]",
+        // DCS "ESCP", APC "ESC_", SOS "ESCX", and PM "ESC^". This matches ECMA-48 5.6 Control
+        // strings and XTerm ctlseqs.html.
+        if (Cse) {
+            // Store in prevCC so Cte can detect the ST terminator (prevCC == 27 && cc == 92).
             prevCC = cc;
             return;
         }
@@ -312,12 +318,14 @@ void Vt102Emulation::receiveChar(wchar_t cc)
         if (les(2, 1, GRP)) {
             return;
         }
-        if (Xte) {
-            processWindowAttributeChange();
+        if (Cte) {
+            // Only OSC carries window/title attributes; other control strings are discarded.
+            if (tokenBufferPos >= 2 && tokenBuffer[1] == ']')
+                processWindowAttributeChange();
             resetTokenizer();
             return;
         }
-        if (Xpe) {
+        if (Cse) {
             prevCC = cc;
             return;
         }

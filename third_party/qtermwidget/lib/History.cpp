@@ -113,7 +113,7 @@ HistoryFile::~HistoryFile()
 
 // TODO:  Mapping the entire file in will cause problems if the history file becomes exceedingly
 // large, (ie. larger than available memory).  HistoryFile::map() should only map in sections of the
-//file at a time, to avoid this.
+// file at a time, to avoid this.
 void HistoryFile::map()
 {
     Q_ASSERT(fileMap == nullptr);
@@ -621,7 +621,7 @@ CompactHistoryLine::CompactHistoryLine(const TextLine &line, CompactHistoryBlock
         // kDebug() << "number of different formats in string: " << formatLength;
         formatArray = (CharacterFormat *)blockList.allocate(sizeof(CharacterFormat) * formatLength);
         Q_ASSERT(formatArray != nullptr);
-        text = (quint16 *)blockList.allocate(sizeof(quint16) * line.size());
+        text = (wchar_t *)blockList.allocate(sizeof(wchar_t) * line.size());
         Q_ASSERT(text != nullptr);
 
         length = line.size();
