@@ -120,5 +120,5 @@ void SymlinkTest::createAndReadLocal()
     QVERIFY(!error.isEmpty());
 }
 
-QTEST_MAIN(SymlinkTest)
+QTEST_GUILESS_MAIN(SymlinkTest)
 #include "tst_Symlink.moc"
