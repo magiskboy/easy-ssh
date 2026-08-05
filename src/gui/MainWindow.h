@@ -8,6 +8,7 @@
 
 #include "ErrorNotifier.h"
 #include "core/connection/Connection.h"
+#include "core/session/SessionTypes.h"
 #include "core/session/WorkspaceState.h"
 
 #include <QHash>
@@ -19,6 +20,7 @@
 #include <optional>
 
 class QAction;
+class QEvent;
 class QLabel;
 class QMenu;
 class QTimer;
@@ -35,6 +37,7 @@ class SessionManager;
 class SessionSideBar;
 class SessionTabWidget;
 class SettingsDialog;
+class TrayController;
 class TunnelListWidget;
 
 class MainWindow final : public QMainWindow
@@ -43,15 +46,29 @@ class MainWindow final : public QMainWindow
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private:
     void setupUi();
     void restoreOrDefaultGeometry();
     QSize defaultStartupSize() const;
     void setupMenus();
+    void setupTray();
+    void teardownTray();
+    void wireTraySession(Session *session);
+    void refreshTray();
+    void maybeTrayNotify(const QUuid &key, const QString &title, const QString &message);
+    void activateSessionFromTray(const QUuid &connectionId);
+    void openRecentFromTray(const QUuid &connectionId);
+    void requestQuit();
+    void restoreFromTray();
+    bool canCloseToTray() const;
+    bool confirmQuitWithSessions();
+    void maybeShowTrayHint();
     void rebuildConnectionsListMenu();
     void setStatusText(const QString &text,
                        ErrorNotifier::Level level = ErrorNotifier::Level::Status);
@@ -125,4 +142,10 @@ private:
     QPointer<SettingsDialog> m_settingsDialog;
     QPointer<AboutDialog> m_aboutDialog;
     QPointer<CommandPaletteDialog> m_commandPalette;
+
+    TrayController *m_tray = nullptr;
+    bool m_forceQuit = false;
+    bool m_trayTornDown = false;
+    QHash<QUuid, qint64> m_trayNotifyTimes;
+    QHash<QUuid, SessionState> m_traySessionStates;
 };

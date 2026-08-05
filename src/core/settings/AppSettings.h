@@ -74,6 +74,26 @@ public:
     bool restoreWorkspace() const;
     void setRestoreWorkspace(bool enabled);
 
+    /// When true, the title-bar close button hides the window to the system tray.
+    bool closeToTray() const;
+    void setCloseToTray(bool enabled);
+
+    /// When true, minimizing the window hides it to the system tray.
+    bool minimizeToTray() const;
+    void setMinimizeToTray(bool enabled);
+
+    /// When true, launch hidden with only the system tray icon visible.
+    bool startInTray() const;
+    void setStartInTray(bool enabled);
+
+    /// When true, show tray balloons for disconnect/tunnel errors while the window is hidden.
+    bool trayNotifications() const;
+    void setTrayNotifications(bool enabled);
+
+    /// When true, the one-time "running in tray" hint has already been shown.
+    bool trayMinimizeHintShown() const;
+    void setTrayMinimizeHintShown(bool shown);
+
     QByteArray workspaceState() const;
     void setWorkspaceState(const QByteArray &state);
 

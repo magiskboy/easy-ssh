@@ -105,6 +105,8 @@ set(EASY_SSH_CORE_SOURCES
 set(EASY_SSH_GUI_SOURCES
     gui/MainWindow.cpp
     gui/MainWindow.h
+    gui/tray/TrayController.cpp
+    gui/tray/TrayController.h
     gui/ErrorNotifier.cpp
     gui/ErrorNotifier.h
     gui/models/ConnectionModel.cpp

@@ -66,6 +66,10 @@ private:
     // General — Session / Transfers
     QCheckBox *m_autoReconnect = nullptr;
     QCheckBox *m_restoreWorkspace = nullptr;
+    QCheckBox *m_closeToTray = nullptr;
+    QCheckBox *m_minimizeToTray = nullptr;
+    QCheckBox *m_startInTray = nullptr;
+    QCheckBox *m_trayNotifications = nullptr;
     QSpinBox *m_stallTimeout = nullptr;
     QCheckBox *m_autoResumeTransfer = nullptr;
 

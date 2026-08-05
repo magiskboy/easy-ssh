@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "core/settings/AppSettings.h"
+#include "core/util/Logging.h"
 #include "gui/MainWindow.h"
 #include "gui/terminal/QTermWidgetResources.h"
 #include "gui/theme/ThemeManager.h"
@@ -9,12 +11,12 @@
 #include "core/fs/SftpTypes.h"
 #include "core/ssh/SshWorker.h"
 #include "core/tunnel/Tunnel.h"
-#include "core/util/Logging.h"
 
 #include <DockManager.h>
 
 #include <QApplication>
 #include <QIcon>
+#include <QSystemTrayIcon>
 #include <QVector>
 
 namespace
@@ -45,6 +47,11 @@ int main(int argc, char *argv[])
     QApplication::setDesktopFileName(QStringLiteral("io.github.magiskboy.easy-ssh"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/app-256.png")));
 
+    // Keep the process alive when the main window is hidden to the system tray.
+    if (QSystemTrayIcon::isSystemTrayAvailable()) {
+        QApplication::setQuitOnLastWindowClosed(false);
+    }
+
     ThemeManager::applyFromSettings();
 
     configureAds();
@@ -61,7 +68,11 @@ int main(int argc, char *argv[])
     qRegisterMetaType<SshWorker::HostKeyPrompt>("SshWorker::HostKeyPrompt");
 
     MainWindow window;
-    window.show();
+    const bool startHidden =
+        AppSettings::instance().startInTray() && QSystemTrayIcon::isSystemTrayAvailable();
+    if (!startHidden) {
+        window.show();
+    }
 
     return app.exec();
 }

@@ -24,6 +24,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QSystemTrayIcon>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -130,6 +131,40 @@ QWidget *SettingsDialog::createGeneralPage()
         tr("Reopen the last open connections and shell dock layout when Easy SSH starts."));
     sessionLayout->addWidget(m_restoreWorkspace);
 
+    auto *windowGroup = new QGroupBox(tr("Window"), page);
+    auto *windowLayout = new QVBoxLayout(windowGroup);
+    m_closeToTray = new QCheckBox(tr("Close window to system tray"), windowGroup);
+    m_closeToTray->setToolTip(
+        tr("When enabled, the title-bar close button hides Easy SSH to the system tray "
+           "instead of quitting. Use File → Close or Exit to quit."));
+    windowLayout->addWidget(m_closeToTray);
+
+    m_minimizeToTray = new QCheckBox(tr("Minimize to system tray"), windowGroup);
+    m_minimizeToTray->setToolTip(
+        tr("When enabled, minimizing the window hides Easy SSH to the system tray "
+           "instead of the taskbar."));
+    windowLayout->addWidget(m_minimizeToTray);
+
+    m_startInTray = new QCheckBox(tr("Start in system tray"), windowGroup);
+    m_startInTray->setToolTip(
+        tr("Launch Easy SSH hidden, with only the system tray icon visible."));
+    windowLayout->addWidget(m_startInTray);
+
+    m_trayNotifications = new QCheckBox(tr("Notify when window is hidden"), windowGroup);
+    m_trayNotifications->setToolTip(
+        tr("Show tray notifications for disconnects and tunnel errors while the "
+           "main window is hidden."));
+    windowLayout->addWidget(m_trayNotifications);
+
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        const QString unavailable = tr("System tray is not available on this desktop environment.");
+        for (QCheckBox *box :
+             {m_closeToTray, m_minimizeToTray, m_startInTray, m_trayNotifications}) {
+            box->setEnabled(false);
+            box->setToolTip(unavailable);
+        }
+    }
+
     auto *transferGroup = new QGroupBox(tr("Transfers"), page);
     auto *transferForm = new QFormLayout(transferGroup);
     m_stallTimeout = new QSpinBox(transferGroup);
@@ -146,6 +181,7 @@ QWidget *SettingsDialog::createGeneralPage()
 
     layout->addWidget(themeGroup);
     layout->addWidget(sessionGroup);
+    layout->addWidget(windowGroup);
     layout->addWidget(transferGroup);
     layout->addStretch(1);
     updateCustomThemeControls();
@@ -324,6 +360,10 @@ void SettingsDialog::loadFromSettings()
 
     m_autoReconnect->setChecked(s.autoReconnect());
     m_restoreWorkspace->setChecked(s.restoreWorkspace());
+    m_closeToTray->setChecked(s.closeToTray());
+    m_minimizeToTray->setChecked(s.minimizeToTray());
+    m_startInTray->setChecked(s.startInTray());
+    m_trayNotifications->setChecked(s.trayNotifications());
     m_stallTimeout->setValue(s.transferStallTimeoutSec());
     m_autoResumeTransfer->setChecked(s.autoResumeTransferAfterReconnect());
 
@@ -376,6 +416,10 @@ void SettingsDialog::saveToSettings()
 
     s.setAutoReconnect(m_autoReconnect->isChecked());
     s.setRestoreWorkspace(m_restoreWorkspace->isChecked());
+    s.setCloseToTray(m_closeToTray->isChecked());
+    s.setMinimizeToTray(m_minimizeToTray->isChecked());
+    s.setStartInTray(m_startInTray->isChecked());
+    s.setTrayNotifications(m_trayNotifications->isChecked());
     s.setTransferStallTimeoutSec(m_stallTimeout->value());
     s.setAutoResumeTransferAfterReconnect(m_autoResumeTransfer->isChecked());
 

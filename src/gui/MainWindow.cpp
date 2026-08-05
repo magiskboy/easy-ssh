@@ -26,14 +26,17 @@
 #include "gui/session/SessionSideBar.h"
 #include "gui/session/SessionTabWidget.h"
 #include "gui/theme/ThemeManager.h"
+#include "gui/tray/TrayController.h"
 #include "gui/tunnel/TunnelListWidget.h"
 
 #include <QAbstractItemModel>
 #include <QAction>
+#include <QApplication>
 #include <QCloseEvent>
 #include <QCursor>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QEvent>
 #include <QFrame>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -49,9 +52,13 @@
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QSystemTrayIcon>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QVector>
+
+#include "core/session/SessionTypes.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
@@ -62,6 +69,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     setupUi();
     setupMenus();
+    setupTray();
 
     ErrorNotifier::setStatusSink(
         [this](const QString &text, ErrorNotifier::Level level) { setStatusText(text, level); });
@@ -79,11 +87,382 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     QTimer::singleShot(0, this, &MainWindow::beginWorkspaceRestore);
 }
 
+MainWindow::~MainWindow()
+{
+    teardownTray();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (!m_forceQuit && canCloseToTray()) {
+        maybeShowTrayHint();
+        hide();
+        event->ignore();
+        return;
+    }
+
+    if (!confirmQuitWithSessions()) {
+        m_forceQuit = false;
+        event->ignore();
+        return;
+    }
+
     saveWorkspaceState();
     AppSettings::instance().setWindowGeometry(saveGeometry());
+    // Disconnect tray listeners before sessions tear down with the window.
+    teardownTray();
     QMainWindow::closeEvent(event);
+    if (QSystemTrayIcon::isSystemTrayAvailable()) {
+        QApplication::quit();
+    }
+}
+
+void MainWindow::setupTray()
+{
+    m_tray = new TrayController(this);
+    if (!m_tray->isAvailable()) {
+        return;
+    }
+
+    connect(m_tray, &TrayController::restoreRequested, this, &MainWindow::restoreFromTray);
+    connect(m_tray, &TrayController::quitRequested, this, &MainWindow::requestQuit);
+    connect(m_tray,
+            &TrayController::activateSessionRequested,
+            this,
+            &MainWindow::activateSessionFromTray);
+    connect(m_tray, &TrayController::openRecentRequested, this, &MainWindow::openRecentFromTray);
+    connect(m_tray, &TrayController::menusAboutToShow, this, &MainWindow::refreshTray);
+
+    connect(m_sessionManager, &SessionManager::sessionOpened, this, [this](const QUuid &id) {
+        if (m_trayTornDown) {
+            return;
+        }
+        if (Session *session = m_sessionManager->get(id)) {
+            wireTraySession(session);
+        }
+        refreshTray();
+    });
+    connect(m_sessionManager, &SessionManager::sessionClosed, this, [this](const QUuid &id) {
+        if (m_trayTornDown) {
+            return;
+        }
+        m_traySessionStates.remove(id);
+        refreshTray();
+    });
+
+    for (Session *session : m_sessionManager->all()) {
+        wireTraySession(session);
+    }
+    refreshTray();
+}
+
+void MainWindow::teardownTray()
+{
+    if (m_trayTornDown) {
+        return;
+    }
+    m_trayTornDown = true;
+
+    if (m_tray) {
+        disconnect(m_tray, nullptr, this, nullptr);
+        m_tray->setVisible(false);
+    }
+
+    if (m_sessionManager) {
+        disconnect(m_sessionManager, &SessionManager::sessionOpened, this, nullptr);
+        disconnect(m_sessionManager, &SessionManager::sessionClosed, this, nullptr);
+        for (Session *session : m_sessionManager->all()) {
+            if (session) {
+                disconnect(session, nullptr, this, nullptr);
+            }
+        }
+    }
+
+    m_traySessionStates.clear();
+    m_trayNotifyTimes.clear();
+}
+
+void MainWindow::wireTraySession(Session *session)
+{
+    if (!session || m_trayTornDown || !m_tray || !m_tray->isAvailable()) {
+        return;
+    }
+
+    const QUuid connectionId = session->connectionId();
+    m_traySessionStates.insert(connectionId, session->state());
+
+    // Capture connectionId (not Session*) so disconnect/teardown cannot use a dying object.
+    connect(session, &Session::stateChanged, this, [this, connectionId](SessionState state) {
+        if (m_trayTornDown) {
+            return;
+        }
+        const SessionState previous =
+            m_traySessionStates.value(connectionId, SessionState::Disconnected);
+        m_traySessionStates.insert(connectionId, state);
+
+        if (previous == SessionState::Connected &&
+            (state == SessionState::Disconnected || state == SessionState::Failed)) {
+            QString name = connectionId.toString();
+            if (m_sessionManager) {
+                if (Session *session = m_sessionManager->get(connectionId)) {
+                    name = session->displayName();
+                }
+            }
+            maybeTrayNotify(connectionId,
+                            tr("Session disconnected"),
+                            tr("%1 is no longer connected.").arg(name));
+        }
+        refreshTray();
+    });
+
+    connect(session, &Session::sessionFailed, this, [this, connectionId](const QString &message) {
+        if (m_trayTornDown) {
+            return;
+        }
+        QString name = connectionId.toString();
+        if (m_sessionManager) {
+            if (Session *session = m_sessionManager->get(connectionId)) {
+                name = session->displayName();
+            }
+        }
+        maybeTrayNotify(connectionId, tr("Session failed"), tr("%1: %2").arg(name, message));
+        refreshTray();
+    });
+
+    connect(session,
+            &Session::tunnelError,
+            this,
+            [this, connectionId](const QUuid &, const QString &message) {
+                if (m_trayTornDown) {
+                    return;
+                }
+                QString name = connectionId.toString();
+                if (m_sessionManager) {
+                    if (Session *session = m_sessionManager->get(connectionId)) {
+                        name = session->displayName();
+                    }
+                }
+                maybeTrayNotify(connectionId, tr("Tunnel error"), tr("%1: %2").arg(name, message));
+                refreshTray();
+            });
+
+    connect(session, &Session::tunnelsChanged, this, [this]() {
+        if (!m_trayTornDown) {
+            refreshTray();
+        }
+    });
+}
+
+void MainWindow::refreshTray()
+{
+    if (m_trayTornDown || !m_tray || !m_tray->isAvailable()) {
+        return;
+    }
+
+    int connected = 0;
+    int connecting = 0;
+    int failed = 0;
+    int tunnelsRunning = 0;
+    int tunnelsError = 0;
+
+    QVector<TraySessionItem> sessions;
+    if (m_sessionManager) {
+        for (Session *session : m_sessionManager->all()) {
+            if (!session) {
+                continue;
+            }
+
+            QString stateLabel;
+            switch (session->state()) {
+            case SessionState::Connecting:
+                ++connecting;
+                stateLabel = tr("Connecting");
+                break;
+            case SessionState::Connected:
+                ++connected;
+                stateLabel = tr("Connected");
+                break;
+            case SessionState::Failed:
+                ++failed;
+                stateLabel = tr("Failed");
+                break;
+            case SessionState::Disconnected:
+                stateLabel = tr("Disconnected");
+                break;
+            }
+
+            for (const TunnelChannelState &tunnel : session->tunnels()) {
+                if (tunnel.status == TunnelRunStatus::Running) {
+                    ++tunnelsRunning;
+                } else if (tunnel.status == TunnelRunStatus::Error) {
+                    ++tunnelsError;
+                }
+            }
+
+            TraySessionItem item;
+            item.connectionId = session->connectionId();
+            item.label = tr("%1 — %2").arg(session->displayName(), stateLabel);
+            sessions.append(item);
+        }
+    }
+
+    TrayStatusKind kind = TrayStatusKind::Idle;
+    if (failed > 0 || tunnelsError > 0) {
+        kind = TrayStatusKind::Warning;
+    } else if (connecting > 0) {
+        kind = TrayStatusKind::Connecting;
+    } else if (connected > 0) {
+        kind = TrayStatusKind::Connected;
+    }
+    m_tray->setStatusKind(kind);
+
+    QStringList parts;
+    if (connected > 0) {
+        parts.append(tr("%n connected", nullptr, connected));
+    }
+    if (connecting > 0) {
+        parts.append(tr("%n connecting", nullptr, connecting));
+    }
+    if (failed > 0) {
+        parts.append(tr("%n failed", nullptr, failed));
+    }
+    QString tip = QGuiApplication::applicationDisplayName();
+    if (!parts.isEmpty()) {
+        tip += QStringLiteral(" — ") + parts.join(QStringLiteral(", "));
+    }
+    if (tunnelsRunning > 0) {
+        tip += QStringLiteral(" · ") + tr("%n tunnel(s)", nullptr, tunnelsRunning);
+    }
+    m_tray->setToolTip(tip);
+    m_tray->setSessionItems(sessions);
+
+    QVector<TrayRecentItem> recent;
+    if (m_connectionModel) {
+        for (const QUuid &id : AppSettings::instance().recentConnectionIds(8)) {
+            const auto connection = m_connectionModel->connectionById(id);
+            if (!connection) {
+                continue;
+            }
+            TrayRecentItem item;
+            item.connectionId = id;
+            item.label = connection->name.isEmpty() ? connection->displayText() : connection->name;
+            recent.append(item);
+        }
+    }
+    m_tray->setRecentItems(recent);
+}
+
+void MainWindow::maybeTrayNotify(const QUuid &key, const QString &title, const QString &message)
+{
+    if (m_trayTornDown || !m_tray || !m_tray->isAvailable()) {
+        return;
+    }
+    if (!AppSettings::instance().trayNotifications() || isVisible()) {
+        return;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 last = m_trayNotifyTimes.value(key, 0);
+    if (now - last < 2000) {
+        return;
+    }
+    m_trayNotifyTimes.insert(key, now);
+    m_tray->showNotification(title, message, QSystemTrayIcon::Warning);
+}
+
+void MainWindow::activateSessionFromTray(const QUuid &connectionId)
+{
+    restoreFromTray();
+    if (m_sessionTabs) {
+        m_sessionTabs->activateConnection(connectionId);
+    }
+}
+
+void MainWindow::openRecentFromTray(const QUuid &connectionId)
+{
+    restoreFromTray();
+    openConnectionById(connectionId);
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::WindowStateChange && AppSettings::instance().minimizeToTray() &&
+        m_tray && m_tray->isAvailable() && isMinimized()) {
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+        maybeShowTrayHint();
+        hide();
+    }
+    QMainWindow::changeEvent(event);
+}
+
+void MainWindow::requestQuit()
+{
+    m_forceQuit = true;
+    close();
+}
+
+void MainWindow::restoreFromTray()
+{
+    show();
+    raise();
+    activateWindow();
+}
+
+bool MainWindow::canCloseToTray() const
+{
+    return AppSettings::instance().closeToTray() && m_tray && m_tray->isAvailable();
+}
+
+bool MainWindow::confirmQuitWithSessions()
+{
+    if (!m_sessionManager) {
+        return true;
+    }
+
+    int activeCount = 0;
+    for (Session *session : m_sessionManager->all()) {
+        if (!session) {
+            continue;
+        }
+        const SessionState state = session->state();
+        if (state == SessionState::Connecting || state == SessionState::Connected) {
+            ++activeCount;
+        }
+    }
+
+    if (activeCount == 0) {
+        return true;
+    }
+
+    if (!isVisible()) {
+        show();
+        raise();
+        activateWindow();
+    }
+
+    const auto answer =
+        QMessageBox::question(this,
+                              tr("Quit Easy SSH"),
+                              tr("You have %n active SSH session(s). Quit Easy SSH and disconnect?",
+                                 nullptr,
+                                 activeCount),
+                              QMessageBox::Yes | QMessageBox::No,
+                              QMessageBox::No);
+    return answer == QMessageBox::Yes;
+}
+
+void MainWindow::maybeShowTrayHint()
+{
+    if (AppSettings::instance().trayMinimizeHintShown()) {
+        return;
+    }
+
+    QMessageBox::information(
+        this,
+        tr("System Tray"),
+        tr("Easy SSH will keep running in the system tray. "
+           "Choose <b>Quit</b> from the tray menu, or File → Close / Exit, to terminate."));
+    AppSettings::instance().setTrayMinimizeHintShown(true);
 }
 
 void MainWindow::restoreOrDefaultGeometry()
@@ -411,6 +790,20 @@ QAction *MainWindow::registerAction(const QString &actionId, QAction *action)
 
 void MainWindow::setupMenus()
 {
+    auto *fileMenu = menuBar()->addMenu(tr("&File"));
+
+    auto *closeAction = fileMenu->addAction(tr("&Close"));
+    closeAction->setShortcut(QKeySequence::Close);
+    closeAction->setMenuRole(QAction::NoRole);
+    connect(closeAction, &QAction::triggered, this, &MainWindow::requestQuit);
+
+    fileMenu->addSeparator();
+
+    auto *exitAction = fileMenu->addAction(tr("E&xit"));
+    exitAction->setShortcut(QKeySequence::Quit);
+    exitAction->setMenuRole(QAction::QuitRole);
+    connect(exitAction, &QAction::triggered, this, &MainWindow::requestQuit);
+
     auto *connectionsMenu = menuBar()->addMenu(tr("&Connections"));
 
     auto *newAction = connectionsMenu->addAction(tr("&New…"));

@@ -40,6 +40,11 @@ constexpr int kDefaultStallTimeoutSec = 60;
 constexpr auto kThemeId = "ui/themeId";
 constexpr auto kCustomThemePath = "ui/customThemePath";
 constexpr auto kWindowGeometry = "ui/window/geometry";
+constexpr auto kCloseToTray = "ui/window/closeToTray";
+constexpr auto kMinimizeToTray = "ui/window/minimizeToTray";
+constexpr auto kStartInTray = "ui/window/startInTray";
+constexpr auto kTrayNotifications = "ui/window/trayNotifications";
+constexpr auto kTrayMinimizeHintShown = "ui/window/trayMinimizeHintShown";
 constexpr auto kSidebarWidth = "ui/sidebar/width";
 constexpr auto kSidebarTabIndex = "ui/sidebar/tabIndex";
 
@@ -326,6 +331,56 @@ bool AppSettings::restoreWorkspace() const
 void AppSettings::setRestoreWorkspace(bool enabled)
 {
     setBoolValue(QLatin1String(kRestoreWorkspace), enabled);
+}
+
+bool AppSettings::closeToTray() const
+{
+    return boolValue(QLatin1String(kCloseToTray), true);
+}
+
+void AppSettings::setCloseToTray(bool enabled)
+{
+    setBoolValue(QLatin1String(kCloseToTray), enabled);
+}
+
+bool AppSettings::minimizeToTray() const
+{
+    return boolValue(QLatin1String(kMinimizeToTray), false);
+}
+
+void AppSettings::setMinimizeToTray(bool enabled)
+{
+    setBoolValue(QLatin1String(kMinimizeToTray), enabled);
+}
+
+bool AppSettings::startInTray() const
+{
+    return boolValue(QLatin1String(kStartInTray), false);
+}
+
+void AppSettings::setStartInTray(bool enabled)
+{
+    setBoolValue(QLatin1String(kStartInTray), enabled);
+}
+
+bool AppSettings::trayNotifications() const
+{
+    return boolValue(QLatin1String(kTrayNotifications), true);
+}
+
+void AppSettings::setTrayNotifications(bool enabled)
+{
+    setBoolValue(QLatin1String(kTrayNotifications), enabled);
+}
+
+bool AppSettings::trayMinimizeHintShown() const
+{
+    return boolValue(QLatin1String(kTrayMinimizeHintShown), false);
+}
+
+void AppSettings::setTrayMinimizeHintShown(bool shown)
+{
+    setBoolValue(QLatin1String(kTrayMinimizeHintShown), shown);
 }
 
 QByteArray AppSettings::workspaceState() const
