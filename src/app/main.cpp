@@ -53,6 +53,7 @@ int main(int argc, char *argv[])
     }
 
     ThemeManager::applyFromSettings();
+    ThemeManager::applyUiFontFromSettings();
 
     configureAds();
 

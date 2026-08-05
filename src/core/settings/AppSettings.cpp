@@ -37,6 +37,8 @@ constexpr auto kRecentConnections = "session/recentConnectionIds";
 constexpr int kMaxRecentConnections = 8;
 constexpr int kDefaultStallTimeoutSec = 60;
 
+constexpr auto kUiFontMode = "ui/fontMode";
+constexpr auto kUiFont = "ui/font";
 constexpr auto kThemeId = "ui/themeId";
 constexpr auto kCustomThemePath = "ui/customThemePath";
 constexpr auto kWindowGeometry = "ui/window/geometry";
@@ -413,6 +415,31 @@ bool AppSettings::autoResumeTransferAfterReconnect() const
 void AppSettings::setAutoResumeTransferAfterReconnect(bool enabled)
 {
     setBoolValue(QLatin1String(kAutoResumeTransfer), enabled);
+}
+
+QString AppSettings::uiFontMode() const
+{
+    return stringValue(QLatin1String(kUiFontMode), QStringLiteral("system"));
+}
+
+void AppSettings::setUiFontMode(const QString &mode)
+{
+    setStringValue(QLatin1String(kUiFontMode), mode);
+}
+
+QFont AppSettings::uiFont() const
+{
+    QFont font;
+    const QString stored = stringValue(QLatin1String(kUiFont), QString());
+    if (!stored.isEmpty()) {
+        font.fromString(stored);
+    }
+    return font;
+}
+
+void AppSettings::setUiFont(const QFont &font)
+{
+    setStringValue(QLatin1String(kUiFont), font.toString());
 }
 
 QString AppSettings::themeId() const

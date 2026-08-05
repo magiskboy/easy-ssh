@@ -1309,6 +1309,7 @@ void MainWindow::openLogFile()
 void MainWindow::applyAppSettings()
 {
     ThemeManager::applyFromSettings();
+    ThemeManager::applyUiFontFromSettings();
     if (m_sessionTabs) {
         m_sessionTabs->applySettingsToAllSessions();
     }

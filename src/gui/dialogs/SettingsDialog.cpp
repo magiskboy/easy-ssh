@@ -5,6 +5,7 @@
 #include "SettingsDialog.h"
 
 #include "core/settings/AppSettings.h"
+#include "gui/dialogs/CustomPaletteDialog.h"
 #include "gui/dialogs/ModelessDialog.h"
 #include "gui/theme/ThemeManager.h"
 #include "gui/widgets/CategoryDialogShell.h"
@@ -30,6 +31,8 @@
 #include <QVBoxLayout>
 
 #include <qtermwidget.h>
+
+#include <optional>
 
 SettingsDialog::SettingsDialog(QWidget *parent, const QString &initialCategoryId) : QDialog(parent)
 {
@@ -83,44 +86,69 @@ QWidget *SettingsDialog::createGeneralPage()
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
 
-    auto *themeGroup = new QGroupBox(tr("Theme"), page);
-    auto *themeForm = new QFormLayout(themeGroup);
+    auto *appearanceGroup = new QGroupBox(tr("Appearance"), page);
+    auto *appearanceForm = new QFormLayout(appearanceGroup);
 
-    m_themeCombo = new QComboBox(themeGroup);
-    m_themeCombo->addItem(tr("System"), QString::fromLatin1(ThemeManager::kSystemThemeId));
-    const QStringList themes = ThemeManager::availableThemes();
-    for (const QString &id : themes) {
-        m_themeCombo->addItem(ThemeManager::displayName(id), id);
-    }
-    m_themeCombo->addItem(tr("Custom…"), QString::fromLatin1(ThemeManager::kCustomThemeId));
-    if (themes.isEmpty()) {
-        m_themeCombo->setToolTip(
-            tr("Bundled themes were not found. Rebuild/install Easy SSH so "
-               "share/easy-ssh/themes is available, or choose a custom JSON file."));
-    }
-    connect(m_themeCombo,
+    m_uiFontModeCombo = new QComboBox(appearanceGroup);
+    m_uiFontModeCombo->addItem(tr("System"), QString::fromLatin1(ThemeManager::kSystemFontMode));
+    m_uiFontModeCombo->addItem(tr("Custom…"), QString::fromLatin1(ThemeManager::kCustomFontMode));
+    connect(m_uiFontModeCombo,
             &QComboBox::currentIndexChanged,
             this,
-            &SettingsDialog::onThemeSelectionChanged);
-    themeForm->addRow(tr("Theme"), m_themeCombo);
+            &SettingsDialog::onUiFontModeChanged);
+    appearanceForm->addRow(tr("Font"), m_uiFontModeCombo);
 
-    auto *customRow = new QWidget(themeGroup);
-    auto *customLayout = new QHBoxLayout(customRow);
-    customLayout->setContentsMargins(0, 0, 0, 0);
-    m_customThemePath = new QLineEdit(customRow);
-    m_customThemePath->setPlaceholderText(tr("Path to theme .json file"));
-    m_browseThemeButton = new QPushButton(tr("Browse…"), customRow);
-    connect(m_browseThemeButton, &QPushButton::clicked, this, &SettingsDialog::browseCustomTheme);
-    customLayout->addWidget(m_customThemePath, 1);
-    customLayout->addWidget(m_browseThemeButton);
-    themeForm->addRow(tr("Custom file"), customRow);
+    m_uiFontCustomRow = new QWidget(appearanceGroup);
+    auto *uiFontRowLayout = new QHBoxLayout(m_uiFontCustomRow);
+    uiFontRowLayout->setContentsMargins(0, 0, 0, 0);
+    m_uiFontCombo = new QFontComboBox(m_uiFontCustomRow);
+    m_uiFontSize = new QSpinBox(m_uiFontCustomRow);
+    m_uiFontSize->setRange(6, 48);
+    m_uiFontSize->setSuffix(tr(" pt"));
+    uiFontRowLayout->addWidget(m_uiFontCombo, 1);
+    uiFontRowLayout->addWidget(m_uiFontSize);
+    appearanceForm->addRow(QString(), m_uiFontCustomRow);
 
-    auto *hint =
-        new QLabel(tr("Themes use QPalette color roles (Fusion). Custom files must match the "
-                      "qt-themes JSON format."),
-                   themeGroup);
+    m_paletteCombo = new QComboBox(appearanceGroup);
+    m_paletteCombo->addItem(tr("System"), QString::fromLatin1(ThemeManager::kSystemThemeId));
+    const QStringList themes = ThemeManager::availableThemes();
+    for (const QString &id : themes) {
+        m_paletteCombo->addItem(ThemeManager::displayName(id), id);
+    }
+    m_paletteCombo->addItem(tr("Custom…"), QString::fromLatin1(ThemeManager::kCustomThemeId));
+    if (themes.isEmpty()) {
+        m_paletteCombo->setToolTip(
+            tr("Bundled palettes were not found. Rebuild/install Easy SSH so "
+               "share/easy-ssh/themes is available, or use Customize… to create one."));
+    }
+    connect(m_paletteCombo,
+            &QComboBox::currentIndexChanged,
+            this,
+            &SettingsDialog::onPaletteSelectionChanged);
+
+    auto *paletteRow = new QWidget(appearanceGroup);
+    auto *paletteRowLayout = new QHBoxLayout(paletteRow);
+    paletteRowLayout->setContentsMargins(0, 0, 0, 0);
+    paletteRowLayout->addWidget(m_paletteCombo, 1);
+    m_customizePaletteButton = new QPushButton(tr("Customize…"), paletteRow);
+    connect(
+        m_customizePaletteButton, &QPushButton::clicked, this, &SettingsDialog::customizePalette);
+    paletteRowLayout->addWidget(m_customizePaletteButton);
+    appearanceForm->addRow(tr("Palette"), paletteRow);
+
+    m_styleCombo = new QComboBox(appearanceGroup);
+    m_styleCombo->addItem(tr("Apple HIG"));
+    m_styleCombo->addItem(tr("Fluent"));
+    m_styleCombo->addItem(tr("Material 3"));
+    m_styleCombo->setEnabled(false);
+    m_styleCombo->setToolTip(tr("Widget styles will be available in a later release."));
+    appearanceForm->addRow(tr("Style"), m_styleCombo);
+
+    auto *hint = new QLabel(tr("Font applies to the application UI only (not the terminal). "
+                               "Palette colors use QPalette roles from qt-themes tokens."),
+                            appearanceGroup);
     hint->setWordWrap(true);
-    themeForm->addRow(hint);
+    appearanceForm->addRow(hint);
 
     auto *sessionGroup = new QGroupBox(tr("Session"), page);
     auto *sessionLayout = new QVBoxLayout(sessionGroup);
@@ -179,12 +207,13 @@ QWidget *SettingsDialog::createGeneralPage()
         new QCheckBox(tr("Auto-resume interrupted transfer after reconnect"), transferGroup);
     transferForm->addRow(m_autoResumeTransfer);
 
-    layout->addWidget(themeGroup);
+    layout->addWidget(appearanceGroup);
     layout->addWidget(sessionGroup);
     layout->addWidget(windowGroup);
     layout->addWidget(transferGroup);
     layout->addStretch(1);
-    updateCustomThemeControls();
+    updateUiFontControls();
+    updatePaletteControls();
     return page;
 }
 
@@ -339,9 +368,9 @@ void SettingsDialog::loadFromSettings()
     m_showHidden->setChecked(s.showHiddenFiles());
     m_downloadDir->setText(s.defaultDownloadDir());
 
-    const QFont font = s.terminalFont();
-    m_fontCombo->setCurrentFont(font);
-    m_fontSize->setValue(font.pointSize() > 0 ? font.pointSize() : 10);
+    const QFont terminalFont = s.terminalFont();
+    m_fontCombo->setCurrentFont(terminalFont);
+    m_fontSize->setValue(terminalFont.pointSize() > 0 ? terminalFont.pointSize() : 10);
 
     const int schemeIndex = m_colorScheme->findText(s.colorScheme());
     if (schemeIndex >= 0) {
@@ -367,26 +396,37 @@ void SettingsDialog::loadFromSettings()
     m_stallTimeout->setValue(s.transferStallTimeoutSec());
     m_autoResumeTransfer->setChecked(s.autoResumeTransferAfterReconnect());
 
+    const int fontModeIndex = m_uiFontModeCombo->findData(s.uiFontMode());
+    m_uiFontModeCombo->setCurrentIndex(fontModeIndex >= 0 ? fontModeIndex : 0);
+    const QFont uiFont = s.uiFont();
+    if (!uiFont.family().isEmpty()) {
+        m_uiFontCombo->setCurrentFont(uiFont);
+    }
+    m_uiFontSize->setValue(uiFont.pointSize() > 0 ? uiFont.pointSize() : 10);
+    updateUiFontControls();
+
     const QString themeId = s.themeId();
-    int themeIndex = m_themeCombo->findData(themeId);
+    m_paletteSeedThemeId = themeId;
+    int themeIndex = m_paletteCombo->findData(themeId);
     if (themeIndex < 0) {
         if (themeId == QLatin1String(ThemeManager::kCustomThemeId) ||
-            !s.customThemePath().isEmpty()) {
-            themeIndex = m_themeCombo->findData(QString::fromLatin1(ThemeManager::kCustomThemeId));
+            !s.customThemePath().isEmpty() || ThemeManager::loadCustomPalette()) {
+            themeIndex =
+                m_paletteCombo->findData(QString::fromLatin1(ThemeManager::kCustomThemeId));
         } else if (!themeId.isEmpty() && themeId != QLatin1String(ThemeManager::kSystemThemeId)) {
             // Saved bundled theme missing from catalog — keep it selectable.
-            m_themeCombo->insertItem(
-                m_themeCombo->count() - 1, ThemeManager::displayName(themeId), themeId);
-            themeIndex = m_themeCombo->findData(themeId);
+            m_paletteCombo->insertItem(
+                m_paletteCombo->count() - 1, ThemeManager::displayName(themeId), themeId);
+            themeIndex = m_paletteCombo->findData(themeId);
         } else {
-            themeIndex = m_themeCombo->findData(QString::fromLatin1(ThemeManager::kSystemThemeId));
+            themeIndex =
+                m_paletteCombo->findData(QString::fromLatin1(ThemeManager::kSystemThemeId));
         }
     }
     if (themeIndex >= 0) {
-        m_themeCombo->setCurrentIndex(themeIndex);
+        m_paletteCombo->setCurrentIndex(themeIndex);
     }
-    m_customThemePath->setText(s.customThemePath());
-    updateCustomThemeControls();
+    updatePaletteControls();
 
     loadShortcutsFromSettings();
 }
@@ -401,10 +441,10 @@ void SettingsDialog::saveToSettings()
     s.setShowHiddenFiles(m_showHidden->isChecked());
     s.setDefaultDownloadDir(m_downloadDir->text().trimmed());
 
-    QFont font = m_fontCombo->currentFont();
-    font.setPointSize(m_fontSize->value());
-    font.setStyleHint(QFont::TypeWriter);
-    s.setTerminalFont(font);
+    QFont terminalFont = m_fontCombo->currentFont();
+    terminalFont.setPointSize(m_fontSize->value());
+    terminalFont.setStyleHint(QFont::TypeWriter);
+    s.setTerminalFont(terminalFont);
     if (m_colorScheme->isEnabled()) {
         s.setColorScheme(m_colorScheme->currentText());
     }
@@ -423,16 +463,23 @@ void SettingsDialog::saveToSettings()
     s.setTransferStallTimeoutSec(m_stallTimeout->value());
     s.setAutoResumeTransferAfterReconnect(m_autoResumeTransfer->isChecked());
 
-    const QString themeId = m_themeCombo->currentData().toString();
+    const QString fontMode = m_uiFontModeCombo->currentData().toString();
+    s.setUiFontMode(fontMode);
+    if (fontMode == QLatin1String(ThemeManager::kCustomFontMode)) {
+        QFont uiFont = m_uiFontCombo->currentFont();
+        uiFont.setPointSize(m_uiFontSize->value());
+        s.setUiFont(uiFont);
+    }
+
+    const QString themeId = m_paletteCombo->currentData().toString();
     s.setThemeId(themeId);
-    s.setCustomThemePath(m_customThemePath->text().trimmed());
 
     if (themeId == QLatin1String(ThemeManager::kCustomThemeId)) {
-        const QString path = m_customThemePath->text().trimmed();
-        if (path.isEmpty() || !ThemeManager::loadThemeFile(path)) {
+        if (!ThemeManager::loadCustomPalette() &&
+            !ThemeManager::loadThemeFile(s.customThemePath().trimmed())) {
             QMessageBox::warning(this,
-                                 tr("Custom theme"),
-                                 tr("Could not load the custom theme file. "
+                                 tr("Custom palette"),
+                                 tr("No custom palette is saved yet. Use Customize… to create one. "
                                     "The application will fall back to the system palette."));
         }
     }
@@ -512,35 +559,85 @@ void SettingsDialog::clearDownloadDir()
     m_downloadDir->clear();
 }
 
-void SettingsDialog::browseCustomTheme()
+void SettingsDialog::onUiFontModeChanged()
 {
-    const QString path = QFileDialog::getOpenFileName(this,
-                                                      tr("Select Theme File"),
-                                                      m_customThemePath->text(),
-                                                      tr("Theme JSON (*.json);;All Files (*)"));
-    if (!path.isEmpty()) {
-        m_customThemePath->setText(path);
-        const int customIndex =
-            m_themeCombo->findData(QString::fromLatin1(ThemeManager::kCustomThemeId));
-        if (customIndex >= 0) {
-            m_themeCombo->setCurrentIndex(customIndex);
-        }
-        updateCustomThemeControls();
+    updateUiFontControls();
+}
+
+void SettingsDialog::onPaletteSelectionChanged()
+{
+    const QString id = m_paletteCombo->currentData().toString();
+    if (id != QLatin1String(ThemeManager::kCustomThemeId) &&
+        id != QLatin1String(ThemeManager::kSystemThemeId)) {
+        m_paletteSeedThemeId = id;
     }
+    updatePaletteControls();
 }
 
-void SettingsDialog::onThemeSelectionChanged()
+void SettingsDialog::customizePalette()
 {
-    updateCustomThemeControls();
+    const QString currentId = m_paletteCombo->currentData().toString();
+    std::optional<Theme> seed;
+
+    if (currentId == QLatin1String(ThemeManager::kCustomThemeId)) {
+        seed = ThemeManager::resolveCustomPaletteSeed(m_paletteSeedThemeId);
+    } else if (currentId != QLatin1String(ThemeManager::kSystemThemeId)) {
+        seed = ThemeManager::loadTheme(currentId);
+    } else if (!m_paletteSeedThemeId.isEmpty() &&
+               m_paletteSeedThemeId != QLatin1String(ThemeManager::kCustomThemeId) &&
+               m_paletteSeedThemeId != QLatin1String(ThemeManager::kSystemThemeId)) {
+        seed = ThemeManager::loadTheme(m_paletteSeedThemeId);
+    }
+
+    if (!seed) {
+        const QStringList ids = ThemeManager::availableThemes();
+        if (!ids.isEmpty()) {
+            seed = ThemeManager::loadTheme(ids.first());
+        }
+    }
+
+    if (!seed) {
+        QMessageBox::warning(this,
+                             tr("Customize Palette"),
+                             tr("No palette template is available to start from. "
+                                "Rebuild/install Easy SSH so share/easy-ssh/themes is available."));
+        return;
+    }
+
+    CustomPaletteDialog dialog(*seed, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    QString error;
+    if (!ThemeManager::saveCustomPalette(dialog.theme(), &error)) {
+        QMessageBox::warning(
+            this, tr("Customize Palette"), tr("Could not save the custom palette:\n%1").arg(error));
+        return;
+    }
+
+    const int customIndex =
+        m_paletteCombo->findData(QString::fromLatin1(ThemeManager::kCustomThemeId));
+    if (customIndex >= 0) {
+        m_paletteCombo->setCurrentIndex(customIndex);
+    }
+    updatePaletteControls();
 }
 
-void SettingsDialog::updateCustomThemeControls()
+void SettingsDialog::updateUiFontControls()
 {
-    if (!m_themeCombo || !m_customThemePath || !m_browseThemeButton) {
+    if (!m_uiFontModeCombo || !m_uiFontCustomRow) {
         return;
     }
     const bool custom =
-        m_themeCombo->currentData().toString() == QLatin1String(ThemeManager::kCustomThemeId);
-    m_customThemePath->setEnabled(custom);
-    m_browseThemeButton->setEnabled(custom);
+        m_uiFontModeCombo->currentData().toString() == QLatin1String(ThemeManager::kCustomFontMode);
+    m_uiFontCustomRow->setVisible(custom);
+}
+
+void SettingsDialog::updatePaletteControls()
+{
+    if (!m_customizePaletteButton) {
+        return;
+    }
+    m_customizePaletteButton->setEnabled(true);
 }

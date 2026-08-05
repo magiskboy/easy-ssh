@@ -19,6 +19,7 @@ class QLineEdit;
 class QPushButton;
 class QSpinBox;
 class QTreeWidget;
+class QWidget;
 
 class SettingsDialog final : public QDialog
 {
@@ -34,8 +35,9 @@ private slots:
     void accept() override;
     void browseDownloadDir();
     void clearDownloadDir();
-    void browseCustomTheme();
-    void onThemeSelectionChanged();
+    void onUiFontModeChanged();
+    void onPaletteSelectionChanged();
+    void customizePalette();
     void resetShortcutsDefaults();
 
 private:
@@ -47,7 +49,8 @@ private:
     void saveToSettings();
     void loadShortcutsFromSettings();
     void saveShortcutsToSettings();
-    void updateCustomThemeControls();
+    void updateUiFontControls();
+    void updatePaletteControls();
 
     CategoryDialogShell *m_shell = nullptr;
 
@@ -58,10 +61,16 @@ private:
     QCheckBox *m_showHidden = nullptr;
     QLineEdit *m_downloadDir = nullptr;
 
-    // General — Theme
-    QComboBox *m_themeCombo = nullptr;
-    QLineEdit *m_customThemePath = nullptr;
-    QPushButton *m_browseThemeButton = nullptr;
+    // General — Appearance
+    QComboBox *m_uiFontModeCombo = nullptr;
+    QWidget *m_uiFontCustomRow = nullptr;
+    QFontComboBox *m_uiFontCombo = nullptr;
+    QSpinBox *m_uiFontSize = nullptr;
+    QComboBox *m_paletteCombo = nullptr;
+    QPushButton *m_customizePaletteButton = nullptr;
+    QComboBox *m_styleCombo = nullptr;
+    /// Theme id to seed Customize when no custom palette exists yet.
+    QString m_paletteSeedThemeId;
 
     // General — Session / Transfers
     QCheckBox *m_autoReconnect = nullptr;

@@ -106,11 +106,20 @@ public:
     void setAutoResumeTransferAfterReconnect(bool enabled);
 
     // --- Appearance / theme ---
+    /// "system" (default) or "custom".
+    QString uiFontMode() const;
+    void setUiFontMode(const QString &mode);
+
+    /// UI font when uiFontMode is "custom" (family + point size).
+    QFont uiFont() const;
+    void setUiFont(const QFont &font);
+
     /// "system", a bundled theme id (e.g. "nord"), or "custom".
     QString themeId() const;
     void setThemeId(const QString &id);
 
-    /// Absolute path to a qt-themes JSON file when themeId is "custom".
+    /// Legacy absolute path to a qt-themes JSON file when themeId is "custom".
+    /// Prefer the in-app custom palette (ThemeManager::customPalettePath()).
     QString customThemePath() const;
     void setCustomThemePath(const QString &path);
 

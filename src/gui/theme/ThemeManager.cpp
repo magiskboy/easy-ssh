@@ -15,7 +15,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontDatabase>
 #include <QPalette>
+#include <QStandardPaths>
 
 namespace
 {
@@ -164,6 +167,55 @@ std::optional<Theme> ThemeManager::loadThemeFile(const QString &path)
     return theme;
 }
 
+QString ThemeManager::customPalettePath()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    return QDir(dir).filePath(QStringLiteral("custom-palette.json"));
+}
+
+std::optional<Theme> ThemeManager::loadCustomPalette()
+{
+    const QString path = customPalettePath();
+    if (!QFileInfo::exists(path)) {
+        return std::nullopt;
+    }
+    return loadThemeFile(path);
+}
+
+bool ThemeManager::saveCustomPalette(const Theme &theme, QString *error)
+{
+    return Theme::saveToJsonFile(customPalettePath(), theme, error);
+}
+
+std::optional<Theme> ThemeManager::resolveCustomPaletteSeed(const QString &seedThemeId)
+{
+    if (const auto custom = loadCustomPalette()) {
+        return custom;
+    }
+
+    const QString legacyPath = AppSettings::instance().customThemePath().trimmed();
+    if (!legacyPath.isEmpty()) {
+        if (const auto legacy = loadThemeFile(legacyPath)) {
+            return legacy;
+        }
+    }
+
+    if (!seedThemeId.isEmpty() && seedThemeId != QLatin1String(kSystemThemeId) &&
+        seedThemeId != QLatin1String(kCustomThemeId)) {
+        if (const auto seeded = loadTheme(seedThemeId)) {
+            return seeded;
+        }
+    }
+
+    const QStringList ids = availableThemes();
+    for (const QString &id : ids) {
+        if (const auto theme = loadTheme(id)) {
+            return theme;
+        }
+    }
+    return std::nullopt;
+}
+
 void ThemeManager::applyPalette(const Theme &theme)
 {
     QPalette palette;
@@ -187,18 +239,22 @@ void ThemeManager::applyFromSettings()
     }
 
     if (themeId == QLatin1String(kCustomThemeId)) {
-        const QString path = settings.customThemePath().trimmed();
-        if (path.isEmpty()) {
-            qCWarning(lcGui) << "Custom theme selected but path is empty; using system palette";
-            applySystemPalette();
+        if (const auto custom = loadCustomPalette()) {
+            applyPalette(*custom);
             return;
         }
-        if (const auto theme = loadThemeFile(path)) {
-            applyPalette(*theme);
-        } else {
+
+        const QString path = settings.customThemePath().trimmed();
+        if (!path.isEmpty()) {
+            if (const auto theme = loadThemeFile(path)) {
+                applyPalette(*theme);
+                return;
+            }
             qCWarning(lcGui) << "Falling back to system palette after custom theme load failure";
-            applySystemPalette();
+        } else {
+            qCWarning(lcGui) << "Custom palette selected but none saved; using system palette";
         }
+        applySystemPalette();
         return;
     }
 
@@ -208,6 +264,22 @@ void ThemeManager::applyFromSettings()
         qCWarning(lcGui) << "Falling back to system palette; unknown theme" << themeId;
         applySystemPalette();
     }
+}
+
+void ThemeManager::applyUiFontFromSettings()
+{
+    const auto &settings = AppSettings::instance();
+    if (settings.uiFontMode() == QLatin1String(kCustomFontMode)) {
+        QFont font = settings.uiFont();
+        if (font.pointSize() <= 0 && font.pixelSize() <= 0) {
+            const QFont systemFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+            font.setPointSize(systemFont.pointSize() > 0 ? systemFont.pointSize() : 10);
+        }
+        QApplication::setFont(font);
+        return;
+    }
+
+    QApplication::setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont));
 }
 
 QString ThemeManager::displayName(const QString &id)

@@ -43,4 +43,7 @@ struct Theme
 
     /// Load a qt-themes JSON file. Returns false on I/O or schema errors.
     static bool loadFromJsonFile(const QString &path, Theme *out, QString *error = nullptr);
+
+    /// Write a qt-themes JSON file. Returns false on I/O errors.
+    static bool saveToJsonFile(const QString &path, const Theme &theme, QString *error = nullptr);
 };

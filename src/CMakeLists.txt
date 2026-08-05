@@ -191,6 +191,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/dialogs/AboutDialog.h
     gui/dialogs/CommandPaletteDialog.cpp
     gui/dialogs/CommandPaletteDialog.h
+    gui/dialogs/CustomPaletteDialog.cpp
+    gui/dialogs/CustomPaletteDialog.h
     gui/dialogs/SettingsDialog.cpp
     gui/dialogs/SettingsDialog.h
     gui/theme/Theme.cpp
