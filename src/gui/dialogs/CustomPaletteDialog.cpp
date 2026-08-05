@@ -9,21 +9,10 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QGroupBox>
+#include <QPalette>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QVBoxLayout>
-
-namespace
-{
-
-QString swatchStyle(const QColor &color)
-{
-    return QStringLiteral("QPushButton { background-color: %1; border: 1px solid palette(mid); "
-                          "min-width: 72px; min-height: 22px; }")
-        .arg(color.name(QColor::HexRgb));
-}
-
-} // namespace
 
 CustomPaletteDialog::CustomPaletteDialog(const Theme &initial, QWidget *parent)
     : QDialog(parent), m_theme(initial)
@@ -100,6 +89,9 @@ void CustomPaletteDialog::addColorRow(QFormLayout *form, const QString &label, Q
 {
     auto *button = new QPushButton(form->parentWidget());
     button->setCursor(Qt::PointingHandCursor);
+    button->setFlat(true);
+    button->setAutoFillBackground(true);
+    button->setMinimumSize(72, 22);
     button->setToolTip((m_theme.*field).name(QColor::HexRgb));
     updateSwatch(button, m_theme.*field);
     connect(
@@ -109,7 +101,10 @@ void CustomPaletteDialog::addColorRow(QFormLayout *form, const QString &label, Q
 
 void CustomPaletteDialog::updateSwatch(QPushButton *button, const QColor &color)
 {
-    button->setStyleSheet(swatchStyle(color));
+    QPalette buttonPalette = button->palette();
+    buttonPalette.setColor(QPalette::Button, color);
+    buttonPalette.setColor(QPalette::ButtonText, color.lightness() < 128 ? Qt::white : Qt::black);
+    button->setPalette(buttonPalette);
     button->setText(color.name(QColor::HexRgb));
     button->setToolTip(color.name(QColor::HexRgb));
 }

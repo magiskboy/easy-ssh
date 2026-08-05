@@ -2,25 +2,26 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "SystemInfoDialog.h"
+#include "SystemInfoWidget.h"
 
 #include "core/explorer/systeminfo/SystemInfoParser.h"
 #include "core/explorer/systeminfo/SystemInfoSource.h"
 #include "core/session/Session.h"
-#include "gui/dialogs/ModelessDialog.h"
 #include "gui/widgets/UiMetrics.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QClipboard>
+#include <QColor>
 #include <QCoreApplication>
-#include <QDialogButtonBox>
 #include <QFont>
 #include <QFormLayout>
 #include <QFrame>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QMenu>
+#include <QPalette>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
@@ -36,12 +37,15 @@ QFrame *makeGroupFrame(const QString &title, QWidget *parent)
 {
     auto *group = new QFrame(parent);
     group->setObjectName(QStringLiteral("systemInfoGroup"));
-    group->setFrameShape(QFrame::NoFrame);
-    group->setStyleSheet(QStringLiteral("QFrame#systemInfoGroup {"
-                                        "  background-color: palette(alternate-base);"
-                                        "  border: 1px solid palette(mid);"
-                                        "  border-radius: 8px;"
-                                        "}"));
+    group->setFrameShape(QFrame::StyledPanel);
+    group->setFrameShadow(QFrame::Plain);
+    group->setAutoFillBackground(true);
+    {
+        QPalette groupPalette = group->palette();
+        groupPalette.setColor(QPalette::Window, groupPalette.color(QPalette::AlternateBase));
+        group->setPalette(groupPalette);
+        group->setBackgroundRole(QPalette::Window);
+    }
 
     auto *layout = new QVBoxLayout(group);
     layout->setContentsMargins(UiMetrics::relatedSpacing,
@@ -82,16 +86,9 @@ quint64 memUsedKb(const MemInfo &mem)
 }
 } // namespace
 
-SystemInfoDialog::SystemInfoDialog(Session *session, QWidget *parent)
-    : QDialog(parent), m_session(session)
+SystemInfoWidget::SystemInfoWidget(Session *session, QWidget *parent)
+    : QWidget(parent), m_session(session)
 {
-    configureModelessDialog(this, UiMetrics::dialogMinWidth);
-    const QString sessionName = m_session ? m_session->displayName() : QString();
-    setWindowTitle(sessionName.isEmpty() ? tr("System Info")
-                                         : tr("System Info — %1").arg(sessionName));
-    setMinimumHeight(480);
-    resize(760, 580);
-
     buildUi();
 
     if (!m_session || m_session->state() != SessionState::Connected) {
@@ -102,26 +99,26 @@ SystemInfoDialog::SystemInfoDialog(Session *session, QWidget *parent)
     }
 
     m_source = new SystemInfoSource(m_session, this);
-    connect(m_source, &SystemInfoSource::snapshotReady, this, &SystemInfoDialog::onSnapshotReady);
+    connect(m_source, &SystemInfoSource::snapshotReady, this, &SystemInfoWidget::onSnapshotReady);
     connect(m_source,
             &SystemInfoSource::capabilityChanged,
             this,
-            &SystemInfoDialog::onCapabilityChanged);
-    connect(m_source, &SystemInfoSource::failed, this, &SystemInfoDialog::onSourceFailed);
-    connect(m_session, &Session::stateChanged, this, &SystemInfoDialog::onSessionStateChanged);
+            &SystemInfoWidget::onCapabilityChanged);
+    connect(m_source, &SystemInfoSource::failed, this, &SystemInfoWidget::onSourceFailed);
+    connect(m_session, &Session::stateChanged, this, &SystemInfoWidget::onSessionStateChanged);
 
     setStatus(tr("Checking…"), false);
     m_source->start();
 }
 
-SystemInfoDialog::~SystemInfoDialog()
+SystemInfoWidget::~SystemInfoWidget()
 {
     if (m_source) {
         m_source->stop();
     }
 }
 
-void SystemInfoDialog::buildUi()
+void SystemInfoWidget::buildUi()
 {
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(UiMetrics::sectionSpacing,
@@ -145,20 +142,20 @@ void SystemInfoDialog::buildUi()
     m_tabs->addTab(buildVirtPage(), tr("Virtualization"));
     root->addWidget(m_tabs, 1);
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    m_copyButton = buttons->addButton(tr("Copy"), QDialogButtonBox::ActionRole);
+    auto *toolbar = new QHBoxLayout();
+    toolbar->setContentsMargins(0, 0, 0, 0);
+    toolbar->addStretch(1);
+    m_copyButton = new QPushButton(tr("Copy"), this);
     auto *copyMenu = new QMenu(m_copyButton);
-    copyMenu->addAction(tr("Copy as text"), this, &SystemInfoDialog::copyAsText);
-    copyMenu->addAction(tr("Copy as JSON"), this, &SystemInfoDialog::copyAsJson);
+    copyMenu->addAction(tr("Copy as text"), this, &SystemInfoWidget::copyAsText);
+    copyMenu->addAction(tr("Copy as JSON"), this, &SystemInfoWidget::copyAsJson);
     m_copyButton->setMenu(copyMenu);
     updateCopyEnabled();
-
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    root->addWidget(buttons);
+    toolbar->addWidget(m_copyButton);
+    root->addLayout(toolbar);
 }
 
-QWidget *SystemInfoDialog::buildOverviewPage()
+QWidget *SystemInfoWidget::buildOverviewPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -206,7 +203,7 @@ QWidget *SystemInfoDialog::buildOverviewPage()
     return page;
 }
 
-QWidget *SystemInfoDialog::buildCpuMemPage()
+QWidget *SystemInfoWidget::buildCpuMemPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -264,7 +261,7 @@ QWidget *SystemInfoDialog::buildCpuMemPage()
     return page;
 }
 
-QWidget *SystemInfoDialog::buildDiskPage()
+QWidget *SystemInfoWidget::buildDiskPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -294,7 +291,7 @@ QWidget *SystemInfoDialog::buildDiskPage()
     return page;
 }
 
-QWidget *SystemInfoDialog::buildNetworkPage()
+QWidget *SystemInfoWidget::buildNetworkPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -317,7 +314,7 @@ QWidget *SystemInfoDialog::buildNetworkPage()
     return page;
 }
 
-QWidget *SystemInfoDialog::buildGpuPage()
+QWidget *SystemInfoWidget::buildGpuPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -369,7 +366,7 @@ QWidget *SystemInfoDialog::buildGpuPage()
     return page;
 }
 
-QWidget *SystemInfoDialog::buildVirtPage()
+QWidget *SystemInfoWidget::buildVirtPage()
 {
     auto *page = new QWidget(this);
     auto *outer = new QVBoxLayout(page);
@@ -450,7 +447,7 @@ QWidget *SystemInfoDialog::buildVirtPage()
     return page;
 }
 
-void SystemInfoDialog::configureTable(QTableWidget *table)
+void SystemInfoWidget::configureTable(QTableWidget *table)
 {
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -462,54 +459,58 @@ void SystemInfoDialog::configureTable(QTableWidget *table)
     table->horizontalHeader()->setStretchLastSection(true);
 }
 
-void SystemInfoDialog::setLabel(QLabel *label, const QString &text)
+void SystemInfoWidget::setLabel(QLabel *label, const QString &text)
 {
     if (label) {
         label->setText(text.isEmpty() ? QStringLiteral("—") : text);
     }
 }
 
-void SystemInfoDialog::setStatus(const QString &text, bool errorStyle)
+void SystemInfoWidget::setStatus(const QString &text, bool errorStyle)
 {
     if (!m_statusLabel) {
         return;
     }
     m_statusLabel->setText(text);
+    QPalette labelPalette = m_statusLabel->palette();
     if (errorStyle) {
         const bool dark = palette().color(QPalette::Window).lightness() < 128;
-        m_statusLabel->setStyleSheet(
-            QStringLiteral("color: %1;")
-                .arg(dark ? QStringLiteral("#f0a0a0") : QStringLiteral("#b00020")));
+        labelPalette.setColor(QPalette::WindowText,
+                              dark ? QColor(QStringLiteral("#f0a0a0"))
+                                   : QColor(QStringLiteral("#b00020")));
     } else {
-        m_statusLabel->setStyleSheet(QString());
+        labelPalette.setColor(QPalette::WindowText, palette().color(QPalette::WindowText));
     }
+    m_statusLabel->setPalette(labelPalette);
     m_statusLabel->setVisible(!text.isEmpty());
 }
 
-void SystemInfoDialog::clearStatus()
+void SystemInfoWidget::clearStatus()
 {
     if (!m_statusLabel) {
         return;
     }
     m_statusLabel->clear();
-    m_statusLabel->setStyleSheet(QString());
+    QPalette labelPalette = m_statusLabel->palette();
+    labelPalette.setColor(QPalette::WindowText, palette().color(QPalette::WindowText));
+    m_statusLabel->setPalette(labelPalette);
     m_statusLabel->hide();
 }
 
-void SystemInfoDialog::updateCopyEnabled()
+void SystemInfoWidget::updateCopyEnabled()
 {
     if (m_copyButton) {
         m_copyButton->setEnabled(m_lastSnapshot.has_value());
     }
 }
 
-QString SystemInfoDialog::yesNo(bool value)
+QString SystemInfoWidget::yesNo(bool value)
 {
-    return value ? QCoreApplication::translate("SystemInfoDialog", "Yes")
-                 : QCoreApplication::translate("SystemInfoDialog", "No");
+    return value ? QCoreApplication::translate("SystemInfoWidget", "Yes")
+                 : QCoreApplication::translate("SystemInfoWidget", "No");
 }
 
-void SystemInfoDialog::applySnapshot(const SystemInfo &info)
+void SystemInfoWidget::applySnapshot(const SystemInfo &info)
 {
     setLabel(m_osLabel, info.os.prettyName);
     setLabel(m_kernelLabel, info.os.kernel);
@@ -521,10 +522,6 @@ void SystemInfoDialog::applySnapshot(const SystemInfo &info)
                  .arg(info.load.load1, 0, 'f', 2)
                  .arg(info.load.load5, 0, 'f', 2)
                  .arg(info.load.load15, 0, 'f', 2));
-
-    if (!info.os.hostname.isEmpty()) {
-        setWindowTitle(tr("System Info — %1").arg(info.os.hostname));
-    }
 
     m_tempTable->setRowCount(info.temps.size());
     if (info.temps.isEmpty()) {
@@ -813,7 +810,7 @@ void SystemInfoDialog::applySnapshot(const SystemInfo &info)
     setLabel(m_dmiBiosLabel, bios);
 }
 
-void SystemInfoDialog::onSnapshotReady(const SystemInfo &info)
+void SystemInfoWidget::onSnapshotReady(const SystemInfo &info)
 {
     m_lastSnapshot = info;
     updateCopyEnabled();
@@ -822,7 +819,7 @@ void SystemInfoDialog::onSnapshotReady(const SystemInfo &info)
     applySnapshot(info);
 }
 
-void SystemInfoDialog::onCapabilityChanged(ExplorerCapability capability)
+void SystemInfoWidget::onCapabilityChanged(ExplorerCapability capability)
 {
     if (!m_source) {
         return;
@@ -846,12 +843,12 @@ void SystemInfoDialog::onCapabilityChanged(ExplorerCapability capability)
     }
 }
 
-void SystemInfoDialog::onSourceFailed(const QString &message)
+void SystemInfoWidget::onSourceFailed(const QString &message)
 {
     setStatus(message.isEmpty() ? tr("Failed to load system info.") : message, true);
 }
 
-void SystemInfoDialog::onSessionStateChanged()
+void SystemInfoWidget::onSessionStateChanged()
 {
     if (!m_session || m_session->state() != SessionState::Connected) {
         if (m_source) {
@@ -864,7 +861,7 @@ void SystemInfoDialog::onSessionStateChanged()
     }
 }
 
-void SystemInfoDialog::copyAsText()
+void SystemInfoWidget::copyAsText()
 {
     if (!m_lastSnapshot.has_value()) {
         return;
@@ -874,7 +871,7 @@ void SystemInfoDialog::copyAsText()
     }
 }
 
-void SystemInfoDialog::copyAsJson()
+void SystemInfoWidget::copyAsJson()
 {
     if (!m_lastSnapshot.has_value()) {
         return;

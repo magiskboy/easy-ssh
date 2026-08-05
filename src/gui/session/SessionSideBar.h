@@ -10,7 +10,6 @@
 
 class QLabel;
 class QTabWidget;
-class QToolButton;
 class Session;
 class ShellListWidget;
 
@@ -34,7 +33,6 @@ private:
 
     QTabWidget *m_tabs = nullptr;
     ShellListWidget *m_shellList = nullptr;
-    QToolButton *m_newShellAction = nullptr;
     QWidget *m_fileContainer = nullptr;
     QWidget *m_tunnelContainer = nullptr;
     QLabel *m_placeholder = nullptr;

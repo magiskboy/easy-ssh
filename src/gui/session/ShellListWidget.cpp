@@ -60,22 +60,6 @@ ShellListWidget::ShellListWidget(QWidget *parent) : QWidget(parent)
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
-    m_list->setStyleSheet(QStringLiteral("QListWidget {"
-                                         "  background: transparent;"
-                                         "  border: none;"
-                                         "  outline: none;"
-                                         "  padding: 0;"
-                                         "}"
-                                         "QListWidget::item {"
-                                         "  padding: 2px 8px 2px 20px;"
-                                         "}"
-                                         "QListWidget::item:selected {"
-                                         "  background: palette(highlight);"
-                                         "  color: palette(highlighted-text);"
-                                         "}"
-                                         "QListWidget::item:hover:!selected {"
-                                         "  background: palette(mid);"
-                                         "}"));
     connect(m_list, &QListWidget::itemClicked, this, &ShellListWidget::onItemClicked);
     connect(m_list, &QWidget::customContextMenuRequested, this, &ShellListWidget::onContextMenu);
     root->addWidget(m_list, 1);

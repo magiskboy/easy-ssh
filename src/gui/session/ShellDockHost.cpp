@@ -276,6 +276,11 @@ QList<QUuid> ShellDockHost::pinnedShellIds() const
     return m_docks.keys();
 }
 
+QStringList ShellDockHost::pinnedToolIds() const
+{
+    return m_tools.keys();
+}
+
 QList<QUuid> ShellDockHost::dockedShellIds() const
 {
     QList<QUuid> ids;
@@ -294,6 +299,14 @@ QUuid ShellDockHost::focusedShellId() const
         return {};
     }
     return shellIdForDock(m_manager->focusedDockWidget());
+}
+
+QString ShellDockHost::focusedToolId() const
+{
+    if (!m_manager) {
+        return {};
+    }
+    return toolIdForDock(m_manager->focusedDockWidget());
 }
 
 void ShellDockHost::clearLayout()

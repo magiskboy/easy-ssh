@@ -144,19 +144,13 @@ QWidget *SettingsDialog::createGeneralPage()
     m_styleCombo->setToolTip(tr("Widget styles will be available in a later release."));
     appearanceForm->addRow(tr("Style"), m_styleCombo);
 
-    auto *hint = new QLabel(tr("Font applies to the application UI only (not the terminal). "
-                               "Palette colors use QPalette roles from qt-themes tokens."),
-                            appearanceGroup);
-    hint->setWordWrap(true);
-    appearanceForm->addRow(hint);
-
     auto *sessionGroup = new QGroupBox(tr("Session"), page);
     auto *sessionLayout = new QVBoxLayout(sessionGroup);
     m_autoReconnect = new QCheckBox(tr("Auto reconnect when connection is lost"), sessionGroup);
     sessionLayout->addWidget(m_autoReconnect);
     m_restoreWorkspace = new QCheckBox(tr("Restore previous workspace on launch"), sessionGroup);
     m_restoreWorkspace->setToolTip(
-        tr("Reopen the last open connections and shell dock layout when Easy SSH starts."));
+        tr("Reopen the last open connections, shells, and explorer tabs when Easy SSH starts."));
     sessionLayout->addWidget(m_restoreWorkspace);
 
     auto *windowGroup = new QGroupBox(tr("Window"), page);

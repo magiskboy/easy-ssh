@@ -8,6 +8,7 @@
 
 #include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QUuid>
 #include <QWidget>
 
@@ -52,9 +53,11 @@ public:
     bool isToolPinned(const QString &toolId) const;
 
     QList<QUuid> pinnedShellIds() const;
+    QStringList pinnedToolIds() const;
     /// Pinned shells that are not floating OS windows (smart-layout targets).
     QList<QUuid> dockedShellIds() const;
     QUuid focusedShellId() const;
+    QString focusedToolId() const;
     void clearLayout();
     void setLayoutActive(bool active);
     void setShellTitle(const QUuid &shellId, const QString &title);

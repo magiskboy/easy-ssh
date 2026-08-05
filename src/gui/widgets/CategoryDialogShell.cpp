@@ -37,14 +37,6 @@ CategoryDialogShell::CategoryDialogShell(QWidget *parent) : QWidget(parent)
     m_tree->setSelectionMode(QAbstractItemView::SingleSelection);
     m_tree->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_tree->setAllColumnsShowFocus(true);
-    // Do not style ::item / ::item:selected — partial QSS on QTreeWidget fights platform
-    // styles (Breeze/Adwaita): highlighted-text becomes white while the highlight panel
-    // never fills the row, leaving unreadable selected labels.
-    m_tree->setStyleSheet(QStringLiteral("QTreeWidget {"
-                                         "  border: none;"
-                                         "  outline: none;"
-                                         "  background: palette(base);"
-                                         "}"));
 
     auto *sidebar = new QFrame(this);
     sidebar->setObjectName(QStringLiteral("categorySidebar"));

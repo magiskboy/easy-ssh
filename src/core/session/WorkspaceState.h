@@ -9,6 +9,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QString>
+#include <QStringList>
 #include <QUuid>
 
 struct WorkspaceShellEntry
@@ -21,7 +22,10 @@ struct WorkspaceSessionEntry
 {
     QUuid connectionId;
     QUuid activeShellId;
+    QString activeToolId;
     QList<WorkspaceShellEntry> shells;
+    /// Open explorer/tool dock ids (process, container, service, systeminfo).
+    QStringList tools;
     QByteArray dockState;
 };
 

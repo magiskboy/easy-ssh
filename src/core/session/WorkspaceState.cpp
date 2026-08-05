@@ -40,6 +40,9 @@ QByteArray WorkspaceState::toJson() const
         if (!session.activeShellId.isNull()) {
             obj.insert(QStringLiteral("activeShellId"), uuidToString(session.activeShellId));
         }
+        if (!session.activeToolId.isEmpty()) {
+            obj.insert(QStringLiteral("activeToolId"), session.activeToolId);
+        }
         QJsonArray shellsJson;
         for (const WorkspaceShellEntry &shell : session.shells) {
             if (shell.id.isNull()) {
@@ -53,6 +56,17 @@ QByteArray WorkspaceState::toJson() const
             shellsJson.append(shellObj);
         }
         obj.insert(QStringLiteral("shells"), shellsJson);
+        if (!session.tools.isEmpty()) {
+            QJsonArray toolsJson;
+            for (const QString &toolId : session.tools) {
+                if (!toolId.isEmpty()) {
+                    toolsJson.append(toolId);
+                }
+            }
+            if (!toolsJson.isEmpty()) {
+                obj.insert(QStringLiteral("tools"), toolsJson);
+            }
+        }
         if (!session.dockState.isEmpty()) {
             obj.insert(QStringLiteral("dockState"),
                        QString::fromLatin1(session.dockState.toBase64()));
@@ -103,6 +117,7 @@ WorkspaceState WorkspaceState::fromJson(const QByteArray &json, bool *ok)
         }
         session.activeShellId =
             uuidFromString(obj.value(QStringLiteral("activeShellId")).toString());
+        session.activeToolId = obj.value(QStringLiteral("activeToolId")).toString();
         const QJsonArray shellsJson = obj.value(QStringLiteral("shells")).toArray();
         for (const QJsonValue &shellValue : shellsJson) {
             if (!shellValue.isObject()) {
@@ -116,6 +131,13 @@ WorkspaceState WorkspaceState::fromJson(const QByteArray &json, bool *ok)
             }
             shell.title = shellObj.value(QStringLiteral("title")).toString();
             session.shells.append(shell);
+        }
+        const QJsonArray toolsJson = obj.value(QStringLiteral("tools")).toArray();
+        for (const QJsonValue &toolValue : toolsJson) {
+            const QString toolId = toolValue.toString();
+            if (!toolId.isEmpty() && !session.tools.contains(toolId)) {
+                session.tools.append(toolId);
+            }
         }
         const QString dockB64 = obj.value(QStringLiteral("dockState")).toString();
         if (!dockB64.isEmpty()) {

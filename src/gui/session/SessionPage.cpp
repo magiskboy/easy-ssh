@@ -14,7 +14,7 @@
 #include "gui/explorer/container/ContainerExplorerModule.h"
 #include "gui/explorer/process/ProcessExplorerModule.h"
 #include "gui/explorer/service/ServiceExplorerModule.h"
-#include "gui/explorer/systeminfo/SystemInfoDialog.h"
+#include "gui/explorer/systeminfo/SystemInfoWidget.h"
 #include "gui/terminal/TerminalIoBridge.h"
 
 #include <QAction>
@@ -89,6 +89,11 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
                 m_servicePage->deleteLater();
                 m_servicePage = nullptr;
             }
+        } else if (toolId == QLatin1String("systeminfo")) {
+            if (m_systemInfoPage) {
+                m_systemInfoPage->deleteLater();
+                m_systemInfoPage = nullptr;
+            }
         }
     });
 
@@ -134,7 +139,8 @@ void SessionPage::setLayoutActive(bool active)
 void SessionPage::beginWorkspaceRestore(const WorkspaceSessionEntry &entry)
 {
     m_restoreEntry = entry;
-    m_restoringWorkspace = !entry.shells.isEmpty() || !entry.dockState.isEmpty();
+    m_restoringWorkspace =
+        !entry.shells.isEmpty() || !entry.tools.isEmpty() || !entry.dockState.isEmpty();
 }
 
 WorkspaceSessionEntry SessionPage::captureWorkspaceEntry() const
@@ -155,6 +161,8 @@ WorkspaceSessionEntry SessionPage::captureWorkspaceEntry() const
         entry.shells.append(shellEntry);
     }
     if (m_dockHost) {
+        entry.tools = m_dockHost->pinnedToolIds();
+        entry.activeToolId = m_dockHost->focusedToolId();
         entry.dockState = m_dockHost->saveLayout();
     }
     return entry;
@@ -205,13 +213,11 @@ void SessionPage::onShellsChanged()
     const QList<ShellChannelState> shells = m_session->shells();
     QSet<QUuid> alive;
     QUuid newborn;
-    int visibleShellCount = 0;
     for (const ShellChannelState &shell : shells) {
         alive.insert(shell.id);
         if (shell.auxiliary) {
             continue;
         }
-        ++visibleShellCount;
         if (!previousPaneIds.contains(shell.id)) {
             newborn = shell.id;
         }
@@ -249,21 +255,7 @@ void SessionPage::onShellsChanged()
         onActiveShellChanged(m_session->activeShellId());
     }
 
-    if (m_session->state() == SessionState::Connected && visibleShellCount == 0) {
-        showOverlay(tr("No shells open.\nClick New Shell in the sidebar or Terminal menu."), false);
-        m_reconnectButton->setText(tr("New Shell"));
-        m_reconnectButton->setVisible(true);
-        disconnect(m_reconnectButton, nullptr, this, nullptr);
-        connect(m_reconnectButton, &QPushButton::clicked, this, [this]() {
-            if (m_session) {
-                m_session->newShell();
-            }
-        });
-    } else if (m_session->state() == SessionState::Connected) {
-        disconnect(m_reconnectButton, nullptr, this, nullptr);
-        connect(
-            m_reconnectButton, &QPushButton::clicked, this, &SessionPage::disconnectOrReconnect);
-        m_reconnectButton->setText(tr("Reconnect"));
+    if (m_session->state() == SessionState::Connected) {
         m_overlay->hide();
         m_dockHost->show();
     }
@@ -315,7 +307,12 @@ void SessionPage::continueWorkspaceRestore()
         }
     }
 
-    if (m_restoreEntry.shells.isEmpty()) {
+    // Recreate explorer docks before ADS restoreState so objectNames match.
+    for (const QString &toolId : m_restoreEntry.tools) {
+        openExplorerTool(toolId);
+    }
+
+    if (m_restoreEntry.shells.isEmpty() && m_restoreEntry.tools.isEmpty()) {
         onActiveShellChanged(m_session->activeShellId());
     } else if (!m_restoreEntry.dockState.isEmpty()) {
         if (!m_dockHost->restoreLayout(m_restoreEntry.dockState)) {
@@ -323,11 +320,14 @@ void SessionPage::continueWorkspaceRestore()
         }
     }
 
-    const QUuid focusId = m_restoreEntry.activeShellId.isNull() ? m_session->activeShellId()
-                                                                : m_restoreEntry.activeShellId;
-    if (!focusId.isNull()) {
-        m_session->setActiveShell(focusId);
-        m_dockHost->focusShell(focusId);
+    const QString focusTool = m_restoreEntry.activeToolId;
+    const QUuid focusShell = m_restoreEntry.activeShellId.isNull() ? m_session->activeShellId()
+                                                                   : m_restoreEntry.activeShellId;
+    if (!focusTool.isEmpty() && m_dockHost->isToolPinned(focusTool)) {
+        m_dockHost->focusTool(focusTool);
+    } else if (!focusShell.isNull()) {
+        m_session->setActiveShell(focusShell);
+        m_dockHost->focusShell(focusShell);
     }
 
     m_restoringWorkspace = false;
@@ -794,6 +794,21 @@ void SessionPage::toggleProcessExplorer()
     openProcessExplorer();
 }
 
+void SessionPage::openExplorerTool(const QString &toolId)
+{
+    if (toolId == QLatin1String("process")) {
+        openProcessExplorer();
+    } else if (toolId == QLatin1String("container")) {
+        openContainerExplorer();
+    } else if (toolId == QLatin1String("service")) {
+        openServiceExplorer();
+    } else if (toolId == QLatin1String("systeminfo")) {
+        openSystemInfo();
+    } else if (!toolId.isEmpty()) {
+        qCWarning(lcGui) << "workspace restore skipped unknown explorer tool" << toolId;
+    }
+}
+
 void SessionPage::openProcessExplorer()
 {
     if (!m_dockHost || !m_session) {
@@ -933,9 +948,11 @@ void SessionPage::closeServiceExplorer()
 
 void SessionPage::toggleSystemInfo()
 {
-    if (m_systemInfoDialog) {
-        m_systemInfoDialog->raise();
-        m_systemInfoDialog->activateWindow();
+    if (!m_dockHost || !m_session) {
+        return;
+    }
+    if (m_dockHost->isToolPinned(QStringLiteral("systeminfo"))) {
+        m_dockHost->unpinTool(QStringLiteral("systeminfo"));
         return;
     }
     openSystemInfo();
@@ -943,7 +960,7 @@ void SessionPage::toggleSystemInfo()
 
 void SessionPage::openSystemInfo()
 {
-    if (!m_session) {
+    if (!m_dockHost || !m_session) {
         return;
     }
     if (m_session->state() != SessionState::Connected) {
@@ -951,15 +968,29 @@ void SessionPage::openSystemInfo()
                            ErrorNotifier::Level::Warning);
         return;
     }
-    if (m_systemInfoDialog) {
-        m_systemInfoDialog->raise();
-        m_systemInfoDialog->activateWindow();
+    if (m_dockHost->isToolPinned(QStringLiteral("systeminfo"))) {
+        m_dockHost->focusTool(QStringLiteral("systeminfo"));
         return;
     }
 
-    auto *dialog = new SystemInfoDialog(m_session, this);
-    m_systemInfoDialog = dialog;
-    dialog->show();
-    dialog->raise();
-    dialog->activateWindow();
+    if (!m_systemInfoPage) {
+        m_systemInfoPage = new SystemInfoWidget(m_session, this);
+    }
+
+    m_dockHost->pinTool(QStringLiteral("systeminfo"),
+                        tr("System Info"),
+                        m_systemInfoPage,
+                        /* ads::CenterDockWidgetArea */ 0x10);
+}
+
+void SessionPage::closeSystemInfo()
+{
+    if (m_dockHost && m_dockHost->isToolPinned(QStringLiteral("systeminfo"))) {
+        m_dockHost->unpinTool(QStringLiteral("systeminfo"));
+        return;
+    }
+    if (m_systemInfoPage) {
+        m_systemInfoPage->deleteLater();
+        m_systemInfoPage = nullptr;
+    }
 }

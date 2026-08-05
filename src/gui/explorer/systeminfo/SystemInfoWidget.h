@@ -9,8 +9,8 @@
 #include "core/explorer/ExplorerTypes.h"
 #include "core/explorer/systeminfo/SystemInfo.h"
 
-#include <QDialog>
 #include <QPointer>
+#include <QWidget>
 #include <optional>
 
 class QLabel;
@@ -22,14 +22,14 @@ class QTabWidget;
 class Session;
 class SystemInfoSource;
 
-/// Modeless dialog showing remote host metrics in related tabs.
-class SystemInfoDialog final : public QDialog
+/// Dockable panel showing remote host metrics in related tabs.
+class SystemInfoWidget final : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit SystemInfoDialog(Session *session, QWidget *parent = nullptr);
-    ~SystemInfoDialog() override;
+    explicit SystemInfoWidget(Session *session, QWidget *parent = nullptr);
+    ~SystemInfoWidget() override;
 
 private slots:
     void onSnapshotReady(const SystemInfo &info);

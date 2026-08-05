@@ -19,6 +19,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QLabel>
+#include <QPalette>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
@@ -70,12 +71,15 @@ QFrame *makeGroupFrame(const QString &title, QWidget *parent, QFormLayout *&form
 {
     auto *group = new QFrame(parent);
     group->setObjectName(QStringLiteral("serviceDetailGroup"));
-    group->setFrameShape(QFrame::NoFrame);
-    group->setStyleSheet(QStringLiteral("QFrame#serviceDetailGroup {"
-                                        "  background-color: palette(alternate-base);"
-                                        "  border: 1px solid palette(mid);"
-                                        "  border-radius: 8px;"
-                                        "}"));
+    group->setFrameShape(QFrame::StyledPanel);
+    group->setFrameShadow(QFrame::Plain);
+    group->setAutoFillBackground(true);
+    {
+        QPalette groupPalette = group->palette();
+        groupPalette.setColor(QPalette::Window, groupPalette.color(QPalette::AlternateBase));
+        group->setPalette(groupPalette);
+        group->setBackgroundRole(QPalette::Window);
+    }
 
     auto *layout = new QVBoxLayout(group);
     layout->setContentsMargins(UiMetrics::relatedSpacing,

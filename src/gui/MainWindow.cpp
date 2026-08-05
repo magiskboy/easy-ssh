@@ -34,6 +34,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QColor>
 #include <QCursor>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -513,10 +514,6 @@ void MainWindow::setupUi()
     setWindowTitle(QStringLiteral("Easy SSH"));
     restoreOrDefaultGeometry();
 
-    // Explicit painted separators — palette(mid) + splitter stylesheets are often invisible
-    // under native Linux styles.
-    const QString sepColor = palette().color(QPalette::Dark).name();
-
     m_connectionList = new ConnectionListWidget(this);
     m_connectionList->setConnectionModel(m_connectionModel);
     m_connectionList->setSecretStore(m_secretStore);
@@ -552,11 +549,9 @@ void MainWindow::setupUi()
     sideLayout->addWidget(m_sideBar, 1);
 
     auto *sideSeparator = new QFrame(sidePanel);
-    sideSeparator->setFrameShape(QFrame::NoFrame);
-    sideSeparator->setFixedWidth(1);
+    sideSeparator->setFrameShape(QFrame::VLine);
+    sideSeparator->setFrameShadow(QFrame::Sunken);
     sideSeparator->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    sideSeparator->setStyleSheet(
-        QStringLiteral("background-color: %1; border: none;").arg(sepColor));
     sideLayout->addWidget(sideSeparator);
 
     auto *rootSplitter = new QSplitter(Qt::Horizontal, this);
@@ -587,11 +582,9 @@ void MainWindow::setupUi()
 
     // Horizontal rule above the status bar so the bottom region is clearly separated.
     auto *statusSeparator = new QFrame(central);
-    statusSeparator->setFrameShape(QFrame::NoFrame);
-    statusSeparator->setFixedHeight(1);
+    statusSeparator->setFrameShape(QFrame::HLine);
+    statusSeparator->setFrameShadow(QFrame::Sunken);
     statusSeparator->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    statusSeparator->setStyleSheet(
-        QStringLiteral("background-color: %1; border: none;").arg(sepColor));
     rootLayout->addWidget(statusSeparator);
 
     setCentralWidget(central);
@@ -1336,23 +1329,26 @@ void MainWindow::setStatusText(const QString &text, ErrorNotifier::Level level)
 
     m_statusLabel->setText(text);
 
+    QPalette labelPalette = m_statusLabel->palette();
     const bool dark = palette().color(QPalette::Window).lightness() < 128;
-    QString color;
+    QColor color;
     switch (level) {
     case ErrorNotifier::Level::Status:
-        m_statusLabel->setStyleSheet(QString());
+        labelPalette.setColor(QPalette::WindowText, palette().color(QPalette::WindowText));
+        m_statusLabel->setPalette(labelPalette);
         return;
     case ErrorNotifier::Level::Success:
-        color = dark ? QStringLiteral("#81c784") : QStringLiteral("#2e7d32");
+        color = dark ? QColor(QStringLiteral("#81c784")) : QColor(QStringLiteral("#2e7d32"));
         break;
     case ErrorNotifier::Level::Warning:
-        color = dark ? QStringLiteral("#ffb74d") : QStringLiteral("#ef6c00");
+        color = dark ? QColor(QStringLiteral("#ffb74d")) : QColor(QStringLiteral("#ef6c00"));
         break;
     case ErrorNotifier::Level::Error:
-        color = dark ? QStringLiteral("#ef5350") : QStringLiteral("#c62828");
+        color = dark ? QColor(QStringLiteral("#ef5350")) : QColor(QStringLiteral("#c62828"));
         break;
     }
-    m_statusLabel->setStyleSheet(QStringLiteral("color: %1;").arg(color));
+    labelPalette.setColor(QPalette::WindowText, color);
+    m_statusLabel->setPalette(labelPalette);
 }
 
 void MainWindow::updateTerminalActionsEnabled()

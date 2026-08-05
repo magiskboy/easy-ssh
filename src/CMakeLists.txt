@@ -181,8 +181,8 @@ set(EASY_SSH_GUI_SOURCES
     gui/explorer/service/ServiceLogsDialog.h
     gui/explorer/service/ServiceFilterBar.cpp
     gui/explorer/service/ServiceFilterBar.h
-    gui/explorer/systeminfo/SystemInfoDialog.cpp
-    gui/explorer/systeminfo/SystemInfoDialog.h
+    gui/explorer/systeminfo/SystemInfoWidget.cpp
+    gui/explorer/systeminfo/SystemInfoWidget.h
     gui/tunnel/TunnelListWidget.cpp
     gui/tunnel/TunnelListWidget.h
     gui/tunnel/TunnelDialog.cpp

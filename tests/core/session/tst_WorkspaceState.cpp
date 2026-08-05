@@ -26,9 +26,13 @@ void WorkspaceStateTest::roundTripPreservesFields()
     WorkspaceSessionEntry session;
     session.connectionId = state.activeConnectionId;
     session.activeShellId = QUuid::createUuid();
+    session.activeToolId = QStringLiteral("process");
     session.dockState = QByteArrayLiteral("dock-bytes");
     session.shells.append(WorkspaceShellEntry{session.activeShellId, QStringLiteral("Shell 1")});
     session.shells.append(WorkspaceShellEntry{QUuid{}, QStringLiteral("ignored")});
+    session.tools.append(QStringLiteral("process"));
+    session.tools.append(QStringLiteral("service"));
+    session.tools.append(QString());
     state.sessions.append(session);
 
     WorkspaceSessionEntry nullSession;
@@ -43,6 +47,10 @@ void WorkspaceStateTest::roundTripPreservesFields()
     QCOMPARE(loaded.sessions.size(), 1);
     QCOMPARE(loaded.sessions.first().shells.size(), 1);
     QCOMPARE(loaded.sessions.first().shells.first().title, QStringLiteral("Shell 1"));
+    QCOMPARE(loaded.sessions.first().activeToolId, QStringLiteral("process"));
+    QCOMPARE(loaded.sessions.first().tools.size(), 2);
+    QCOMPARE(loaded.sessions.first().tools.at(0), QStringLiteral("process"));
+    QCOMPARE(loaded.sessions.first().tools.at(1), QStringLiteral("service"));
     QCOMPARE(loaded.sessions.first().dockState, QByteArrayLiteral("dock-bytes"));
 }
 
