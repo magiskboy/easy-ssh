@@ -44,7 +44,9 @@ struct ContentView: View {
                 switch appModel.sidebarMode {
                 case .sessions:
                     SessionContainerView()
-                case .files, .tunnels, .explorers:
+                case .files:
+                    FileExplorerView()
+                case .tunnels, .explorers:
                     PlaceholderFeatureView(mode: appModel.sidebarMode)
                 }
             }

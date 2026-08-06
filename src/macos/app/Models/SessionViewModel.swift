@@ -16,8 +16,7 @@ enum SessionUIState: String {
     case failed
 }
 
-/// Reserved extension points for later file explorer / tunnels UI on the same controller.
-final class SessionFilesModel: ObservableObject {}
+/// Reserved extension point for tunnels UI on the same controller (Phase 10).
 final class SessionTunnelsModel: ObservableObject {}
 
 struct HostKeyPromptData: Identifiable {
@@ -58,7 +57,6 @@ final class SessionViewModel: ObservableObject, Identifiable {
     /// Bumped when ESSAppSettings changes so terminals re-apply appearance.
     @Published var appearanceEpoch: UInt64 = 0
 
-    /// Future: attach when Files UI is implemented.
     @Published var files: SessionFilesModel?
     /// Future: attach when Tunnels UI is implemented.
     @Published var tunnels: SessionTunnelsModel?
@@ -117,6 +115,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.onStatus?("Connected: \(self.title)", .success)
                 self.resetShells()
                 self.addShell(id: shellId as UUID, focusAndLayout: true)
+                self.files?.onSessionConnected()
                 if !self.didRecordRecent {
                     self.didRecordRecent = true
                     self.onConnectedOnce?(self.connection.connectionId as UUID)
@@ -176,6 +175,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.statusMessage = message
                 self.onStatus?("Failed: \(self.title)", .error)
                 self.resetShells()
+                self.files?.onSessionDisconnected()
             }
         }
         controller.onDisconnected = { [weak self] in
@@ -188,6 +188,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.statusMessage = "Disconnected"
                 self.onStatus?("Disconnected: \(self.title)", .warning)
                 self.resetShells()
+                self.files?.onSessionDisconnected()
             }
         }
         controller.onAgentForwardingWarning = { [weak self] message in
@@ -439,7 +440,13 @@ final class SessionViewModel: ObservableObject, Identifiable {
     // MARK: - Extension points (ready for Files / Tunnels UI)
 
     func ensureFilesModel() {
-        if files == nil { files = SessionFilesModel() }
+        if files == nil {
+            let model = SessionFilesModel()
+            files = model
+            model.attach(to: self)
+        } else {
+            files?.attach(to: self)
+        }
     }
 
     func ensureTunnelsModel() {

@@ -33,14 +33,14 @@ enum SidebarMode: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    var isImplemented: Bool { self == .sessions }
+    var isImplemented: Bool { self == .sessions || self == .files }
 
     var comingSoonMessage: String {
         switch self {
         case .sessions:
             return "Connect to a host to open a terminal session."
         case .files:
-            return "File Explorer will plug into the same session bridge (Phase 5)."
+            return "Connect to a session to browse remote files."
         case .tunnels:
             return "Tunnel management comes in Phase 10."
         case .explorers:
@@ -111,6 +111,7 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 for session in self.sessions {
                     session.refreshAppearance()
+                    session.files?.reloadHiddenFilter()
                 }
             }
         }

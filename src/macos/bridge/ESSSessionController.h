@@ -40,6 +40,12 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 ///   linkIsDir (NSNumber bool), linkTarget (NSString), size (NSNumber),
 ///   permissions (NSString), mtime (NSNumber unix seconds).
 ///
+/// TransferJob dictionaries (onSftpInterrupted) use stable keys:
+///   direction (NSNumber: 0=upload, 1=download), localPath (NSString),
+///   remoteFinalPath (NSString), filepartPath (NSString),
+///   bytesDone (NSNumber), bytesTotal (NSNumber), backend (NSNumber FsBackend),
+///   lastMessage (NSString).
+///
 /// Explorer row keys (Phase 6 — documented only; not emitted yet):
 ///   Process: pid, ppid, uid, user, cpuPercent, memPercent, stateCode, nice, priority,
 ///            elapsedSeconds, cpuTime, rssKiB, vszKiB, comm, command
@@ -53,8 +59,10 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 @property (nonatomic, copy, nullable) void (^onSftpFinished)(NSString *message);
 @property (nonatomic, copy, nullable) void (^onSftpError)(NSString *message);
 @property (nonatomic, copy, nullable) void (^onSftpCanceled)(NSString *message);
+@property (nonatomic, copy, nullable) void (^onSftpInterrupted)(NSDictionary *job);
 @property (nonatomic, copy, nullable) void (^onSftpUnavailable)(NSString *message);
 @property (nonatomic, copy, nullable) void (^onSftpProgress)(int64_t bytesDone, int64_t bytesTotal, NSString *currentName);
+@property (nonatomic, copy, nullable) void (^onTransferResumableChanged)(BOOL resumable);
 @property (nonatomic, copy, nullable) void (^onRemoteFsOpened)(NSInteger backend);
 
 /// Tunnels (local TCP now; remote/dynamic/UDS in Phase 10).
@@ -104,8 +112,13 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 - (void)uploadFiles:(NSArray<NSString *> *)localPaths remoteDir:(NSString *)remoteDir;
 - (void)uploadFileTo:(NSString *)localPath remotePath:(NSString *)remotePath;
 - (void)downloadPaths:(NSArray<NSString *> *)remotePaths localDir:(NSString *)localDir;
+- (void)downloadPaths:(NSArray<NSString *> *)remotePaths
+             localDir:(NSString *)localDir
+       followSymlinks:(BOOL)followSymlinks;
 - (void)canonicalizePath:(NSString *)path;
 - (void)cancelTransfer;
+- (void)resumeInterruptedTransfer;
+- (void)discardInterruptedTransfer;
 
 - (void)startLocalTunnelNamed:(NSString *)name
                     localHost:(NSString *)localHost

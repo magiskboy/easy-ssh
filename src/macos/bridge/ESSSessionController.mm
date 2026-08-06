@@ -9,6 +9,7 @@
 #import "EasySshRuntime.h"
 
 #include "core/connection/Connection.h"
+#include "core/fs/TransferTypes.h"
 #include "core/ssh/SshWorker.h"
 #include "core/tunnel/Tunnel.h"
 
@@ -47,6 +48,20 @@ QUuid nsToUuid(NSUUID *id)
         return {};
     }
     return QUuid(nsToQ(id.UUIDString));
+}
+
+NSDictionary *transferJobToDict(const TransferJob &job)
+{
+    return @{
+        @"direction" : @(static_cast<int>(job.direction)),
+        @"localPath" : qToNS(job.localPath),
+        @"remoteFinalPath" : qToNS(job.remoteFinalPath),
+        @"filepartPath" : qToNS(job.filepartPath),
+        @"bytesDone" : @(job.bytesDone),
+        @"bytesTotal" : @(job.bytesTotal),
+        @"backend" : @(static_cast<int>(job.backend)),
+        @"lastMessage" : qToNS(job.lastMessage),
+    };
 }
 
 NSArray<NSString *> *nsStringArray(NSArray<NSString *> *arr)
@@ -319,6 +334,14 @@ void dispatchMain(dispatch_block_t block)
             }
         });
     });
+    QObject::connect(m_worker, &SshWorker::sftpInterrupted, m_worker, [self](const TransferJob &job) {
+        NSDictionary *dict = transferJobToDict(job);
+        dispatchMain(^{
+            if (self.onSftpInterrupted) {
+                self.onSftpInterrupted(dict);
+            }
+        });
+    });
     QObject::connect(m_worker, &SshWorker::sftpUnavailable, m_worker, [self](const QString &message) {
         NSString *msg = qToNS(message);
         dispatchMain(^{
@@ -336,6 +359,13 @@ void dispatchMain(dispatch_block_t block)
                              }
                          });
                      });
+    QObject::connect(m_worker, &SshWorker::transferResumableChanged, m_worker, [self](bool resumable) {
+        dispatchMain(^{
+            if (self.onTransferResumableChanged) {
+                self.onTransferResumableChanged(resumable);
+            }
+        });
+    });
     QObject::connect(m_worker, &SshWorker::remoteFsOpened, m_worker, [self](int backend) {
         dispatchMain(^{
             if (self.onRemoteFsOpened) {
@@ -628,13 +658,22 @@ void dispatchMain(dispatch_block_t block)
 
 - (void)downloadPaths:(NSArray<NSString *> *)remotePaths localDir:(NSString *)localDir
 {
+    [self downloadPaths:remotePaths localDir:localDir followSymlinks:NO];
+}
+
+- (void)downloadPaths:(NSArray<NSString *> *)remotePaths
+             localDir:(NSString *)localDir
+       followSymlinks:(BOOL)followSymlinks
+{
     if (m_worker == nullptr) {
         return;
     }
     const QStringList paths = toQStringList(remotePaths);
     const QString dir = nsToQ(localDir);
+    const bool follow = followSymlinks ? true : false;
     QMetaObject::invokeMethod(
-        m_worker, [worker = m_worker, paths, dir]() { worker->downloadPaths(paths, dir); },
+        m_worker,
+        [worker = m_worker, paths, dir, follow]() { worker->downloadPaths(paths, dir, follow); },
         Qt::QueuedConnection);
 }
 
@@ -655,6 +694,26 @@ void dispatchMain(dispatch_block_t block)
     }
     QMetaObject::invokeMethod(
         m_worker, [worker = m_worker]() { worker->cancelTransfer(); }, Qt::QueuedConnection);
+}
+
+- (void)resumeInterruptedTransfer
+{
+    if (m_worker == nullptr) {
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker, [worker = m_worker]() { worker->resumeInterruptedTransfer(); },
+        Qt::QueuedConnection);
+}
+
+- (void)discardInterruptedTransfer
+{
+    if (m_worker == nullptr) {
+        return;
+    }
+    QMetaObject::invokeMethod(
+        m_worker, [worker = m_worker]() { worker->discardInterruptedTransfer(); },
+        Qt::QueuedConnection);
 }
 
 - (void)startLocalTunnelNamed:(NSString *)name
