@@ -9,55 +9,66 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: appModel.sidebarModeBinding) {
-                ForEach(SidebarMode.allCases) { mode in
-                    Label(mode.title, systemImage: mode.systemImage)
-                        .tag(mode)
-                        .foregroundStyle(mode.isImplemented ? .primary : .secondary)
-                        .opacity(mode.isImplemented ? 1 : 0.45)
-                        .disabled(!mode.isImplemented)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 140, ideal: 160, max: 220)
-            .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Button {
-                        appModel.openConnectSheet()
-                    } label: {
-                        Label("New Connection", systemImage: "plus.circle.fill")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.borderless)
-
-                    Button {
-                        appModel.openConnectionManager()
-                    } label: {
-                        Label("Browse Connections", systemImage: "list.bullet.rectangle")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.borderless)
-                }
-                .padding(12)
-            }
+            ConnectionSidebarView()
+                .environmentObject(appModel)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+        } content: {
+            SessionWorkspaceColumn()
+                .environmentObject(appModel)
+                .navigationSplitViewColumnWidth(min: 500, ideal: 760)
         } detail: {
-            Group {
-                switch appModel.sidebarMode {
-                case .sessions:
-                    SessionContainerView()
-                case .files:
-                    FileExplorerView()
-                case .explorers:
-                    ExplorerHubView()
-                case .tunnels:
-                    TunnelListView()
-                }
-            }
+            FileInspectorColumn()
+                .environmentObject(appModel)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 460)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             AppStatusBar()
         }
         .background(WindowFrameTracker())
         .background(AppLifecycleBridge())
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    appModel.openShellInSelectedSession()
+                } label: {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                }
+                .help("New Terminal")
+                .disabled(!(appModel.selectedSession?.canOpenShell ?? false))
+
+                Button {
+                    appModel.presentExplorer(.container)
+                } label: {
+                    Image(systemName: "shippingbox")
+                }
+                .help("Open Container Explorer")
+                .disabled(appModel.selectedSession?.state != .connected)
+
+                Button {
+                    appModel.presentExplorer(.service)
+                } label: {
+                    Image(systemName: "switch.2")
+                }
+                .help("Open Service Explorer")
+                .disabled(appModel.selectedSession?.state != .connected)
+
+                Button {
+                    appModel.presentExplorer(.process)
+                } label: {
+                    Image(systemName: "list.bullet.rectangle.portrait")
+                }
+                .help("Open Process Explorer")
+                .disabled(appModel.selectedSession?.state != .connected)
+
+                Button {
+                    appModel.presentExplorer(.systemInfo)
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .help("Open System Info")
+                .disabled(appModel.selectedSession?.state != .connected)
+            }
+        }
         .preferredColorScheme(appAppearanceColorScheme)
         .modifier(AppUIFontModifier(epoch: appModel.settingsEpoch))
         // Single sheet host — stacked .sheet modifiers silently fail on macOS.
@@ -85,6 +96,17 @@ struct ContentView: View {
                 }
             case .about:
                 AboutView()
+            case .explorer:
+                if let session = appModel.selectedSession,
+                   let kind = appModel.explorerDialogKind
+                {
+                    ExplorerDialogView(session: session, initialKind: kind)
+                } else {
+                    Color.clear
+                        .onAppear {
+                            appModel.activeModal = nil
+                        }
+                }
             }
         }
         .alert(item: Binding(
@@ -109,6 +131,180 @@ struct ContentView: View {
         _ = appModel.settingsEpoch
         let themeId = ESSAppSettings.shared().themeId
         return AppAppearance.preferredColorScheme(themeId: themeId)
+    }
+}
+
+private struct ConnectionSidebarView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    var body: some View {
+        List(selection: sidebarSelection) {
+            if appModel.library.allConnections.isEmpty {
+                ContentUnavailableView("No Connections", systemImage: "server.rack")
+            } else {
+                ForEach(appModel.library.allConnections, id: \.connectionId) { info in
+                    ConnectionSidebarRow(info: info)
+                        .tag(info.connectionId as UUID)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("Connections")
+        .safeAreaInset(edge: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Button {
+                    appModel.openConnectSheet()
+                } label: {
+                    Label("New Connection", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderless)
+
+                Button {
+                    appModel.openConnectionManager()
+                } label: {
+                    Label("Browse Connections", systemImage: "list.bullet.rectangle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(12)
+        }
+    }
+
+    private var sidebarSelection: Binding<UUID?> {
+        Binding(
+            get: { appModel.selectedConnectionId },
+            set: { newValue in
+                guard let newValue else { return }
+                appModel.selectConnection(newValue)
+            }
+        )
+    }
+}
+
+private struct ConnectionSidebarRow: View {
+    @EnvironmentObject private var appModel: AppModel
+    let info: ESSConnectionInfo
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if info.source == .sshConfig {
+                Text("Config")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var title: String {
+        let name = info.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        if !info.displayText.isEmpty { return info.displayText }
+        return "\(info.username)@\(info.host)"
+    }
+
+    private var subtitle: String {
+        "\(info.username)@\(info.host):\(info.port)"
+    }
+
+    private var statusColor: Color {
+        guard let session = appModel.session(forConnectionId: info.connectionId as UUID) else {
+            return .secondary.opacity(0.45)
+        }
+        switch session.state {
+        case .connected: return .green
+        case .connecting: return .orange
+        case .failed: return .red
+        case .disconnected, .idle: return .secondary
+        }
+    }
+}
+
+private struct SessionWorkspaceColumn: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    var body: some View {
+        Group {
+            if let session = appModel.selectedSession {
+                SessionPane(session: session)
+                    .id(session.id)
+            } else if let connection = appModel.selectedConnection {
+                EmptyStateView(
+                    title: connectionTitle(connection),
+                    systemImage: "terminal",
+                    message: "Opening or focusing the session for this connection."
+                )
+            } else if appModel.library.allConnections.isEmpty {
+                EmptyStateView(
+                    title: "No Connections",
+                    systemImage: "server.rack",
+                    message: "Create or import a connection to start a session.",
+                    actionTitle: "New Connection",
+                    action: { appModel.openConnectSheet() }
+                )
+            } else {
+                EmptyStateView(
+                    title: "Select a Connection",
+                    systemImage: "rectangle.stack",
+                    message: "Choose a connection in the sidebar to open its session workspace."
+                )
+            }
+        }
+        .navigationTitle(appModel.selectedSession?.title ?? "Workspace")
+    }
+
+    private func connectionTitle(_ info: ESSConnectionInfo) -> String {
+        let name = info.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        if !info.displayText.isEmpty { return info.displayText }
+        return "\(info.username)@\(info.host)"
+    }
+}
+
+private struct FileInspectorColumn: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    var body: some View {
+        Group {
+            if let session = appModel.selectedSession {
+                FileExplorerPane(session: session)
+                    .id(session.id)
+            } else if let connection = appModel.selectedConnection {
+                EmptyStateView(
+                    title: "File Explorer",
+                    systemImage: "folder",
+                    message: "Connect to \(connectionTitle(connection)) to browse remote files."
+                )
+            } else {
+                EmptyStateView(
+                    title: "File Explorer",
+                    systemImage: "folder",
+                    message: "Select a connection to load remote files here."
+                )
+            }
+        }
+        .navigationTitle("Files")
+    }
+
+    private func connectionTitle(_ info: ESSConnectionInfo) -> String {
+        let name = info.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        if !info.displayText.isEmpty { return info.displayText }
+        return "\(info.username)@\(info.host)"
     }
 }
 

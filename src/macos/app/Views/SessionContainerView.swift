@@ -8,106 +8,19 @@ struct SessionContainerView: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if appModel.sessions.isEmpty {
                 SessionsEmptyView()
+            } else if let session = appModel.selectedSession {
+                SessionPane(session: session)
+                    .id(session.id)
             } else {
-                sessionTabs
-                Divider()
-                if let session = appModel.selectedSession {
-                    SessionPane(session: session)
-                        .id(session.id)
-                } else {
-                    EmptyStateView(
-                        title: "Select a Session",
-                        systemImage: "rectangle.stack",
-                        message: "Choose a session tab to focus its terminal."
-                    )
-                }
+                EmptyStateView(
+                    title: "Select a Session",
+                    systemImage: "rectangle.stack",
+                    message: "Choose a connection to focus its terminal workspace."
+                )
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    appModel.openShellInSelectedSession()
-                } label: {
-                    Image(systemName: "plus.rectangle.on.rectangle")
-                }
-                .help("New Shell")
-                .disabled(!(appModel.selectedSession?.canOpenShell ?? false))
-
-                Button {
-                    appModel.openConnectionManager()
-                } label: {
-                    Image(systemName: "list.bullet.rectangle")
-                }
-                .help("Browse Connections")
-
-                Button {
-                    appModel.openConnectSheet()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help("New Connection")
-            }
-        }
-    }
-
-    private var sessionTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(appModel.sessions) { session in
-                    SessionTabChip(
-                        title: session.title,
-                        isSelected: session.id == appModel.selectedSessionId,
-                        state: session.state
-                    ) {
-                        appModel.selectedSessionId = session.id
-                    } onClose: {
-                        appModel.closeSession(session.id)
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-        }
-        .background(.bar)
-    }
-}
-
-private struct SessionTabChip: View {
-    let title: String
-    let isSelected: Bool
-    let state: SessionUIState
-    let onSelect: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(stateColor)
-                .frame(width: 7, height: 7)
-            Text(title)
-                .lineLimit(1)
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.caption2.weight(.bold))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .onTapGesture(perform: onSelect)
-    }
-
-    private var stateColor: Color {
-        switch state {
-        case .connected: return .green
-        case .connecting: return .orange
-        case .failed: return .red
-        case .disconnected, .idle: return .secondary
         }
     }
 }
@@ -201,14 +114,14 @@ struct SessionPane: View {
                     ShellTabChip(
                         title: shell.title,
                         isSelected: shell.id == session.focusedShellId,
-                        isInLayout: session.layout?.contains(shell.id) ?? false
-                    ) {
-                        session.focusShell(shell.id)
-                    } onClose: {
-                        session.closeShell(shell.id)
-                    } onRename: {
-                        session.beginRenameShell(shell.id)
-                    }
+                        isInLayout: session.layout?.contains(shell.id) ?? false,
+                        onClose: {
+                            session.closeShell(shell.id)
+                        },
+                        onRename: {
+                            session.beginRenameShell(shell.id)
+                        }
+                    )
                 }
             }
             .padding(.horizontal, 8)
@@ -222,20 +135,22 @@ private struct ShellTabChip: View {
     let title: String
     let isSelected: Bool
     let isInLayout: Bool
-    let onSelect: () -> Void
     let onClose: () -> Void
     let onRename: () -> Void
 
     var body: some View {
         HStack(spacing: 6) {
-            if !isInLayout {
-                Image(systemName: "rectangle.on.rectangle")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .help("Not in current split — click to show")
+            HStack(spacing: 6) {
+                if !isInLayout {
+                    Image(systemName: "rectangle.on.rectangle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .help("Not shown in current split layout")
+                }
+                Text(title)
+                    .lineLimit(1)
             }
-            Text(title)
-                .lineLimit(1)
+
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.caption2.weight(.bold))
@@ -246,7 +161,6 @@ private struct ShellTabChip: View {
         .padding(.vertical, 4)
         .background(isSelected ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 5))
-        .onTapGesture(perform: onSelect)
         .contextMenu {
             Button("Rename…", action: onRename)
             Button("Close", role: .destructive, action: onClose)
@@ -297,15 +211,6 @@ struct ShellPaneView: View {
                 }
             }
             TerminalRepresentable(session: session, shell: shell)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 0)
-                        .strokeBorder(
-                            session.focusedShellId == shell.id
-                                ? Color.accentColor.opacity(0.7)
-                                : Color.clear,
-                            lineWidth: 2
-                        )
-                )
                 .onTapGesture {
                     session.focusShell(shell.id)
                 }

@@ -85,8 +85,11 @@ set(EASY_SSH_NATIVE_APP_DIR "${CMAKE_BINARY_DIR}/bin/easy-ssh-native.app")
 set(EASY_SSH_NATIVE_MACOS_DIR "${EASY_SSH_NATIVE_APP_DIR}/Contents/MacOS")
 set(EASY_SSH_NATIVE_EXE "${EASY_SSH_NATIVE_MACOS_DIR}/easy-ssh-native")
 set(EASY_SSH_NATIVE_FW_DIR "${EASY_SSH_NATIVE_APP_DIR}/Contents/Frameworks")
+set(EASY_SSH_NATIVE_RESOURCES_DIR "${EASY_SSH_NATIVE_APP_DIR}/Contents/Resources")
 set(EASY_SSH_NATIVE_SWIFT_BUILD_DIR "${CMAKE_BINARY_DIR}/macos-swift")
 set(EASY_SSH_NATIVE_PACKAGE_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-package")
+set(EASY_SSH_NATIVE_APP_ICON_ICNS "${CMAKE_SOURCE_DIR}/resources/macos/easy-ssh.icns")
+set(EASY_SSH_NATIVE_APP_ICON_PNG "${CMAKE_SOURCE_DIR}/resources/icons/app-256.png")
 
 set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/EasySshApp.swift"
@@ -160,10 +163,17 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_MACOS_DIR}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_FW_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_RESOURCES_DIR}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_APP_DIR}/Contents"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/Info.plist"
         "${EASY_SSH_NATIVE_APP_DIR}/Contents/Info.plist"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${EASY_SSH_NATIVE_APP_ICON_ICNS}"
+        "${EASY_SSH_NATIVE_RESOURCES_DIR}/easy-ssh.icns"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${EASY_SSH_NATIVE_APP_ICON_PNG}"
+        "${EASY_SSH_NATIVE_RESOURCES_DIR}/app-256.png"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/EasySshApp.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/EasySshApp.swift"
@@ -345,6 +355,8 @@ add_custom_command(
         "${CMAKE_CURRENT_SOURCE_DIR}/bridge/ESSAppSettings.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/bridge/ESSWorkspaceStore.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/bridge/ESSSshConfigParser.h"
+        "${EASY_SSH_NATIVE_APP_ICON_ICNS}"
+        "${EASY_SSH_NATIVE_APP_ICON_PNG}"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Package.swift"
     COMMENT "Building easy-ssh-native (SwiftUI + SwiftTerm)"
     VERBATIM

@@ -11,6 +11,7 @@ final class EasySshAppDelegate: NSObject, NSApplicationDelegate {
     var tray: TrayController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installApplicationIconIfAvailable()
         NSApp.setActivationPolicy(.regular)
         if tray?.isAvailable == true {
             NSApp.setActivationPolicy(.regular)
@@ -51,6 +52,22 @@ final class EasySshAppDelegate: NSObject, NSApplicationDelegate {
     func hideMainWindows() {
         for window in NSApp.windows where window.canBecomeMain {
             window.orderOut(nil)
+        }
+    }
+
+    private func installApplicationIconIfAvailable() {
+        if let icon = Bundle.main.image(forResource: "easy-ssh") {
+            NSApp.applicationIconImage = icon
+            return
+        }
+        if let url = Bundle.main.url(forResource: "easy-ssh", withExtension: "icns"),
+           let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+            return
+        }
+        if let url = Bundle.main.url(forResource: "app-256", withExtension: "png"),
+           let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
         }
     }
 }

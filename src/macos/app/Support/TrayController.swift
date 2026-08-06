@@ -231,21 +231,47 @@ final class TrayController: NSObject {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size)
         image.lockFocus()
-        NSColor.clear.setFill()
-        NSRect(origin: .zero, size: size).fill()
 
-        let dotColor: NSColor = switch kind {
+        if let base = baseTrayIcon() {
+            base.draw(
+                in: NSRect(origin: .zero, size: size),
+                from: NSRect(origin: .zero, size: base.size),
+                operation: .sourceOver,
+                fraction: 1
+            )
+        }
+
+        let dotColor: NSColor? = switch kind {
         case .idle: .secondaryLabelColor
         case .connecting: NSColor(red: 0.98, green: 0.66, blue: 0.15, alpha: 1)
         case .connected: NSColor(red: 0.26, green: 0.63, blue: 0.28, alpha: 1)
         case .warning: NSColor(red: 0.90, green: 0.22, blue: 0.21, alpha: 1)
         }
-        dotColor.setFill()
-        let dot = NSBezierPath(ovalIn: NSRect(x: 5, y: 5, width: 8, height: 8))
-        dot.fill()
+
+        if let dotColor, kind != .idle {
+            dotColor.setFill()
+            let dot = NSBezierPath(ovalIn: NSRect(x: 11, y: 1, width: 6, height: 6))
+            dot.fill()
+
+            NSColor.white.setStroke()
+            dot.lineWidth = 1.5
+            dot.stroke()
+        }
+
         image.unlockFocus()
-        image.isTemplate = kind == .idle
+        image.isTemplate = false
         return image
+    }
+
+    private func baseTrayIcon() -> NSImage? {
+        if let icon = Bundle.main.image(forResource: "app-256") {
+            return icon
+        }
+        if let url = Bundle.main.url(forResource: "app-256", withExtension: "png"),
+           let icon = NSImage(contentsOf: url) {
+            return icon
+        }
+        return NSApp.applicationIconImage
     }
 }
 

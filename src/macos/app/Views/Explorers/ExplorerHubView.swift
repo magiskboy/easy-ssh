@@ -9,7 +9,7 @@ struct ExplorerHubView: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if appModel.sessions.isEmpty {
                 EmptyStateView(
                     title: "No Session",
@@ -18,94 +18,16 @@ struct ExplorerHubView: View {
                     actionTitle: "New Connection",
                     action: { appModel.openConnectSheet() }
                 )
+            } else if let session = appModel.selectedSession {
+                ExplorerHubPane(session: session)
+                    .id(session.id)
             } else {
-                sessionTabs
-                Divider()
-                if let session = appModel.selectedSession {
-                    ExplorerHubPane(session: session)
-                        .id(session.id)
-                } else {
-                    EmptyStateView(
-                        title: "Select a Session",
-                        systemImage: "rectangle.stack",
-                        message: "Choose a session tab to open explorers."
-                    )
-                }
+                EmptyStateView(
+                    title: "Select a Session",
+                    systemImage: "rectangle.stack",
+                    message: "Choose a connection to open explorers."
+                )
             }
-        }
-        .onAppear {
-            appModel.selectedSession?.ensureExplorersModel()
-        }
-        .onChange(of: appModel.selectedSessionId) { _, _ in
-            appModel.selectedSession?.ensureExplorersModel()
-        }
-        .onChange(of: appModel.sidebarMode) { _, mode in
-            if mode == .explorers {
-                appModel.selectedSession?.ensureExplorersModel()
-            } else {
-                appModel.selectedSession?.explorers?.stopActive()
-            }
-        }
-        .onDisappear {
-            appModel.selectedSession?.explorers?.stopActive()
-        }
-    }
-
-    private var sessionTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(appModel.sessions) { session in
-                    ExplorerSessionTabChip(
-                        title: session.title,
-                        isSelected: session.id == appModel.selectedSessionId,
-                        state: session.state
-                    ) {
-                        appModel.selectedSessionId = session.id
-                    } onClose: {
-                        appModel.closeSession(session.id)
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-        }
-        .background(.bar)
-    }
-}
-
-private struct ExplorerSessionTabChip: View {
-    let title: String
-    let isSelected: Bool
-    let state: SessionUIState
-    let onSelect: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(stateColor)
-                .frame(width: 7, height: 7)
-            Text(title)
-                .lineLimit(1)
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.caption2.weight(.bold))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .onTapGesture(perform: onSelect)
-    }
-
-    private var stateColor: Color {
-        switch state {
-        case .connected: return .green
-        case .connecting: return .orange
-        case .failed: return .red
-        case .disconnected, .idle: return .secondary
         }
     }
 }
@@ -121,23 +43,85 @@ struct ExplorerHubPane: View {
     }
 
     var body: some View {
+        ExplorerContentView(explorers: explorers)
+            .onAppear {
+                explorers.selectKind(explorers.selectedKind)
+            }
+    }
+}
+
+struct ExplorerDialogView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var session: SessionViewModel
+    @ObservedObject private var explorers: SessionExplorersModel
+    let initialKind: ExplorerKind
+
+    init(session: SessionViewModel, initialKind: ExplorerKind) {
+        self.session = session
+        self.initialKind = initialKind
+        session.ensureExplorersModel()
+        self._explorers = ObservedObject(wrappedValue: session.explorers!)
+    }
+
+    var body: some View {
         VStack(spacing: 0) {
-            Picker("Explorer", selection: $explorers.selectedKind) {
-                ForEach(ExplorerKind.allCases) { kind in
-                    Text(kind.title).tag(kind)
+            HStack {
+                Text(initialKind.title)
+                    .font(.headline)
+                Spacer()
+                Button("Close") {
+                    appModel.explorerDialogKind = nil
+                    dismiss()
                 }
             }
-            .pickerStyle(.segmented)
-            .padding(8)
-            .onChange(of: explorers.selectedKind) { _, kind in
-                explorers.selectKind(kind)
+            .padding()
+            Divider()
+            ExplorerContentView(explorers: explorers, fixedKind: initialKind)
+        }
+        .onAppear {
+            explorers.selectKind(initialKind)
+        }
+        .onDisappear {
+            explorers.stopActive()
+            appModel.explorerDialogKind = nil
+            if appModel.activeModal == .explorer {
+                appModel.activeModal = nil
+            }
+        }
+        .frame(minWidth: 760, minHeight: 520)
+    }
+}
+
+private struct ExplorerContentView: View {
+    @ObservedObject var explorers: SessionExplorersModel
+    let fixedKind: ExplorerKind?
+
+    init(explorers: SessionExplorersModel, fixedKind: ExplorerKind? = nil) {
+        self._explorers = ObservedObject(wrappedValue: explorers)
+        self.fixedKind = fixedKind
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if fixedKind == nil {
+                Picker("Explorer", selection: $explorers.selectedKind) {
+                    ForEach(ExplorerKind.allCases) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(8)
+                .onChange(of: explorers.selectedKind) { _, kind in
+                    explorers.selectKind(kind)
+                }
             }
 
             toolbar
             Divider()
 
             Group {
-                switch explorers.selectedKind {
+                switch activeKind {
                 case .process:
                     ProcessExplorerTable(explorers: explorers)
                 case .container:
@@ -159,20 +143,21 @@ struct ExplorerHubPane: View {
                 loading: explorers.inspecting
             )
         }
-        .onAppear {
-            explorers.selectKind(explorers.selectedKind)
-        }
+    }
+
+    private var activeKind: ExplorerKind {
+        fixedKind ?? explorers.selectedKind
     }
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            if explorers.selectedKind != .systemInfo {
+            if activeKind != .systemInfo {
                 TextField("Search", text: $explorers.searchText)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 240)
             }
 
-            if explorers.selectedKind == .container {
+            if activeKind == .container {
                 Picker("Runtime", selection: $explorers.containerRuntimeFilter) {
                     Text("All runtimes").tag("all")
                     ForEach(explorers.containerRuntimes, id: \.self) { runtime in
@@ -189,7 +174,7 @@ struct ExplorerHubPane: View {
                 .frame(maxWidth: 140)
             }
 
-            if explorers.selectedKind == .service {
+            if activeKind == .service {
                 Picker("Active", selection: $explorers.serviceActiveFilter) {
                     Text("All active").tag("all")
                     ForEach(explorers.serviceActiveStates, id: \.self) { state in

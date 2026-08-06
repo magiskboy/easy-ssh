@@ -64,6 +64,7 @@ enum AppModal: Identifiable, Equatable {
     case passwordPrompt
     case hostKeyPrompt
     case about
+    case explorer
 
     var id: String {
         switch self {
@@ -72,6 +73,7 @@ enum AppModal: Identifiable, Equatable {
         case .passwordPrompt: return "passwordPrompt"
         case .hostKeyPrompt: return "hostKeyPrompt"
         case .about: return "about"
+        case .explorer: return "explorer"
         }
     }
 }
@@ -83,8 +85,14 @@ final class AppModel: ObservableObject {
 
     @Published var sidebarMode: SidebarMode = .sessions
     @Published var sessions: [SessionViewModel] = []
-    @Published var selectedSessionId: UUID?
+    @Published var selectedConnectionId: UUID?
+    @Published var selectedSessionId: UUID? {
+        didSet {
+            syncSelectedConnectionFromSession()
+        }
+    }
     @Published var activeModal: AppModal?
+    @Published var explorerDialogKind: ExplorerKind?
     @Published var connectDraft = ConnectionDraft()
     @Published var passwordPrompt: PasswordPromptRequest?
     @Published var passwordPromptValue: String = ""
@@ -152,6 +160,11 @@ final class AppModel: ObservableObject {
         sessions.first { $0.id == selectedSessionId }
     }
 
+    var selectedConnection: ESSConnectionInfo? {
+        guard let selectedConnectionId else { return nil }
+        return library.connection(id: selectedConnectionId)
+    }
+
     var recentConnections: [ESSConnectionInfo] {
         library.recentConnections(limit: 8)
     }
@@ -174,6 +187,11 @@ final class AppModel: ObservableObject {
     func openConnectionManager() {
         library.reload()
         activeModal = .connectionManager
+    }
+
+    func selectConnection(_ connectionId: UUID) {
+        selectedConnectionId = connectionId
+        openOrSelectSession(for: connectionId)
     }
 
     /// Close Connection Manager, then connect on the next turn so a password sheet can present
@@ -204,6 +222,10 @@ final class AppModel: ObservableObject {
                 : connection.displayText)
             : label
         status.post("Opening: \(title)…", level: .status)
+
+        if selectExistingSession(for: connection.connectionId as UUID) {
+            return
+        }
 
         // Password auth needs a tick so the manager sheet can finish dismissing before the
         // password sheet presents on the same host. Private-key sessions need no modal.
@@ -248,6 +270,9 @@ final class AppModel: ObservableObject {
     }
 
     func connect(withId id: UUID) {
+        if selectExistingSession(for: id) {
+            return
+        }
         guard let info = library.connection(id: id) else {
             status.notify(
                 title: "Connect",
@@ -634,6 +659,7 @@ final class AppModel: ObservableObject {
 
     func focusShell(connectionId: UUID, shellId: UUID) {
         guard let session = session(forConnectionId: connectionId) else { return }
+        selectedConnectionId = connectionId
         selectedSessionId = session.id
         sidebarMode = .sessions
         session.focusShell(shellId)
@@ -708,6 +734,17 @@ final class AppModel: ObservableObject {
         sessions.first { ($0.connection.connectionId as UUID) == connectionId }
     }
 
+    func openOrSelectSession(for connectionId: UUID) {
+        if selectExistingSession(for: connectionId) {
+            return
+        }
+        connect(withId: connectionId)
+    }
+
+    func presentExplorer(_ kind: ExplorerKind) {
+        openExplorer(kind)
+    }
+
     func openSessionForRestore(
         connectionId: UUID,
         entry: ESSWorkspaceSessionEntry,
@@ -726,10 +763,12 @@ final class AppModel: ObservableObject {
             status.notify(title: "Explorer", message: "Select a connected session first.", level: .warning)
             return
         }
-        sidebarMode = .explorers
+        selectedConnectionId = session.connection.connectionId as UUID
         selectedSessionId = session.id
         session.ensureExplorersModel()
         session.explorers?.selectKind(kind)
+        explorerDialogKind = kind
+        activeModal = .explorer
     }
 
     private func buildActionRows(query: String) -> [PaletteRow] {
@@ -850,5 +889,18 @@ final class AppModel: ObservableObject {
             pendingWorkspaceEntriesByConnectionId.removeValue(forKey: connectionId)
         }
         callback(session)
+    }
+
+    private func selectExistingSession(for connectionId: UUID) -> Bool {
+        guard let session = session(forConnectionId: connectionId) else { return false }
+        selectedConnectionId = connectionId
+        selectedSessionId = session.id
+        sidebarMode = .sessions
+        return true
+    }
+
+    private func syncSelectedConnectionFromSession() {
+        guard let session = selectedSession else { return }
+        selectedConnectionId = session.connection.connectionId as UUID
     }
 }

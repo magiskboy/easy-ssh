@@ -8,7 +8,7 @@ struct FileExplorerView: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if appModel.sessions.isEmpty {
                 EmptyStateView(
                     title: "No Session",
@@ -17,19 +17,15 @@ struct FileExplorerView: View {
                     actionTitle: "New Connection",
                     action: { appModel.openConnectSheet() }
                 )
+            } else if let session = appModel.selectedSession {
+                FileExplorerPane(session: session)
+                    .id(session.id)
             } else {
-                sessionTabs
-                Divider()
-                if let session = appModel.selectedSession {
-                    FileExplorerPane(session: session)
-                        .id(session.id)
-                } else {
-                    EmptyStateView(
-                        title: "Select a Session",
-                        systemImage: "rectangle.stack",
-                        message: "Choose a session tab to browse its remote files."
-                    )
-                }
+                EmptyStateView(
+                    title: "Select a Session",
+                    systemImage: "rectangle.stack",
+                    message: "Choose a connection to browse its remote files."
+                )
             }
         }
         .onAppear {
@@ -38,111 +34,6 @@ struct FileExplorerView: View {
         .onChange(of: appModel.selectedSessionId) { _, _ in
             appModel.selectedSession?.ensureFilesModel()
         }
-        .onChange(of: appModel.sidebarMode) { _, mode in
-            if mode == .files {
-                appModel.selectedSession?.ensureFilesModel()
-            }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if let files = appModel.selectedSession?.files {
-                    fileToolbar(files: files)
-                }
-            }
-        }
-    }
-
-    private var sessionTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(appModel.sessions) { session in
-                    FileSessionTabChip(
-                        title: session.title,
-                        isSelected: session.id == appModel.selectedSessionId,
-                        state: session.state
-                    ) {
-                        appModel.selectedSessionId = session.id
-                    } onClose: {
-                        appModel.closeSession(session.id)
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-        }
-        .background(.bar)
-    }
-
-    @ViewBuilder
-    private func fileToolbar(files: SessionFilesModel) -> some View {
-        Button {
-            files.refresh()
-        } label: {
-            Image(systemName: "arrow.clockwise")
-        }
-        .help("Refresh")
-        .disabled(files.cwd.isEmpty || files.unavailableReason != nil)
-
-        Button {
-            files.uploadFiles()
-        } label: {
-            Image(systemName: "square.and.arrow.up")
-        }
-        .help("Upload Files")
-        .disabled(!files.canMutate)
-
-        Button {
-            files.downloadSelected()
-        } label: {
-            Image(systemName: "square.and.arrow.down")
-        }
-        .help("Download")
-        .disabled(!files.canMutate || files.selectedDownloadablePaths.isEmpty)
-
-        Button {
-            files.promptMkdir()
-        } label: {
-            Image(systemName: "folder.badge.plus")
-        }
-        .help("New Folder")
-        .disabled(!files.canMutate)
-    }
-}
-
-private struct FileSessionTabChip: View {
-    let title: String
-    let isSelected: Bool
-    let state: SessionUIState
-    let onSelect: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(stateColor)
-                .frame(width: 7, height: 7)
-            Text(title)
-                .lineLimit(1)
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.caption2.weight(.bold))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .onTapGesture(perform: onSelect)
-    }
-
-    private var stateColor: Color {
-        switch state {
-        case .connected: return .green
-        case .connecting: return .orange
-        case .failed: return .red
-        case .disconnected, .idle: return .secondary
-        }
     }
 }
 
@@ -150,7 +41,6 @@ struct FileExplorerPane: View {
     @EnvironmentObject private var appModel: AppModel
     @ObservedObject var session: SessionViewModel
     @ObservedObject private var files: SessionFilesModel
-    @FocusState private var listFocused: Bool
 
     init(session: SessionViewModel) {
         self.session = session
@@ -160,8 +50,6 @@ struct FileExplorerPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             content
             if files.isTransferring || files.transferInterrupted {
                 Divider()
@@ -238,8 +126,7 @@ struct FileExplorerPane: View {
             Text("Already on the server:\n\(names.joined(separator: "\n"))")
         }
         .focusable()
-        .focused($listFocused)
-        .onAppear { listFocused = true }
+        .focusEffectDisabled()
         .onKeyPress { press in
             handleFileExplorerShortcut(press)
         }
@@ -276,41 +163,6 @@ struct FileExplorerPane: View {
         return .ignored
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
-            Text(session.title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color.secondary.opacity(0.12), in: Capsule())
-
-            if !files.fsBackend.label.isEmpty {
-                Text(files.fsBackend.label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            TextField("Path", text: $files.pathBarText)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { files.goToPathBar() }
-                .disabled(files.unavailableReason != nil || session.state != .connected)
-
-            Button("Go") { files.goToPathBar() }
-                .disabled(files.unavailableReason != nil || session.state != .connected)
-
-            Button {
-                files.refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .disabled(files.cwd.isEmpty || files.unavailableReason != nil)
-            .help("Refresh")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-    }
-
     @ViewBuilder
     private var content: some View {
         if session.state != .connected {
@@ -341,57 +193,126 @@ struct FileExplorerPane: View {
         }
     }
 
+    @ViewBuilder
     private var fileTable: some View {
-        Table(files.entries, selection: $files.selectedPaths) {
-            TableColumn("Name") { (entry: RemoteFileEntry) in
-                HStack(spacing: 6) {
-                    Image(systemName: iconName(for: entry))
-                        .foregroundStyle(entry.isNavigableDirectory ? Color.accentColor : .secondary)
-                        .frame(width: 16)
-                    Text(entry.name)
-                        .lineLimit(1)
-                    if entry.isSymlink {
-                        Text("→ \(entry.linkTarget)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    files.activate(entry)
-                }
-                .contextMenu { contextMenu(for: entry) }
+        switch (files.showSizeColumn, files.showPermissionsColumn, files.showModifiedColumn) {
+        case (false, false, false):
+            tableBase
+        case (true, false, false):
+            Table(files.entries, selection: $files.selectedPaths) {
+                nameColumn
+                sizeColumn
             }
-            .width(min: 180, ideal: 280)
-
-            TableColumn("Size") { (entry: RemoteFileEntry) in
-                Text(entry.isNavigableDirectory || entry.isParentNav ? "—" : formatSize(entry.size))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .opacity(files.showSizeColumn ? 1 : 0)
+            .contextMenu { selectionMenu }
+        case (false, true, false):
+            Table(files.entries, selection: $files.selectedPaths) {
+                nameColumn
+                permissionsColumn
             }
-            .width(min: 70, ideal: 90)
-
-            TableColumn("Permissions") { (entry: RemoteFileEntry) in
-                Text(entry.isParentNav ? "" : entry.permissions)
-                    .foregroundStyle(.secondary)
-                    .monospaced()
-                    .opacity(files.showPermissionsColumn ? 1 : 0)
+            .contextMenu { selectionMenu }
+        case (false, false, true):
+            Table(files.entries, selection: $files.selectedPaths) {
+                nameColumn
+                modifiedColumn
             }
-            .width(min: 90, ideal: 110)
-
-            TableColumn("Modified") { (entry: RemoteFileEntry) in
-                Text(entry.isParentNav || entry.mtime <= 0 ? "" : formatMtime(entry.mtime))
-                    .foregroundStyle(.secondary)
-                    .opacity(files.showModifiedColumn ? 1 : 0)
+            .contextMenu { selectionMenu }
+        case (true, true, false):
+            Table(files.entries, selection: $files.selectedPaths) {
+                nameColumn
+                sizeColumn
+                permissionsColumn
             }
-            .width(min: 120, ideal: 150)
+            .contextMenu { selectionMenu }
+        case (true, false, true):
+            Table(files.entries, selection: $files.selectedPaths) {
+                nameColumn
+                sizeColumn
+                modifiedColumn
+            }
+            .contextMenu { selectionMenu }
+        case (false, true, true):
+            Table(files.entries, selection: $files.selectedPaths) {
+                nameColumn
+                permissionsColumn
+                modifiedColumn
+            }
+            .contextMenu { selectionMenu }
+        case (true, true, true):
+            Table(files.entries, selection: $files.selectedPaths) {
+                nameColumn
+                sizeColumn
+                permissionsColumn
+                modifiedColumn
+            }
+            .contextMenu { selectionMenu }
         }
-        .contextMenu {
-            if !files.selectedPaths.isEmpty {
-                selectionContextMenu()
+    }
+
+    private var tableBase: some View {
+        Table(files.entries, selection: $files.selectedPaths) {
+            nameColumn
+        }
+        .contextMenu { selectionMenu }
+    }
+
+    @TableColumnBuilder<RemoteFileEntry, Never>
+    private var nameColumn: some TableColumnContent<RemoteFileEntry, Never> {
+        TableColumn("Name") { (entry: RemoteFileEntry) in
+            HStack(spacing: 6) {
+                Image(systemName: iconName(for: entry))
+                    .foregroundStyle(entry.isNavigableDirectory ? Color.accentColor : .secondary)
+                    .frame(width: 16)
+                Text(entry.name)
+                    .lineLimit(1)
+                if entry.isSymlink {
+                    Text("→ \(entry.linkTarget)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                files.activate(entry)
+            }
+            .contextMenu { contextMenu(for: entry) }
+        }
+        .width(min: 180, ideal: 280)
+    }
+
+    @TableColumnBuilder<RemoteFileEntry, Never>
+    private var sizeColumn: some TableColumnContent<RemoteFileEntry, Never> {
+        TableColumn("Size") { (entry: RemoteFileEntry) in
+            Text(entry.isNavigableDirectory || entry.isParentNav ? "—" : formatSize(entry.size))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .width(min: 70, ideal: 90)
+    }
+
+    @TableColumnBuilder<RemoteFileEntry, Never>
+    private var permissionsColumn: some TableColumnContent<RemoteFileEntry, Never> {
+        TableColumn("Permissions") { (entry: RemoteFileEntry) in
+            Text(entry.isParentNav ? "" : entry.permissions)
+                .foregroundStyle(.secondary)
+                .monospaced()
+        }
+        .width(min: 90, ideal: 110)
+    }
+
+    @TableColumnBuilder<RemoteFileEntry, Never>
+    private var modifiedColumn: some TableColumnContent<RemoteFileEntry, Never> {
+        TableColumn("Modified") { (entry: RemoteFileEntry) in
+            Text(entry.isParentNav || entry.mtime <= 0 ? "" : formatMtime(entry.mtime))
+                .foregroundStyle(.secondary)
+        }
+        .width(min: 120, ideal: 150)
+    }
+
+    @ViewBuilder
+    private var selectionMenu: some View {
+        if !files.selectedPaths.isEmpty {
+            selectionContextMenu()
         }
     }
 

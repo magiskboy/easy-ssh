@@ -10,6 +10,8 @@
 	<string>io.github.magiskboy.easy-ssh.native</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleIconFile</key>
+	<string>easy-ssh.icns</string>
 	<key>CFBundleName</key>
 	<string>Easy SSH Native</string>
 	<key>CFBundlePackageType</key>

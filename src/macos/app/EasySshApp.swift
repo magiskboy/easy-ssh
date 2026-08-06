@@ -105,18 +105,6 @@ private struct AppMenuCommands: Commands {
             .disabled(!appModel.canUseTerminalActions)
         }
 
-        CommandMenu("View") {
-            ForEach(SidebarMode.allCases) { mode in
-                Button(mode.title) {
-                    if mode.isImplemented {
-                        appModel.sidebarMode = mode
-                    }
-                }
-                .disabled(!mode.isImplemented)
-                .keyboardShortcut(viewShortcut(for: mode), modifiers: [.command])
-            }
-        }
-
         CommandMenu("Session") {
             Button("New Shell") {
                 appModel.openShellInSelectedSession()
@@ -151,6 +139,28 @@ private struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.goToShell"))
             .disabled(appModel.selectedSession?.shells.isEmpty ?? true)
+
+            Divider()
+
+            Button("Container Explorer") {
+                appModel.presentExplorer(.container)
+            }
+            .disabled(appModel.selectedSession?.state != .connected)
+
+            Button("Service Explorer") {
+                appModel.presentExplorer(.service)
+            }
+            .disabled(appModel.selectedSession?.state != .connected)
+
+            Button("Process Explorer") {
+                appModel.presentExplorer(.process)
+            }
+            .disabled(appModel.selectedSession?.state != .connected)
+
+            Button("System Info") {
+                appModel.presentExplorer(.systemInfo)
+            }
+            .disabled(appModel.selectedSession?.state != .connected)
 
             Divider()
 
@@ -205,15 +215,6 @@ private struct AppMenuCommands: Commands {
                 appModel.activeModal = .about
             }
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.about"))
-        }
-    }
-
-    private func viewShortcut(for mode: SidebarMode) -> KeyEquivalent {
-        switch mode {
-        case .sessions: return "1"
-        case .files: return "2"
-        case .tunnels: return "3"
-        case .explorers: return "4"
         }
     }
 }
