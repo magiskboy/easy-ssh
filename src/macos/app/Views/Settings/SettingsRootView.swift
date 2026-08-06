@@ -28,7 +28,7 @@ struct SettingsRootView: View {
                     .tabItem { Label("Shortcuts", systemImage: "command") }
                     .tag(SettingsTab.shortcuts)
             }
-            .padding(.top, 8)
+            .padding(.top, 4)
 
             Divider()
 
@@ -46,9 +46,10 @@ struct SettingsRootView: View {
                     NSApp.keyWindow?.close()
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
-        .frame(minWidth: 620, minHeight: 480)
+        .frame(width: 480, height: 400)
         .onAppear {
             settingsModel.reloadDraftFromStore()
             if let tab = appModel.pendingSettingsTab {

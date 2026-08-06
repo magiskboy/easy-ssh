@@ -29,7 +29,8 @@ struct FileExplorerSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 
     private func pickDownloadDir() {

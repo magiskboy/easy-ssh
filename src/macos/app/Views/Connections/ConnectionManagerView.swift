@@ -38,36 +38,25 @@ struct ConnectionManagerView: View {
         return library.connection(id: selectedId)
     }
 
+    private var appAppearanceColorScheme: ColorScheme? {
+        _ = appModel.settingsEpoch
+        let themeId = ESSAppSettings.shared().themeId
+        return AppAppearance.preferredColorScheme(themeId: themeId)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            HSplitView {
-                connectionList
-                    .frame(minWidth: 240, idealWidth: 280, maxWidth: 360)
-                editorPane
-                    .frame(minWidth: 360)
-            }
-            Divider()
-            footer
+        HSplitView {
+            sidebar
+                .frame(minWidth: 240, idealWidth: 280, maxWidth: 360)
+            editorPane
+                .frame(minWidth: 360)
         }
-        .frame(width: 900, height: 640)
-        .onAppear {
-            library.reload()
-            if let query = appModel.connectionManagerCreateQuery {
-                appModel.connectionManagerCreateQuery = nil
-                appModel.connectionManagerFocusId = nil
-                beginCreate(prefill: ConnectionDraft.draftFromQuery(query))
-            } else if let focusId = appModel.connectionManagerFocusId {
-                appModel.connectionManagerFocusId = nil
-                if let info = library.connection(id: focusId) {
-                    select(info)
-                } else if let first = filtered.first {
-                    select(first)
-                }
-            } else if let first = filtered.first {
-                select(first)
-            }
+        .frame(minWidth: 800, minHeight: 520)
+        .preferredColorScheme(appAppearanceColorScheme)
+        .onAppear { handleOpenIntent(selectFirstIfNeeded: true) }
+        .onChange(of: appModel.connectionManagerOpenToken) { _, token in
+            guard token != nil else { return }
+            handleOpenIntent(selectFirstIfNeeded: false)
         }
         .alert("Delete Connection?", isPresented: $showDeleteConfirm) {
             Button("Cancel", role: .cancel) {
@@ -97,26 +86,29 @@ struct ConnectionManagerView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            Text("Connection Manager")
-                .font(.title2.weight(.semibold))
-            Spacer()
-            TextField("Search", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 180)
-            Picker("Source", selection: $sourceFilter) {
-                ForEach(ConnectionSourceFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    TextField("Search", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                    Button("New") { beginCreate() }
                 }
+                Picker("Source", selection: $sourceFilter) {
+                    ForEach(ConnectionSourceFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .frame(width: 260)
-            Button("New") { beginCreate() }
-            Button("Import…") { importSelectedOrPick() }
-            Button("Reload SSH Config") { library.reloadSshConfig() }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            connectionList
         }
-        .padding(12)
     }
 
     private var connectionList: some View {
@@ -204,44 +196,25 @@ struct ConnectionManagerView: View {
         }
     }
 
-    private var footer: some View {
-        HStack {
-            Button("Open Session") {
-                openSelectedSession()
-            }
-            .disabled(selectedId == nil || isCreating)
-            .keyboardShortcut(.defaultAction)
-
-            if let info = selectedInfo, info.source == .app, !isCreating {
-                Button("Duplicate") {
-                    if let copy = library.duplicate(id: info.connectionId as UUID) {
-                        select(copy)
-                    }
-                }
-                Button("Delete…", role: .destructive) {
-                    pendingDeleteId = info.connectionId as UUID
-                    showDeleteConfirm = true
-                }
-            }
-
-            if let info = selectedInfo, info.source == .sshConfig, !isCreating {
-                Button("Import to Easy SSH…") {
-                    if let imported = library.importFromSshConfig(id: info.connectionId as UUID) {
-                        select(imported)
-                    }
-                }
-            }
-
-            Spacer()
-            Button("Close") {
-                appModel.activeModal = nil
-            }
-            .keyboardShortcut(.cancelAction)
-        }
-        .padding(12)
-    }
-
     // MARK: - Actions
+
+    private func handleOpenIntent(selectFirstIfNeeded: Bool) {
+        library.reload()
+        if let query = appModel.connectionManagerCreateQuery {
+            appModel.connectionManagerCreateQuery = nil
+            appModel.connectionManagerFocusId = nil
+            beginCreate(prefill: ConnectionDraft.draftFromQuery(query))
+        } else if let focusId = appModel.connectionManagerFocusId {
+            appModel.connectionManagerFocusId = nil
+            if let info = library.connection(id: focusId) {
+                select(info)
+            } else if selectFirstIfNeeded, let first = filtered.first {
+                select(first)
+            }
+        } else if selectFirstIfNeeded, selectedId == nil, let first = filtered.first {
+            select(first)
+        }
+    }
 
     private func select(_ info: ESSConnectionInfo) {
         selectedId = info.connectionId as UUID
@@ -337,33 +310,6 @@ struct ConnectionManagerView: View {
         select(info)
     }
 
-    private func openSelectedSession() {
-        if isCreating {
-            presentBlocker(
-                title: "Unsaved Connection",
-                message: "Save the new connection before opening a session."
-            )
-            return
-        }
-        guard let selectedId else {
-            presentBlocker(
-                title: "No Connection Selected",
-                message: "Select a connection in the list first."
-            )
-            return
-        }
-        guard let info = library.connection(id: selectedId)
-            ?? filtered.first(where: { ($0.connectionId as UUID) == selectedId })
-        else {
-            presentBlocker(
-                title: "Connection Missing",
-                message: "The selected connection is no longer in the library. Reload and try again."
-            )
-            return
-        }
-        appModel.openSessionFromManager(connection: info)
-    }
-
     private func openSelected(_ info: ESSConnectionInfo) {
         if isCreating {
             presentBlocker(
@@ -377,17 +323,6 @@ struct ConnectionManagerView: View {
 
     private func presentBlocker(title: String, message: String) {
         managerAlert = ManagerAlert(title: title, message: message)
-    }
-
-    private func importSelectedOrPick() {
-        if let info = selectedInfo, info.source == .sshConfig {
-            if let imported = library.importFromSshConfig(id: info.connectionId as UUID) {
-                select(imported)
-            }
-            return
-        }
-        library.reloadSshConfig()
-        appModel.status.post("Reloaded ~/.ssh/config — select a host and Import.", level: .status)
     }
 }
 

@@ -61,6 +61,7 @@ struct ShellSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 }

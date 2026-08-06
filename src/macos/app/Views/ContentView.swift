@@ -9,20 +9,24 @@ struct ContentView: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        NavigationSplitView {
-            ConnectionSidebarView()
-                .environmentObject(appModel)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
-        } content: {
-            SessionWorkspaceColumn()
-                .environmentObject(appModel)
-                .navigationSplitViewColumnWidth(min: 500, ideal: 760)
-        } detail: {
-            FileInspectorColumn()
-                .environmentObject(appModel)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 460)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        // Prefer VStack over safeAreaInset — the latter overlays AppKit columns on macOS.
+        VStack(spacing: 0) {
+            NavigationSplitView {
+                ConnectionSidebarView()
+                    .environmentObject(appModel)
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+            } content: {
+                SessionWorkspaceColumn()
+                    .environmentObject(appModel)
+                    .navigationSplitViewColumnWidth(min: 500, ideal: 760)
+            } detail: {
+                FileInspectorColumn()
+                    .environmentObject(appModel)
+                    .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 460)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
             AppStatusBar()
         }
         .background(WindowFrameTracker())
@@ -78,9 +82,6 @@ struct ContentView: View {
             case .connect:
                 ConnectSheet()
                     .environmentObject(appModel)
-            case .connectionManager:
-                ConnectionManagerView()
-                    .environmentObject(appModel)
             case .passwordPrompt:
                 PasswordPromptSheet()
                     .environmentObject(appModel)
@@ -119,6 +120,10 @@ struct ContentView: View {
             guard token != nil else { return }
             openWindow(id: "explorer")
         }
+        .onChange(of: appModel.connectionManagerOpenToken) { _, token in
+            guard token != nil else { return }
+            openWindow(id: "connectionManager")
+        }
     }
 
     private var appAppearanceColorScheme: ColorScheme? {
@@ -150,23 +155,13 @@ private struct ConnectionSidebarView: View {
         .listStyle(.sidebar)
         .navigationTitle("Connections")
         .safeAreaInset(edge: .bottom) {
-            VStack(alignment: .leading, spacing: 4) {
-                Button {
-                    appModel.openConnectSheet()
-                } label: {
-                    Label("New Connection", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.borderless)
-
-                Button {
-                    appModel.openConnectionManager()
-                } label: {
-                    Label("Browse Connections", systemImage: "list.bullet.rectangle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.borderless)
+            Button {
+                appModel.openConnectSheet()
+            } label: {
+                Label("New Connection", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.borderless)
             .padding(12)
         }
         .alert("Delete Connection?", isPresented: $showDeleteConfirm) {

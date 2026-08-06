@@ -45,10 +45,9 @@ final class TrayController: NSObject {
 
     func requestQuit() {
         forceQuit = true
-        NSApp.keyWindow?.performClose(nil)
-        if NSApp.keyWindow == nil {
-            NSApp.terminate(nil)
-        }
+        // Confirm only in applicationShouldTerminate — do not performClose first
+        // or the quit dialog is shown twice.
+        NSApp.terminate(nil)
     }
 
     func maybeNotify(title: String, message: String) {

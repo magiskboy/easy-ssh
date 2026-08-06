@@ -22,12 +22,11 @@ enum TerminalAppearance {
         let history = Int(settings.historySize)
         terminal.changeScrollback(history > 0 ? history : nil)
 
+        terminal.scrollerStyle = .legacy
+
         applyCursor(to: terminal, active: active)
     }
 
-    /// Active pane: honor user blink setting. Inactive: force steady so the caret
-    /// stays visible without blinking (SwiftTerm only stops blink on resignFirstResponder,
-    /// and panes that never held key focus keep blinking otherwise).
     static func applyCursor(to terminal: TerminalView, active: Bool) {
         let settings = ESSAppSettings.shared()
         let blink = active && settings.cursorBlink

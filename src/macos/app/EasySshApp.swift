@@ -38,11 +38,21 @@ struct EasySshApp: App {
         .defaultSize(width: 760, height: 520)
         .windowResizability(.contentMinSize)
 
+        Window("Connection Manager", id: "connectionManager") {
+            ConnectionManagerView()
+                .environmentObject(appModel)
+                .environmentObject(settingsModel)
+        }
+        .defaultSize(width: 900, height: 640)
+        .windowResizability(.contentMinSize)
+
         Settings {
             SettingsRootView()
                 .environmentObject(appModel)
                 .environmentObject(settingsModel)
         }
+        .defaultSize(width: 480, height: 400)
+        .windowResizability(.contentSize)
     }
 }
 
@@ -50,6 +60,20 @@ private struct AppMenuCommands: Commands {
     @ObservedObject var appModel: AppModel
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Easy SSH") {
+                appModel.activeModal = .about
+            }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.about"))
+        }
+
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                appModel.openSettings(tab: .general)
+            }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.settings"))
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Connection…") {
                 appModel.openConnectSheet()
@@ -61,16 +85,51 @@ private struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.connectionManager"))
 
+            Button("Quick Connect…") {
+                appModel.openQuickConnect()
+            }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.quickConnect"))
+
+            Divider()
+
+            Button("New Shell") {
+                appModel.openShellInSelectedSession()
+            }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.newSession"))
+            .disabled(!(appModel.selectedSession?.canOpenShell ?? false))
+
+            Button("Close Shell") {
+                appModel.closeShellInSelectedSession()
+            }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "shell.close"))
+            .disabled(!appModel.canUseTerminalActions)
+
             Button("Close Session") {
                 appModel.closeSelectedSession()
             }
             .keyboardShortcut("w", modifiers: [.command])
             .disabled(appModel.selectedSession == nil)
 
-            Button("Quick Connect…") {
-                appModel.openQuickConnect()
+            Divider()
+
+            Menu("Go to Shell") {
+                if let session = appModel.selectedSession, !session.shells.isEmpty {
+                    ForEach(session.shells) { shell in
+                        Button(shell.title) {
+                            appModel.focusShellInSelectedSession(shell.id)
+                        }
+                    }
+                } else {
+                    Button("No shells") {}
+                        .disabled(true)
+                }
             }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.quickConnect"))
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.goToShell"))
+            .disabled(appModel.selectedSession?.shells.isEmpty ?? true)
+        }
+
+        CommandGroup(replacing: .undoRedo) {
+            EmptyView()
         }
 
         CommandGroup(after: .pasteboard) {
@@ -113,77 +172,19 @@ private struct AppMenuCommands: Commands {
             .disabled(!appModel.canUseTerminalActions)
         }
 
-        CommandMenu("Session") {
-            Button("New Shell") {
-                appModel.openShellInSelectedSession()
-            }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.newSession"))
-            .disabled(!(appModel.selectedSession?.canOpenShell ?? false))
+        CommandGroup(replacing: .sidebar) {
+            EmptyView()
+        }
 
-            Button("Close Shell") {
-                appModel.closeShellInSelectedSession()
-            }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "shell.close"))
-            .disabled(!appModel.canUseTerminalActions)
+        CommandGroup(replacing: .toolbar) {
+            EmptyView()
+        }
 
-            Button("Rename Shell…") {
-                appModel.renameShellInSelectedSession()
-            }
-            .disabled(!appModel.canUseTerminalActions)
+        CommandGroup(replacing: .help) {
+            EmptyView()
+        }
 
-            Divider()
-
-            Menu("Go to Shell") {
-                if let session = appModel.selectedSession, !session.shells.isEmpty {
-                    ForEach(session.shells) { shell in
-                        Button(shell.title) {
-                            appModel.focusShellInSelectedSession(shell.id)
-                        }
-                    }
-                } else {
-                    Button("No shells") {}
-                        .disabled(true)
-                }
-            }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.goToShell"))
-            .disabled(appModel.selectedSession?.shells.isEmpty ?? true)
-
-            Divider()
-
-            Button("Container Explorer") {
-                appModel.presentExplorer(.container)
-            }
-            .disabled(appModel.selectedSession?.state != .connected)
-
-            Button("Service Explorer") {
-                appModel.presentExplorer(.service)
-            }
-            .disabled(appModel.selectedSession?.state != .connected)
-
-            Button("Process Explorer") {
-                appModel.presentExplorer(.process)
-            }
-            .disabled(appModel.selectedSession?.state != .connected)
-
-            Button("System Info") {
-                appModel.presentExplorer(.systemInfo)
-            }
-            .disabled(appModel.selectedSession?.state != .connected)
-
-            Divider()
-
-            Button("Disconnect") {
-                appModel.disconnectSelectedSession()
-            }
-            .disabled(appModel.selectedSession?.state != .connected)
-
-            Button("Reconnect") {
-                appModel.reconnectSelectedSession()
-            }
-            .disabled(appModel.selectedSession == nil)
-
-            Divider()
-
+        CommandGroup(after: .windowArrangement) {
             Button("Next Tab") {
                 appModel.selectNextSession()
             }
@@ -195,34 +196,22 @@ private struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.previousTab"))
             .disabled(appModel.sessions.count < 2)
-        }
 
-        CommandGroup(after: .windowArrangement) {
+            Divider()
+
             Button("Open Log") {
                 appModel.openLogFile()
             }
-
-            Button("Settings…") {
-                appModel.openSettings(tab: .general)
-            }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.settings"))
-
-            Button("Keyboard Shortcuts…") {
-                appModel.openSettings(tab: .shortcuts)
-            }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.shortcuts"))
 
             Button("Command Palette…") {
                 appModel.openCommandPalette()
             }
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.commandPalette"))
-        }
 
-        CommandGroup(replacing: .appInfo) {
-            Button("About Easy SSH") {
-                appModel.activeModal = .about
+            Button("Keyboard Shortcuts…") {
+                appModel.openSettings(tab: .shortcuts)
             }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.about"))
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.shortcuts"))
         }
     }
 }

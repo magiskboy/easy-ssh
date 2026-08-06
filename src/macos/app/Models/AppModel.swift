@@ -60,7 +60,6 @@ struct PasswordPromptRequest: Identifiable {
 
 enum AppModal: Identifiable, Equatable {
     case connect
-    case connectionManager
     case passwordPrompt
     case hostKeyPrompt
     case about
@@ -68,7 +67,6 @@ enum AppModal: Identifiable, Equatable {
     var id: String {
         switch self {
         case .connect: return "connect"
-        case .connectionManager: return "connectionManager"
         case .passwordPrompt: return "passwordPrompt"
         case .hostKeyPrompt: return "hostKeyPrompt"
         case .about: return "about"
@@ -108,6 +106,8 @@ final class AppModel: ObservableObject {
     @Published var connectionManagerCreateQuery: String?
     /// Select this connection when Connection Manager opens (sidebar Edit).
     @Published var connectionManagerFocusId: UUID?
+    /// Bumped when the Connection Manager window should open or come forward.
+    @Published private(set) var connectionManagerOpenToken: UUID?
     /// Command palette presentation (separate from `activeModal` to avoid stacking issues).
     @Published var paletteMode: PaletteMode?
 
@@ -190,7 +190,7 @@ final class AppModel: ObservableObject {
 
     func openConnectionManager() {
         library.reload()
-        activeModal = .connectionManager
+        connectionManagerOpenToken = UUID()
     }
 
     func editConnection(_ connectionId: UUID) {
@@ -260,8 +260,6 @@ final class AppModel: ObservableObject {
         return true
     }
 
-    /// Close Connection Manager, then connect on the next turn so a password sheet can present
-    /// on the same `.sheet(item:)` host (macOS drops stacked sheets).
     func openSessionFromManager(connectionId: UUID) {
         guard let info = library.connection(id: connectionId) else {
             status.notify(
@@ -269,18 +267,12 @@ final class AppModel: ObservableObject {
                 message: "Connection not found.",
                 level: .error
             )
-            if activeModal == .connectionManager {
-                activeModal = nil
-            }
             return
         }
         openSessionFromManager(connection: info)
     }
 
     func openSessionFromManager(connection: ESSConnectionInfo) {
-        if activeModal == .connectionManager {
-            activeModal = nil
-        }
         let label = connection.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = label.isEmpty
             ? (connection.displayText.isEmpty
@@ -293,15 +285,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        // Password auth needs a tick so the manager sheet can finish dismissing before the
-        // password sheet presents on the same host. Private-key sessions need no modal.
-        if connection.authType == .password {
-            DispatchQueue.main.async { [weak self] in
-                self?.connect(with: connection, inlineCredentials: nil)
-            }
-        } else {
-            connect(with: connection, inlineCredentials: nil)
-        }
+        connect(with: connection, inlineCredentials: nil)
     }
 
     private func dismissModals() {
@@ -783,15 +767,21 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Prevents a second modal if terminate is requested again while the alert is up.
+    private var isConfirmingQuit = false
+
     func confirmQuitWithActiveSessions() -> Bool {
         let active = sessions.filter { $0.state == .connecting || $0.state == .connected }.count
         guard active > 0 else { return true }
+        guard !isConfirmingQuit else { return false }
 
-        if !(tray?.isAvailable == true) || NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
-            // show window for alert if hidden
-        } else {
+        if tray?.isAvailable == true,
+           !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
             tray?.showWindow()
         }
+
+        isConfirmingQuit = true
+        defer { isConfirmingQuit = false }
 
         let alert = NSAlert()
         alert.messageText = "Quit Easy SSH?"

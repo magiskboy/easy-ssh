@@ -41,6 +41,7 @@ final class EasySshAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let appModel else { return .terminateNow }
+        // Single confirm gate for Cmd+Q, menu Quit, and window-close-as-quit.
         if !appModel.confirmQuitWithActiveSessions() {
             tray?.forceQuit = false
             return .terminateCancel
@@ -113,12 +114,8 @@ struct AppLifecycleBridge: NSViewRepresentable {
             let settings = ESSAppSettings.shared()
             let tray = appModel.tray
 
+            // Quit is in progress (terminate already owns the confirm dialog).
             if tray?.forceQuit == true {
-                if !appModel.confirmQuitWithActiveSessions() {
-                    tray?.forceQuit = false
-                    return false
-                }
-                appModel.workspace.saveNow()
                 return true
             }
 
@@ -128,11 +125,9 @@ struct AppLifecycleBridge: NSViewRepresentable {
                 return false
             }
 
-            if !appModel.confirmQuitWithActiveSessions() {
-                return false
-            }
-            appModel.workspace.saveNow()
-            return true
+            // Closing the main window means quit — confirm once via terminate.
+            NSApp.terminate(nil)
+            return false
         }
 
         func windowDidMiniaturize(_ notification: Notification) {
