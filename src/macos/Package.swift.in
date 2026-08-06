@@ -1,0 +1,43 @@
+// swift-tools-version:5.9
+// SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+// SPDX-License-Identifier: GPL-3.0-only
+
+import PackageDescription
+
+let package = Package(
+    name: "EasySshNative",
+    platforms: [
+        .macOS(.v14)
+    ],
+    products: [
+        .executable(name: "easy-ssh-native", targets: ["EasySshNative"])
+    ],
+    dependencies: [
+        // FetchContent checkout dir basename becomes the SPM package identity.
+        .package(path: "@swiftterm_SOURCE_DIR@")
+    ],
+    targets: [
+        .executableTarget(
+            name: "EasySshNative",
+            dependencies: [
+                .product(name: "SwiftTerm", package: "@swiftterm_PACKAGE_IDENTITY@")
+            ],
+            path: "Sources/EasySshNative",
+            exclude: [
+                "EasySsh-Bridging-Header.h",
+                "EasySshRuntime.h",
+                "ESSSessionController.h",
+                "ESSConnectionStore.h",
+                "ESSSecretStore.h",
+                "ESSAppSettings.h",
+                "ESSWorkspaceStore.h",
+                "ESSSshConfigParser.h"
+            ],
+            linkerSettings: [
+                .linkedFramework("SwiftUI"),
+                .linkedFramework("AppKit"),
+                .linkedFramework("Foundation")
+            ]
+        )
+    ]
+)

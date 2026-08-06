@@ -316,3 +316,7 @@ if(DEFINED EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR)
         )
     endif()
 endif()
+
+if(APPLE AND EASY_SSH_NATIVE_MACOS)
+    add_subdirectory(macos)
+endif()

@@ -40,6 +40,10 @@ add_easy_ssh_core_test(tst_SshConfigParser
     connection/tst_SshConfigParser.cpp
 )
 
+add_easy_ssh_core_test(tst_ConnectionStore
+    connection/tst_ConnectionStore.cpp
+)
+
 add_easy_ssh_core_test(tst_WorkspaceState
     session/tst_WorkspaceState.cpp
 )

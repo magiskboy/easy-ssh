@@ -101,6 +101,10 @@ QList<Connection> ConnectionStore::load()
             settings.value(QStringLiteral("compressionEnabled"), false).toBool();
         connection.agentForwarding =
             settings.value(QStringLiteral("agentForwarding"), false).toBool();
+        connection.source = static_cast<ConnectionSource>(
+            settings.value(QStringLiteral("source"), static_cast<int>(ConnectionSource::App))
+                .toInt());
+        connection.configAlias = settings.value(QStringLiteral("configAlias")).toString();
 
         settings.beginGroup(QStringLiteral("shellCommands"));
         connection.shellCommands.shell = settings.value(QStringLiteral("shell")).toString();
@@ -179,6 +183,8 @@ void ConnectionStore::save(const QList<Connection> &connections)
         settings.setValue(QStringLiteral("keepAliveCountMax"), connection.keepAliveCountMax);
         settings.setValue(QStringLiteral("compressionEnabled"), connection.compressionEnabled);
         settings.setValue(QStringLiteral("agentForwarding"), connection.agentForwarding);
+        settings.setValue(QStringLiteral("source"), static_cast<int>(connection.source));
+        settings.setValue(QStringLiteral("configAlias"), connection.configAlias);
         settings.setValue(QStringLiteral("proxyMode"), static_cast<int>(connection.proxyMode));
         settings.setValue(QStringLiteral("proxyCommand"), connection.proxyCommand);
 
