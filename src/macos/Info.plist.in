@@ -13,7 +13,9 @@
 	<key>CFBundleIconFile</key>
 	<string>easy-ssh.icns</string>
 	<key>CFBundleName</key>
-	<string>Easy SSH Native</string>
+	<string>Easy SSH</string>
+	<key>CFBundleDisplayName</key>
+	<string>Easy SSH</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

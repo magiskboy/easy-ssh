@@ -54,7 +54,16 @@ elseif(APPLE)
     set(CPACK_DMG_VOLUME_NAME "EasySSH-${PROJECT_VERSION}")
     set(CPACK_DMG_FORMAT "UDZO")
     set(CPACK_DMG_DISABLE_APPLICATIONS_SYMLINK ON)
-    set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
+    if(EASY_SSH_BUILD_QT_WIDGETS AND EASY_SSH_NATIVE_MACOS)
+        set(CPACK_PACKAGE_EXECUTABLES
+            "easy-ssh;Easy SSH (Qt)"
+            "easy-ssh-native;Easy SSH"
+        )
+    elseif(EASY_SSH_NATIVE_MACOS)
+        set(CPACK_PACKAGE_EXECUTABLES "easy-ssh-native;Easy SSH")
+    else()
+        set(CPACK_PACKAGE_EXECUTABLES "easy-ssh;Easy SSH")
+    endif()
 else()
     set(CPACK_GENERATOR "DEB;RPM;TGZ;AppImage")
     set(CPACK_DEBIAN_PACKAGE_NAME "easy-ssh")

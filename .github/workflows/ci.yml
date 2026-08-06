@@ -140,22 +140,37 @@ jobs:
           - runner: ubuntu-24.04
             target: linux-amd64
             os_family: linux
+            ui: qt
 
           - runner: ubuntu-24.04-arm
             target: linux-arm64
             os_family: linux
+            ui: qt
 
           - runner: macos-15
             target: macos-arm64
             os_family: macos
+            ui: qt
+
+          - runner: macos-15
+            target: macos-arm64-native
+            os_family: macos
+            ui: native
 
           - runner: macos-15-intel
             target: macos-amd64
             os_family: macos
+            ui: qt
+
+          - runner: macos-15-intel
+            target: macos-amd64-native
+            os_family: macos
+            ui: native
 
           - runner: windows-2022
             target: windows-amd64
             os_family: windows
+            ui: qt
 
     steps:
       - name: Checkout
@@ -214,25 +229,53 @@ jobs:
             .deps/tools
             .deps/venv
             build-release/_deps
+            build-release-native/_deps
           key: easy-ssh-deps-${{ matrix.target }}-${{ hashFiles('cmake/EasySshVersions.cmake', 'requirements/**', '.github/scripts/apt-linux.txt', '.github/scripts/fetch-appimagetool.sh', '.github/scripts/install-pip-toolchains.sh', 'third_party/qtermwidget/**', 'third_party/lxqt-build-tools/**') }}
 
       - name: Configure
         run: |
           set -euo pipefail
-          cmake --preset release \
-            -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
-            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/staging"
+          staging="${{ github.workspace }}/staging"
+          case "${{ matrix.ui }}" in
+            native)
+              cmake --preset release-macos-native \
+                -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
+                -DCMAKE_INSTALL_PREFIX="$staging"
+              ;;
+            *)
+              cmake_args=(
+                --preset release
+                -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}"
+                -DCMAKE_INSTALL_PREFIX="$staging"
+              )
+              if [[ "${{ matrix.os_family }}" == "macos" ]]; then
+                # Keep the Qt Widgets DMG independent of the SwiftUI shell.
+                cmake_args+=(-DEASY_SSH_NATIVE_MACOS=OFF)
+              fi
+              cmake "${cmake_args[@]}"
+              ;;
+          esac
 
       - name: Build
-        run: cmake --build --preset release --parallel
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.ui }}" == "native" ]]; then
+            cmake --build --preset release-macos-native --parallel
+          else
+            cmake --build --preset release --parallel
+          fi
 
       - name: Install and package
         run: |
           set -euo pipefail
           staging="${{ github.workspace }}/staging"
-          cmake --install build-release --prefix "$staging"
+          build_dir=build-release
+          if [[ "${{ matrix.ui }}" == "native" ]]; then
+            build_dir=build-release-native
+          fi
+          cmake --install "$build_dir" --prefix "$staging"
           mkdir -p dist
-          cd build-release
+          cd "$build_dir"
           case "${{ matrix.os_family }}" in
             linux)
               # appimagetool is itself an AppImage; extract without FUSE on runners.

@@ -9,49 +9,79 @@ struct ConnectSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
 
+    private let labelWidth: CGFloat = 108
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Quick Connect")
-                .font(.title2.weight(.semibold))
+                .font(.headline)
 
-            Form {
-                TextField("Host", text: $appModel.connectDraft.host)
-                    .onSubmit(applyHostQueryIfNeeded)
-                TextField("Port", value: $appModel.connectDraft.port, format: .number)
-                TextField("Username", text: $appModel.connectDraft.username)
-
-                Toggle("Use private key", isOn: $appModel.connectDraft.usePrivateKey)
-
-                if appModel.connectDraft.usePrivateKey {
-                    HStack {
-                        TextField("Private key path", text: $appModel.connectDraft.privateKeyPath)
-                        Button("Browse…") {
-                            pickPrivateKey()
-                        }
-                    }
-                    SecureField("Passphrase", text: $appModel.connectDraft.passphrase)
-                } else {
-                    SecureField("Password", text: $appModel.connectDraft.password)
+            VStack(alignment: .leading, spacing: 10) {
+                fieldRow("Host") {
+                    TextField("host or user@host", text: $appModel.connectDraft.host)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(applyHostQueryIfNeeded)
                 }
 
-                Toggle("Save connection", isOn: $appModel.connectDraft.saveConnection)
+                HStack(alignment: .center, spacing: 12) {
+                    fieldRow("Port") {
+                        TextField("22", value: $appModel.connectDraft.port, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 72)
+                    }
+                    fieldRow("Username") {
+                        TextField("user", text: $appModel.connectDraft.username)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
 
-                if appModel.connectDraft.saveConnection {
-                    TextField("Name", text: $appModel.connectDraft.name)
-                        .onAppear {
-                            if appModel.connectDraft.name.isEmpty {
-                                appModel.connectDraft.name = appModel.connectDraft.displayName
+                Divider().padding(.vertical, 2)
+
+                toggleRow("Private key", isOn: $appModel.connectDraft.usePrivateKey)
+
+                if appModel.connectDraft.usePrivateKey {
+                    fieldRow("Key path") {
+                        HStack(spacing: 8) {
+                            TextField("~/.ssh/id_ed25519", text: $appModel.connectDraft.privateKeyPath)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Browse…") {
+                                pickPrivateKey()
                             }
                         }
+                    }
+                    fieldRow("Passphrase") {
+                        SecureField("optional", text: $appModel.connectDraft.passphrase)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                } else {
+                    fieldRow("Password") {
+                        SecureField("optional", text: $appModel.connectDraft.password)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+
+                Divider().padding(.vertical, 2)
+
+                toggleRow("Save connection", isOn: $appModel.connectDraft.saveConnection)
+
+                if appModel.connectDraft.saveConnection {
+                    fieldRow("Name") {
+                        TextField("Display name", text: $appModel.connectDraft.name)
+                            .textFieldStyle(.roundedBorder)
+                            .onAppear {
+                                if appModel.connectDraft.name.isEmpty {
+                                    appModel.connectDraft.name = appModel.connectDraft.displayName
+                                }
+                            }
+                    }
                     if !appModel.connectDraft.usePrivateKey {
-                        Toggle("Save password in Keychain", isOn: $appModel.connectDraft.savePassword)
+                        toggleRow("Save password", isOn: $appModel.connectDraft.savePassword)
                     }
                 }
             }
-            .formStyle(.grouped)
 
-            HStack {
-                Spacer()
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
                 Button("Cancel") {
                     dismiss()
                 }
@@ -66,11 +96,37 @@ struct ConnectSheet: View {
                     appModel.connect(with: appModel.connectDraft)
                 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
                 .disabled(!appModel.connectDraft.isValid)
             }
+            .padding(.top, 2)
         }
         .padding(20)
-        .frame(width: 480)
+        .frame(width: 440)
+        .fixedSize(horizontal: true, vertical: true)
+        .modifier(FittedSheetSizingModifier())
+    }
+
+    @ViewBuilder
+    private func fieldRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .frame(width: labelWidth, alignment: .trailing)
+            content()
+        }
+    }
+
+    private func toggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .frame(width: labelWidth, alignment: .trailing)
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+            Spacer(minLength: 0)
+        }
     }
 
     private func applyHostQueryIfNeeded() {
@@ -94,6 +150,17 @@ struct ConnectSheet: View {
         if panel.runModal() == .OK, let url = panel.url {
             appModel.connectDraft.privateKeyPath = url.path
             appModel.connectDraft.usePrivateKey = true
+        }
+    }
+}
+
+/// Hug content height on macOS 15+; no-op on 14 (deployment target).
+private struct FittedSheetSizingModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.presentationSizing(.fitted)
+        } else {
+            content
         }
     }
 }

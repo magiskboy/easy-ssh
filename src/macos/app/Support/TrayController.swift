@@ -31,16 +31,49 @@ final class TrayController: NSObject {
     var isAvailable: Bool { statusItem != nil }
 
     func refresh() {
-        rebuildMenu()
         updateStatusIcon()
         updateTooltip()
     }
 
     func showWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows where window.canBecomeMain {
-            window.makeKeyAndOrderFront(nil)
+        // Status-item menus run inside a tracking session; activating immediately
+        // often no-ops. Restore on the next turn after the menu dismisses.
+        DispatchQueue.main.async { [weak self] in
+            self?.restoreMainWindows()
         }
+    }
+
+    private func restoreMainWindows() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        let mains = NSApp.windows.filter { Self.isMainContentWindow($0) }
+        if mains.isEmpty {
+            appModel?.requestOpenMainWindow()
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        for window in mains {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Primary app window(s) — excludes status-item chrome, settings, and helpers.
+    static func isMainContentWindow(_ window: NSWindow) -> Bool {
+        if window.identifier?.rawValue == AppLifecycleBridge.mainWindowIdentifier {
+            return true
+        }
+        // Fallback before the bridge has tagged the window.
+        guard window.level == .normal, window.styleMask.contains(.titled) else { return false }
+        let title = window.title
+        return title == "Easy SSH" || title.hasPrefix("Easy SSH")
     }
 
     func requestQuit() {
@@ -81,36 +114,24 @@ final class TrayController: NSObject {
     }
 
     private var isMainWindowVisible: Bool {
-        NSApp.windows.contains { $0.isVisible && $0.canBecomeMain }
+        NSApp.windows.contains { $0.isVisible && Self.isMainContentWindow($0) }
     }
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let button = item.button else { return }
         statusItem = item
-        button.target = self
-        button.action = #selector(statusItemClicked(_:))
-        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        item.menu = buildMenu()
+        // Left-click opens the menu (includes "Show Easy SSH"). Avoid also wiring
+        // button.action — dual menu+action handling races with restore.
+        button.target = nil
+        button.action = nil
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
         refresh()
     }
 
-    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        let event = NSApp.currentEvent
-        if event?.type == .rightMouseUp {
-            return
-        }
-        showWindow()
-    }
-
-    private func buildMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.delegate = self
-        return menu
-    }
-
-    private func rebuildMenu() {
-        guard let menu = statusItem?.menu else { return }
+    private func rebuildMenu(into menu: NSMenu) {
         menu.removeAllItems()
 
         let showItem = NSMenuItem(title: "Show Easy SSH", action: #selector(showFromMenu), keyEquivalent: "")
@@ -276,6 +297,8 @@ final class TrayController: NSObject {
 
 extension TrayController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
-        refresh()
+        rebuildMenu(into: menu)
+        updateStatusIcon()
+        updateTooltip()
     }
 }

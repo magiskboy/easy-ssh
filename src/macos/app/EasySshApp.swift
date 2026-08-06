@@ -16,7 +16,7 @@ struct EasySshApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Easy SSH Native") {
+        WindowGroup("Easy SSH", id: "main") {
             ContentView()
                 .environmentObject(appModel)
                 .environmentObject(settingsModel)
@@ -67,12 +67,8 @@ private struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.about"))
         }
 
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings…") {
-                appModel.openSettings(tab: .general)
-            }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.settings"))
-        }
+        // Do not add CommandGroup(replacing: .appSettings) — the `Settings` scene
+        // already injects a Settings… item; replacing still leaves a duplicate on macOS.
 
         CommandGroup(replacing: .newItem) {
             Button("New Connection…") {

@@ -22,18 +22,31 @@ final class ShellViewModel: ObservableObject, Identifiable {
     @Published var findMatchIndex: Int = 0
     @Published var findMatchTotal: Int = 0
 
-    /// Weak handle to the live SwiftTerm view for menu / context actions.
-    weak var terminalView: TerminalView?
+    /// Owned SwiftTerm view. Strong so scrollback survives SwiftUI tear-down when a
+    /// shell is swapped out of the visible layout (tab switch / overflow panes).
+    /// Cleared only when the shell itself is closed via `releaseTerminal()`.
+    var terminalView: TerminalView?
 
     init(id: UUID, title: String) {
         self.id = id
         self.title = title
     }
 
+    func releaseTerminal() {
+        terminalView?.terminalDelegate = nil
+        if let hosted = terminalView as? HostedTerminalView {
+            hosted.onActivated = nil
+        }
+        terminalView?.removeFromSuperview()
+        terminalView = nil
+        pendingData = nil
+    }
+
     func enqueueData(_ data: Data) {
         guard !data.isEmpty else { return }
         // Prefer feeding the live view directly so we do not bounce through SwiftUI
         // updateNSView (re-entrant feed ↔ @Published can hang/crash under MOTD bursts).
+        // Keep feeding even while the view is off-hierarchy (retained across tab swaps).
         if let terminal = terminalView {
             let bytes = [UInt8](data)
             terminal.feed(byteArray: ArraySlice(bytes))

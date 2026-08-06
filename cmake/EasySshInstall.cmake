@@ -6,176 +6,179 @@ include_guard(GLOBAL)
 
 include(${CMAKE_CURRENT_LIST_DIR}/EasySshHelpers.cmake)
 
-install(TARGETS easy-ssh
-    BUNDLE  DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+# --- Qt Widgets shell (easy-ssh) ---------------------------------------------
 
-# Always bundle app-specific shared libs (FetchContent). Never install(TARGETS)
-# on IMPORTED system packages. OS commons are not packaged.
-easy_ssh_collect_shared_targets(_easy_ssh_bundle_deps
-    ssh qt6keychain qtermwidget6 qtadvanceddocking-qt6
-)
+if(EASY_SSH_BUILD_QT_WIDGETS)
+    install(TARGETS easy-ssh
+        BUNDLE  DESTINATION .
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 
-install(FILES
-    ${CMAKE_SOURCE_DIR}/resources/linux/io.github.magiskboy.easy-ssh.desktop
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
-)
+    # Always bundle app-specific shared libs (FetchContent). Never install(TARGETS)
+    # on IMPORTED system packages. OS commons are not packaged.
+    easy_ssh_collect_shared_targets(_easy_ssh_bundle_deps
+        ssh qt6keychain qtermwidget6 qtadvanceddocking-qt6
+    )
 
-install(FILES
-    ${CMAKE_SOURCE_DIR}/resources/linux/io.github.magiskboy.easy-ssh.metainfo.xml
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
-)
-
-foreach(_icon_size IN ITEMS 16 22 24 32 48 64 128 256 512)
     install(FILES
-        ${CMAKE_SOURCE_DIR}/resources/linux/icons/hicolor/${_icon_size}x${_icon_size}/apps/io.github.magiskboy.easy-ssh.png
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_icon_size}x${_icon_size}/apps
+        ${CMAKE_SOURCE_DIR}/resources/linux/io.github.magiskboy.easy-ssh.desktop
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
     )
-endforeach()
 
-# App chrome themes (qt-themes JSON palettes).
-if(EXISTS "${CMAKE_SOURCE_DIR}/resources/themes")
-    install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/themes/"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/themes"
-        FILES_MATCHING PATTERN "*.json"
+    install(FILES
+        ${CMAKE_SOURCE_DIR}/resources/linux/io.github.magiskboy.easy-ssh.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
     )
-endif()
 
-# QTermWidget color schemes + keyboard layouts (bundled; not the system qtermwidget prefix).
-if(DEFINED EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
-    install(DIRECTORY "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/color-schemes"
-        FILES_MATCHING PATTERN "*.colorscheme"
-    )
-endif()
-if(DEFINED EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
-    install(DIRECTORY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/kb-layouts"
-        FILES_MATCHING
-            PATTERN "*.keytab"
-            PATTERN "historic"
-            PATTERN "README" EXCLUDE
-    )
-endif()
-if(APPLE)
-    # macOS looks under Contents/Resources (see third_party/qtermwidget/EASY_SSH.md).
+    foreach(_icon_size IN ITEMS 16 22 24 32 48 64 128 256 512)
+        install(FILES
+            ${CMAKE_SOURCE_DIR}/resources/linux/icons/hicolor/${_icon_size}x${_icon_size}/apps/io.github.magiskboy.easy-ssh.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_icon_size}x${_icon_size}/apps
+        )
+    endforeach()
+
+    # App chrome themes (qt-themes JSON palettes).
+    if(EXISTS "${CMAKE_SOURCE_DIR}/resources/themes")
+        install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/themes/"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/themes"
+            FILES_MATCHING PATTERN "*.json"
+        )
+    endif()
+
+    # QTermWidget color schemes + keyboard layouts (bundled; not the system qtermwidget prefix).
     if(DEFINED EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
         install(DIRECTORY "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/"
-            DESTINATION "easy-ssh.app/Contents/Resources/color-schemes"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/color-schemes"
             FILES_MATCHING PATTERN "*.colorscheme"
         )
     endif()
     if(DEFINED EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
         install(DIRECTORY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/"
-            DESTINATION "easy-ssh.app/Contents/Resources/kb-layouts"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/easy-ssh/kb-layouts"
             FILES_MATCHING
                 PATTERN "*.keytab"
                 PATTERN "historic"
                 PATTERN "README" EXCLUDE
         )
     endif()
-    if(EXISTS "${CMAKE_SOURCE_DIR}/resources/themes")
-        install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/themes/"
-            DESTINATION "easy-ssh.app/Contents/Resources/themes"
-            FILES_MATCHING PATTERN "*.json"
+    if(APPLE)
+        # macOS looks under Contents/Resources (see third_party/qtermwidget/EASY_SSH.md).
+        if(DEFINED EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
+            install(DIRECTORY "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/"
+                DESTINATION "easy-ssh.app/Contents/Resources/color-schemes"
+                FILES_MATCHING PATTERN "*.colorscheme"
+            )
+        endif()
+        if(DEFINED EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC AND EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
+            install(DIRECTORY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/"
+                DESTINATION "easy-ssh.app/Contents/Resources/kb-layouts"
+                FILES_MATCHING
+                    PATTERN "*.keytab"
+                    PATTERN "historic"
+                    PATTERN "README" EXCLUDE
+            )
+        endif()
+        if(EXISTS "${CMAKE_SOURCE_DIR}/resources/themes")
+            install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/themes/"
+                DESTINATION "easy-ssh.app/Contents/Resources/themes"
+                FILES_MATCHING PATTERN "*.json"
+            )
+        endif()
+    endif()
+
+    # Build genex lists for install-time driver (paths known after build).
+    set(_easy_ssh_lib_file_genex "")
+    set(_easy_ssh_lib_soname_genex "")
+    foreach(_easy_ssh_dep IN LISTS _easy_ssh_bundle_deps)
+        get_target_property(_easy_ssh_dep_type ${_easy_ssh_dep} TYPE)
+        if(NOT _easy_ssh_dep_type STREQUAL "SHARED_LIBRARY")
+            continue()
+        endif()
+        string(APPEND _easy_ssh_lib_file_genex "$<TARGET_FILE:${_easy_ssh_dep}>;")
+        # TARGET_SONAME_FILE_NAME is invalid on DLL platforms (Windows).
+        if(NOT WIN32)
+            string(APPEND _easy_ssh_lib_soname_genex "$<TARGET_SONAME_FILE_NAME:${_easy_ssh_dep}>;")
+        endif()
+    endforeach()
+
+    set(_easy_ssh_deploy_tool_options "")
+    if(WIN32)
+        set(_easy_ssh_deploy_tool_options --ignore-library-errors)
+    elseif(APPLE)
+        # Ad-hoc sign; re-signed again after any later install_name_tool.
+        # -libpath helps macdeployqt find remaining non-Qt deps in the build tree.
+        set(_easy_ssh_deploy_tool_options
+            -codesign=-
+            -libpath=${CMAKE_BINARY_DIR}/lib
         )
     endif()
-endif()
 
-# Build genex lists for install-time driver (paths known after build).
-set(_easy_ssh_lib_file_genex "")
-set(_easy_ssh_lib_soname_genex "")
-foreach(_easy_ssh_dep IN LISTS _easy_ssh_bundle_deps)
-    get_target_property(_easy_ssh_dep_type ${_easy_ssh_dep} TYPE)
-    if(NOT _easy_ssh_dep_type STREQUAL "SHARED_LIBRARY")
-        continue()
-    endif()
-    string(APPEND _easy_ssh_lib_file_genex "$<TARGET_FILE:${_easy_ssh_dep}>;")
-    # TARGET_SONAME_FILE_NAME is invalid on DLL platforms (Windows).
-    if(NOT WIN32)
-        string(APPEND _easy_ssh_lib_soname_genex "$<TARGET_SONAME_FILE_NAME:${_easy_ssh_dep}>;")
-    endif()
-endforeach()
-
-set(_easy_ssh_deploy_tool_options "")
-if(WIN32)
-    set(_easy_ssh_deploy_tool_options --ignore-library-errors)
-elseif(APPLE)
-    # Ad-hoc sign; re-signed again after any later install_name_tool.
-    # -libpath helps macdeployqt find remaining non-Qt deps in the build tree.
-    set(_easy_ssh_deploy_tool_options
-        -codesign=-
-        -libpath=${CMAKE_BINARY_DIR}/lib
-    )
-endif()
-
-# Resolve Qt plugins + patchelf for Linux (project Qt only).
-set(_easy_ssh_qt_plugins_src "")
-set(_easy_ssh_patchelf "")
-if(UNIX AND NOT APPLE)
-    foreach(_easy_ssh_plug_cand IN ITEMS
-        "${Qt6_DIR}/../../../plugins"
-        "${Qt6_DIR}/../../../qt6/plugins"
-    )
-        get_filename_component(_easy_ssh_plug_abs "${_easy_ssh_plug_cand}" ABSOLUTE)
-        if(EXISTS "${_easy_ssh_plug_abs}/platforms")
-            set(_easy_ssh_qt_plugins_src "${_easy_ssh_plug_abs}")
-            break()
+    # Resolve Qt plugins + patchelf for Linux (project Qt only).
+    set(_easy_ssh_qt_plugins_src "")
+    set(_easy_ssh_patchelf "")
+    if(UNIX AND NOT APPLE)
+        foreach(_easy_ssh_plug_cand IN ITEMS
+            "${Qt6_DIR}/../../../plugins"
+            "${Qt6_DIR}/../../../qt6/plugins"
+        )
+            get_filename_component(_easy_ssh_plug_abs "${_easy_ssh_plug_cand}" ABSOLUTE)
+            if(EXISTS "${_easy_ssh_plug_abs}/platforms")
+                set(_easy_ssh_qt_plugins_src "${_easy_ssh_plug_abs}")
+                break()
+            endif()
+        endforeach()
+        if(_easy_ssh_qt_plugins_src)
+            message(STATUS "EasySshInstall: Qt plugins from ${_easy_ssh_qt_plugins_src}")
+        else()
+            message(WARNING "EasySshInstall: Qt plugins directory not found (AppImage may fail to start)")
         endif()
-    endforeach()
-    if(_easy_ssh_qt_plugins_src)
-        message(STATUS "EasySshInstall: Qt plugins from ${_easy_ssh_qt_plugins_src}")
-    else()
-        message(WARNING "EasySshInstall: Qt plugins directory not found (AppImage may fail to start)")
-    endif()
-    find_program(EASY_SSH_PATCHELF NAMES patchelf)
-    if(EASY_SSH_PATCHELF)
-        set(_easy_ssh_patchelf "${EASY_SSH_PATCHELF}")
-        message(STATUS "EasySshInstall: patchelf at ${EASY_SSH_PATCHELF}")
-    else()
-        message(WARNING "EasySshInstall: patchelf not found; CPack AppImage may break bundled libs")
-    endif()
-endif()
-
-# Runtime search dirs (build tree + Win OpenSSL hints for narrow GRD).
-set(_easy_ssh_runtime_search_dirs
-    "${CMAKE_BINARY_DIR}/bin"
-    "${CMAKE_BINARY_DIR}/lib"
-    "${CMAKE_BINARY_DIR}/lib64"
-)
-if(WIN32)
-    foreach(_ssl_bin IN ITEMS
-        "$ENV{OPENSSL_ROOT_DIR}/bin"
-        "C:/Program Files/OpenSSL/bin"
-        "C:/Program Files/OpenSSL-Win64/bin"
-    )
-        if(EXISTS "${_ssl_bin}")
-            list(APPEND _easy_ssh_runtime_search_dirs "${_ssl_bin}")
+        find_program(EASY_SSH_PATCHELF NAMES patchelf)
+        if(EASY_SSH_PATCHELF)
+            set(_easy_ssh_patchelf "${EASY_SSH_PATCHELF}")
+            message(STATUS "EasySshInstall: patchelf at ${EASY_SSH_PATCHELF}")
+        else()
+            message(WARNING "EasySshInstall: patchelf not found; CPack AppImage may break bundled libs")
         endif()
+    endif()
+
+    # Runtime search dirs (build tree + Win OpenSSL hints for narrow GRD).
+    set(_easy_ssh_runtime_search_dirs
+        "${CMAKE_BINARY_DIR}/bin"
+        "${CMAKE_BINARY_DIR}/lib"
+        "${CMAKE_BINARY_DIR}/lib64"
+    )
+    if(WIN32)
+        foreach(_ssl_bin IN ITEMS
+            "$ENV{OPENSSL_ROOT_DIR}/bin"
+            "C:/Program Files/OpenSSL/bin"
+            "C:/Program Files/OpenSSL-Win64/bin"
+        )
+            if(EXISTS "${_ssl_bin}")
+                list(APPEND _easy_ssh_runtime_search_dirs "${_ssl_bin}")
+            endif()
+        endforeach()
+    endif()
+    set(_easy_ssh_runtime_dirs_cmake "")
+    foreach(_dir IN LISTS _easy_ssh_runtime_search_dirs)
+        string(REPLACE "\\" "/" _dir_fwd "${_dir}")
+        string(APPEND _easy_ssh_runtime_dirs_cmake "  \"${_dir_fwd}\"\n")
     endforeach()
-endif()
-set(_easy_ssh_runtime_dirs_cmake "")
-foreach(_dir IN LISTS _easy_ssh_runtime_search_dirs)
-    string(REPLACE "\\" "/" _dir_fwd "${_dir}")
-    string(APPEND _easy_ssh_runtime_dirs_cmake "  \"${_dir_fwd}\"\n")
-endforeach()
 
-file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/cmake")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/cmake")
 
-if(APPLE)
-    set(_easy_ssh_bundle_platform "macos")
-elseif(WIN32)
-    set(_easy_ssh_bundle_platform "windows")
-else()
-    set(_easy_ssh_bundle_platform "linux")
-endif()
+    if(APPLE)
+        set(_easy_ssh_bundle_platform "macos")
+    elseif(WIN32)
+        set(_easy_ssh_bundle_platform "windows")
+    else()
+        set(_easy_ssh_bundle_platform "linux")
+    endif()
 
-# --- Generate install scripts (no install(CODE) string blobs) -----------------
+    # --- Generate install scripts (no install(CODE) string blobs) -----------------
 
-if(APPLE)
-    set(_pre_qt_script "${CMAKE_BINARY_DIR}/cmake/easy-ssh-bundle-pre-qt.cmake")
-    file(GENERATE OUTPUT "${_pre_qt_script}" CONTENT
+    if(APPLE)
+        set(_pre_qt_script "${CMAKE_BINARY_DIR}/cmake/easy-ssh-bundle-pre-qt.cmake")
+        file(GENERATE OUTPUT "${_pre_qt_script}" CONTENT
 "# Generated by EasySshInstall.cmake — macOS pre-macdeployqt bundle
 set(CMAKE_INSTALL_BINDIR \"${CMAKE_INSTALL_BINDIR}\")
 set(EASY_SSH_BUNDLE_LIB_FILES \"${_easy_ssh_lib_file_genex}\")
@@ -184,20 +187,20 @@ include(\"${CMAKE_SOURCE_DIR}/cmake/EasySshHelpers.cmake\")
 include(\"${CMAKE_SOURCE_DIR}/cmake/bundle/macos.cmake\")
 easy_ssh_bundle_macos_pre_qt()
 ")
-    install(SCRIPT "${_pre_qt_script}")
-endif()
+        install(SCRIPT "${_pre_qt_script}")
+    endif()
 
-qt_generate_deploy_app_script(
-    TARGET easy-ssh
-    OUTPUT_SCRIPT easy_ssh_deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-    NO_TRANSLATIONS
-    DEPLOY_TOOL_OPTIONS ${_easy_ssh_deploy_tool_options}
-)
-install(SCRIPT ${easy_ssh_deploy_script})
+    qt_generate_deploy_app_script(
+        TARGET easy-ssh
+        OUTPUT_SCRIPT easy_ssh_deploy_script
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        NO_TRANSLATIONS
+        DEPLOY_TOOL_OPTIONS ${_easy_ssh_deploy_tool_options}
+    )
+    install(SCRIPT ${easy_ssh_deploy_script})
 
-set(_bundle_script "${CMAKE_BINARY_DIR}/cmake/easy-ssh-bundle.cmake")
-file(GENERATE OUTPUT "${_bundle_script}" CONTENT
+    set(_bundle_script "${CMAKE_BINARY_DIR}/cmake/easy-ssh-bundle.cmake")
+    file(GENERATE OUTPUT "${_bundle_script}" CONTENT
 "# Generated by EasySshInstall.cmake — always-bundle app runtime
 set(CMAKE_INSTALL_BINDIR \"${CMAKE_INSTALL_BINDIR}\")
 set(EASY_SSH_BUNDLE_LIB_FILES \"${_easy_ssh_lib_file_genex}\")
@@ -211,4 +214,14 @@ include(\"${CMAKE_SOURCE_DIR}/cmake/EasySshHelpers.cmake\")
 include(\"${CMAKE_SOURCE_DIR}/cmake/bundle/${_easy_ssh_bundle_platform}.cmake\")
 easy_ssh_bundle_runtime()
 ")
-install(SCRIPT "${_bundle_script}")
+    install(SCRIPT "${_bundle_script}")
+endif()
+
+# --- SwiftUI shell (easy-ssh-native.app) — already self-bundled at build time ---
+
+if(EASY_SSH_NATIVE_MACOS)
+    install(DIRECTORY "${CMAKE_BINARY_DIR}/bin/easy-ssh-native.app"
+        DESTINATION .
+        USE_SOURCE_PERMISSIONS
+    )
+endif()

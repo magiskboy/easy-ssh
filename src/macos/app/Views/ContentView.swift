@@ -112,9 +112,13 @@ struct ContentView: View {
                 }
             )
         }
-        .sheet(item: $appModel.paletteMode) { mode in
-            CommandPaletteView(mode: mode)
-                .environmentObject(appModel)
+        // Palette as overlay (not sheet) — avoids AppKit constraint-update crashes
+        // when presenting List/NSHostingView sheets over NavigationSplitView.
+        .overlay {
+            if let mode = appModel.paletteMode {
+                CommandPaletteOverlay(mode: mode)
+                    .environmentObject(appModel)
+            }
         }
         .onChange(of: appModel.explorerWindowOpenToken) { _, token in
             guard token != nil else { return }
@@ -123,6 +127,10 @@ struct ContentView: View {
         .onChange(of: appModel.connectionManagerOpenToken) { _, token in
             guard token != nil else { return }
             openWindow(id: "connectionManager")
+        }
+        .onChange(of: appModel.mainWindowOpenToken) { _, token in
+            guard token != nil else { return }
+            openWindow(id: "main")
         }
     }
 

@@ -30,7 +30,18 @@ struct TerminalRepresentable: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> HostedTerminalView {
-        let terminal = HostedTerminalView(frame: .zero)
+        // Reuse the shell-owned TerminalView so scrollback survives layout swaps
+        // (SwiftUI tears down NSViewRepresentable when a leaf leaves the tree).
+        let terminal: HostedTerminalView
+        if let existing = shell.terminalView as? HostedTerminalView {
+            existing.removeFromSuperview()
+            terminal = existing
+        } else {
+            terminal = HostedTerminalView(frame: .zero)
+            terminal.wantsLayer = true
+            terminal.layer?.masksToBounds = true
+            shell.terminalView = terminal
+        }
         terminal.terminalDelegate = context.coordinator
         terminal.onActivated = { [weak coordinator = context.coordinator] in
             guard let coordinator else { return }
@@ -80,9 +91,12 @@ struct TerminalRepresentable: NSViewRepresentable {
 
     @MainActor
     static func dismantleNSView(_ nsView: HostedTerminalView, coordinator: TerminalCoordinator) {
+        // Keep the TerminalView (and its buffer) owned by ShellViewModel across
+        // temporary removals from the SwiftUI hierarchy. Only clear the activation
+        // callback so a detached view cannot retarget focus.
         nsView.onActivated = nil
-        if coordinator.shell.terminalView === nsView {
-            coordinator.shell.terminalView = nil
+        if nsView.terminalDelegate === coordinator {
+            nsView.terminalDelegate = nil
         }
     }
 

@@ -108,7 +108,10 @@ final class AppModel: ObservableObject {
     @Published var connectionManagerFocusId: UUID?
     /// Bumped when the Connection Manager window should open or come forward.
     @Published private(set) var connectionManagerOpenToken: UUID?
-    /// Command palette presentation (separate from `activeModal` to avoid stacking issues).
+    /// Bumped when the main window should be (re)opened via SwiftUI `openWindow`.
+    @Published private(set) var mainWindowOpenToken: UUID?
+    /// Command palette overlay (not a `.sheet` — sheets over NavigationSplitView
+    /// can trip AppKit "Update Constraints in Window" crashes on macOS).
     @Published var paletteMode: PaletteMode?
 
     let workspace: WorkspaceCoordinator
@@ -184,6 +187,7 @@ final class AppModel: ObservableObject {
     }
 
     func openConnectSheet() {
+        paletteMode = nil
         connectDraft = ConnectionDraft()
         activeModal = .connect
     }
@@ -191,6 +195,10 @@ final class AppModel: ObservableObject {
     func openConnectionManager() {
         library.reload()
         connectionManagerOpenToken = UUID()
+    }
+
+    func requestOpenMainWindow() {
+        mainWindowOpenToken = UUID()
     }
 
     func editConnection(_ connectionId: UUID) {
@@ -291,6 +299,7 @@ final class AppModel: ObservableObject {
     private func dismissModals() {
         activeModal = nil
         passwordPrompt = nil
+        paletteMode = nil
     }
 
     func connect(with draft: ConnectionDraft) {
@@ -437,6 +446,7 @@ final class AppModel: ObservableObject {
         )
         // Defer so a just-dismissed Connection Manager sheet can finish tearing down.
         DispatchQueue.main.async { [weak self] in
+            self?.paletteMode = nil
             self?.activeModal = .passwordPrompt
         }
     }
@@ -640,6 +650,7 @@ final class AppModel: ObservableObject {
             self.hostKeySessionId = session.id
             // Present on the shared sheet host — SessionPane cannot stack another .sheet on macOS.
             DispatchQueue.main.async {
+                self.paletteMode = nil
                 self.activeModal = .hostKeyPrompt
             }
         }
@@ -664,19 +675,39 @@ final class AppModel: ObservableObject {
     // MARK: - Command palette
 
     func openCommandPalette() {
-        paletteMode = .actions
+        presentPalette(.actions)
     }
 
     func openQuickConnect() {
-        paletteMode = .connections
+        presentPalette(.connections)
     }
 
     func openGoToShell() {
-        paletteMode = .shells
+        presentPalette(.shells)
     }
 
     func dismissCommandPalette() {
         paletteMode = nil
+    }
+
+    private func presentPalette(_ mode: PaletteMode) {
+        // Dismiss lightweight sheets so the overlay is not fighting AppKit layout.
+        switch activeModal {
+        case .connect, .about:
+            activeModal = nil
+        default:
+            break
+        }
+        // Drop terminal first-responder so the filter field can take keyboard focus.
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        paletteMode = mode
+        // Refresh connection list after presenting — never from paletteRows()/view body
+        // (mutating @Published during layout trips AppKit "Update Constraints" crashes).
+        if mode == .connections {
+            DispatchQueue.main.async { [weak self] in
+                self?.library.reload()
+            }
+        }
     }
 
     func paletteRows(mode: PaletteMode, query: String) -> [PaletteRow] {
@@ -776,7 +807,7 @@ final class AppModel: ObservableObject {
         guard !isConfirmingQuit else { return false }
 
         if tray?.isAvailable == true,
-           !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
+           !NSApp.windows.contains(where: { $0.isVisible && TrayController.isMainContentWindow($0) }) {
             tray?.showWindow()
         }
 
@@ -889,7 +920,6 @@ final class AppModel: ObservableObject {
     }
 
     private func buildConnectionRows(query: String) -> [PaletteRow] {
-        library.reload()
         let recentIds = ESSAppSettings.shared().recentConnectionIds(withLimit: 8)
         var recentRank: [UUID: Int] = [:]
         for (index, id) in recentIds.enumerated() {

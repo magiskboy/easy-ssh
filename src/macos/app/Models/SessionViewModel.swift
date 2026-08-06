@@ -712,6 +712,9 @@ final class SessionViewModel: ObservableObject, Identifiable {
     }
 
     private func resetShells() {
+        for shell in shells {
+            shell.releaseTerminal()
+        }
         shellCancellables.removeAll()
         shells = []
         focusedShellId = nil
@@ -788,20 +791,36 @@ final class SessionViewModel: ObservableObject, Identifiable {
     }
 
     private func removeShellLocally(id: UUID, fromRemote: Bool) {
+        if let shell = shells.first(where: { $0.id == id }) {
+            shell.releaseTerminal()
+        }
         shells.removeAll { $0.id == id }
         if let tree = layout {
             layout = tree.removing(id)
         }
-        if focusedShellId == id {
+
+        // Closing the only visible leaf collapses layout to nil (common with smart
+        // layout off). Promote a remaining shell into focus + layout so the UI
+        // does not flash "No Shell" while shells.isEmpty is still false.
+        let focusStillValid = focusedShellId.map { fid in shells.contains(where: { $0.id == fid }) } ?? false
+        if !focusStillValid {
             focusedShellId = shells.last?.id
-            if let focus = focusedShellId, let tree = layout, !tree.contains(focus) {
+        }
+        if let focus = focusedShellId {
+            if layout == nil {
+                layout = .leaf(focus)
+            } else if let tree = layout, !tree.contains(focus) {
                 if let first = tree.leafIds.first {
                     layout = tree.replacing(first, with: focus)
                 } else {
                     layout = .leaf(focus)
                 }
             }
+            requestTerminalActivation(for: focus)
+        } else {
+            layout = nil
         }
+
         if shells.isEmpty, state == .connected, fromRemote {
             overlayMessage = "Shell closed. Reconnect to open a new shell."
             showReconnect = true

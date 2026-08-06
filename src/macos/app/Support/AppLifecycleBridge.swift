@@ -13,9 +13,6 @@ final class EasySshAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installApplicationIconIfAvailable()
         NSApp.setActivationPolicy(.regular)
-        if tray?.isAvailable == true {
-            NSApp.setActivationPolicy(.regular)
-        }
 
         if ESSAppSettings.shared().startInTray, tray?.isAvailable == true {
             hideMainWindows()
@@ -51,7 +48,7 @@ final class EasySshAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func hideMainWindows() {
-        for window in NSApp.windows where window.canBecomeMain {
+        for window in NSApp.windows where TrayController.isMainContentWindow(window) {
             window.orderOut(nil)
         }
     }
@@ -74,6 +71,8 @@ final class EasySshAppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct AppLifecycleBridge: NSViewRepresentable {
+    static let mainWindowIdentifier = "easy-ssh.main"
+
     @EnvironmentObject private var appModel: AppModel
 
     func makeCoordinator() -> Coordinator {
@@ -107,6 +106,7 @@ struct AppLifecycleBridge: NSViewRepresentable {
             guard let window, window !== self.window else { return }
             self.window?.delegate = nil
             self.window = window
+            window.identifier = NSUserInterfaceItemIdentifier(AppLifecycleBridge.mainWindowIdentifier)
             window.delegate = self
         }
 

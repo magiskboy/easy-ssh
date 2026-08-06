@@ -4,6 +4,32 @@
 
 import SwiftUI
 
+/// Dimmed backdrop + centered card. Presented via `.overlay`, not `.sheet`,
+/// because sheet + List over NavigationSplitView can crash AppKit with
+/// "Update Constraints in Window" loops on macOS.
+struct CommandPaletteOverlay: View {
+    @EnvironmentObject private var appModel: AppModel
+    let mode: PaletteMode
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    appModel.dismissCommandPalette()
+                }
+
+            VStack {
+                CommandPaletteView(mode: mode)
+                    .environmentObject(appModel)
+                    .padding(.top, 72)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+}
+
 struct CommandPaletteView: View {
     @EnvironmentObject private var appModel: AppModel
     let mode: PaletteMode
@@ -32,20 +58,37 @@ struct CommandPaletteView: View {
                 .focused($filterFocused)
                 .onSubmit { activateSelection() }
 
-            List {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    paletteRowView(row)
-                        .listRowBackground(index == selectedIndex ? Color.accentColor.opacity(0.15) : nil)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if row.isSelectable {
-                                selectedIndex = index
-                                activateSelection()
-                            }
+            // ScrollView (not List) — NSTableView-backed List is a common trigger
+            // for AppKit constraint update loops inside transient panels.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            paletteRowView(row)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(
+                                    index == selectedIndex
+                                        ? Color.accentColor.opacity(0.15)
+                                        : Color.clear
+                                )
+                                .contentShape(Rectangle())
+                                .id(index)
+                                .onTapGesture {
+                                    if row.isSelectable {
+                                        selectedIndex = index
+                                        activateSelection()
+                                    }
+                                }
                         }
+                    }
+                }
+                .frame(height: 260)
+                .onChange(of: selectedIndex) { _, index in
+                    proxy.scrollTo(index, anchor: .center)
                 }
             }
-            .frame(minHeight: 220, maxHeight: 320)
             .onChange(of: filter) { _, _ in
                 selectedIndex = selectableIndices.first ?? 0
             }
@@ -56,6 +99,12 @@ struct CommandPaletteView: View {
         }
         .padding(16)
         .frame(width: 520)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.25), radius: 24, y: 10)
         .onAppear {
             filter = ""
             selectedIndex = selectableIndices.first ?? 0
@@ -74,6 +123,10 @@ struct CommandPaletteView: View {
         }
         .onKeyPress(.return) {
             activateSelection()
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            appModel.dismissCommandPalette()
             return .handled
         }
     }

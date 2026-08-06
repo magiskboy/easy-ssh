@@ -158,6 +158,14 @@ configure_file(
 
 set(_bridge_lib_dir "${CMAKE_BINARY_DIR}/bin")
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release"
+        OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"
+        OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+    set(_easy_ssh_swift_config release)
+else()
+    set(_easy_ssh_swift_config debug)
+endif()
+
 add_custom_command(
     OUTPUT "${EASY_SSH_NATIVE_EXE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative"
@@ -330,7 +338,7 @@ add_custom_command(
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ESSSshConfigParser.h"
     COMMAND ${EASY_SSH_SWIFT} build
         --package-path "${EASY_SSH_NATIVE_PACKAGE_DIR}"
-        --configuration debug
+        --configuration ${_easy_ssh_swift_config}
         --scratch-path "${EASY_SSH_NATIVE_SWIFT_BUILD_DIR}"
         -Xswiftc -import-objc-header
         -Xswiftc "${CMAKE_CURRENT_SOURCE_DIR}/bridge/EasySsh-Bridging-Header.h"
@@ -341,7 +349,7 @@ add_custom_command(
         -Xlinker -rpath
         -Xlinker ${_bridge_lib_dir}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${EASY_SSH_NATIVE_SWIFT_BUILD_DIR}/debug/easy-ssh-native"
+        "${EASY_SSH_NATIVE_SWIFT_BUILD_DIR}/${_easy_ssh_swift_config}/easy-ssh-native"
         "${EASY_SSH_NATIVE_EXE}"
     DEPENDS
         easy-ssh-bridge

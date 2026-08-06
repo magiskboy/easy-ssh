@@ -379,23 +379,112 @@ struct ShellSplitView: View {
         case let .leaf(id):
             if let shell = session.shells.first(where: { $0.id == id }) {
                 ShellPaneView(session: session, shell: shell)
+                    .id(id)
             } else {
                 Color.black.opacity(0.05)
+                    .id(id)
             }
         case let .split(axis, first, second):
-            switch axis {
-            case .horizontal:
-                HSplitView {
-                    ShellSplitView(session: session, node: first)
-                    ShellSplitView(session: session, node: second)
-                }
-            case .vertical:
-                VSplitView {
-                    ShellSplitView(session: session, node: first)
-                    ShellSplitView(session: session, node: second)
-                }
+            // Avoid SwiftUI HSplitView/VSplitView with Terminal NSViewRepresentable —
+            // panes often stack/overlap instead of tiling. Use an explicit stack + clip.
+            // Do not bind view identity to leaf UUIDs — tab swaps would recreate sibling
+            // panes and drop their TerminalViews.
+            ResizableShellSplit(axis: axis) {
+                ShellSplitView(session: session, node: first)
+            } second: {
+                ShellSplitView(session: session, node: second)
             }
         }
+    }
+}
+
+/// Equal-weight split with a draggable separator. Clips children so SwiftTerm
+/// layers cannot paint into the sibling pane.
+private struct ResizableShellSplit<First: View, Second: View>: View {
+    let axis: SplitAxis
+    @ViewBuilder var first: () -> First
+    @ViewBuilder var second: () -> Second
+
+    @State private var fraction: CGFloat = 0.5
+    @State private var dragStartFraction: CGFloat?
+
+    private let separatorThickness: CGFloat = 3
+    private let minFraction: CGFloat = 0.18
+
+    var body: some View {
+        GeometryReader { geo in
+            let isHorizontal = axis == .horizontal
+            let total = isHorizontal ? geo.size.width : geo.size.height
+            let available = max(0, total - separatorThickness)
+            let clampedFraction = min(1 - minFraction, max(minFraction, fraction))
+            let firstSpan = available * clampedFraction
+            let secondSpan = available - firstSpan
+
+            Group {
+                if isHorizontal {
+                    HStack(spacing: 0) {
+                        first()
+                            .frame(width: firstSpan, height: geo.size.height, alignment: .topLeading)
+                            .clipped()
+                        separator(available: available)
+                        second()
+                            .frame(width: secondSpan, height: geo.size.height, alignment: .topLeading)
+                            .clipped()
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        first()
+                            .frame(width: geo.size.width, height: firstSpan, alignment: .topLeading)
+                            .clipped()
+                        separator(available: available)
+                        second()
+                            .frame(width: geo.size.width, height: secondSpan, alignment: .topLeading)
+                            .clipped()
+                    }
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+        }
+    }
+
+    private func separator(available: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.35))
+            .frame(
+                width: axis == .horizontal ? separatorThickness : nil,
+                height: axis == .vertical ? separatorThickness : nil
+            )
+            .frame(maxWidth: axis == .vertical ? .infinity : nil,
+                   maxHeight: axis == .horizontal ? .infinity : nil)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if dragStartFraction == nil {
+                            dragStartFraction = fraction
+                        }
+                        let start = dragStartFraction ?? fraction
+                        let delta = axis == .horizontal
+                            ? value.translation.width
+                            : value.translation.height
+                        let proposed = start + delta / max(available, 1)
+                        fraction = min(1 - minFraction, max(minFraction, proposed))
+                    }
+                    .onEnded { _ in
+                        dragStartFraction = nil
+                    }
+            )
+            .onHover { hovering in
+                if hovering {
+                    if axis == .horizontal {
+                        NSCursor.resizeLeftRight.push()
+                    } else {
+                        NSCursor.resizeUpDown.push()
+                    }
+                } else {
+                    NSCursor.pop()
+                }
+            }
     }
 }
 
@@ -418,7 +507,10 @@ struct ShellPaneView: View {
             // on inactive panes). Focus is synced from HostedTerminalView.mouseDown /
             // becomeFirstResponder instead.
             TerminalRepresentable(session: session, shell: shell)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
     }
 }
 
