@@ -64,7 +64,6 @@ enum AppModal: Identifiable, Equatable {
     case passwordPrompt
     case hostKeyPrompt
     case about
-    case explorer
 
     var id: String {
         switch self {
@@ -73,7 +72,6 @@ enum AppModal: Identifiable, Equatable {
         case .passwordPrompt: return "passwordPrompt"
         case .hostKeyPrompt: return "hostKeyPrompt"
         case .about: return "about"
-        case .explorer: return "explorer"
         }
     }
 }
@@ -92,7 +90,11 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var activeModal: AppModal?
-    @Published var explorerDialogKind: ExplorerKind?
+    /// Session / kind shown in the explorer window (`WindowGroup` id `explorer`).
+    @Published private(set) var explorerWindowSessionId: UUID?
+    @Published private(set) var explorerWindowKind: ExplorerKind?
+    /// Bumped when the explorer window should open or come forward.
+    @Published private(set) var explorerWindowOpenToken: UUID?
     @Published var connectDraft = ConnectionDraft()
     @Published var passwordPrompt: PasswordPromptRequest?
     @Published var passwordPromptValue: String = ""
@@ -734,6 +736,16 @@ final class AppModel: ObservableObject {
         sessions.first { ($0.connection.connectionId as UUID) == connectionId }
     }
 
+    func session(forSessionId sessionId: UUID) -> SessionViewModel? {
+        sessions.first { $0.id == sessionId }
+    }
+
+    func closeExplorerWindow() {
+        explorerWindowSessionId = nil
+        explorerWindowKind = nil
+        explorerWindowOpenToken = nil
+    }
+
     func openOrSelectSession(for connectionId: UUID) {
         if selectExistingSession(for: connectionId) {
             return
@@ -767,8 +779,9 @@ final class AppModel: ObservableObject {
         selectedSessionId = session.id
         session.ensureExplorersModel()
         session.explorers?.selectKind(kind)
-        explorerDialogKind = kind
-        activeModal = .explorer
+        explorerWindowSessionId = session.id
+        explorerWindowKind = kind
+        explorerWindowOpenToken = UUID()
     }
 
     private func buildActionRows(query: String) -> [PaletteRow] {

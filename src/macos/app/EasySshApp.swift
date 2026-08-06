@@ -30,6 +30,14 @@ struct EasySshApp: App {
             AppMenuCommands(appModel: appModel)
         }
 
+        WindowGroup(id: "explorer") {
+            ExplorerWindowView()
+                .environmentObject(appModel)
+                .environmentObject(settingsModel)
+        }
+        .defaultSize(width: 760, height: 520)
+        .windowResizability(.contentMinSize)
+
         Settings {
             SettingsRootView()
                 .environmentObject(appModel)

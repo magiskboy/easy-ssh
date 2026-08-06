@@ -5,6 +5,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
@@ -96,17 +97,6 @@ struct ContentView: View {
                 }
             case .about:
                 AboutView()
-            case .explorer:
-                if let session = appModel.selectedSession,
-                   let kind = appModel.explorerDialogKind
-                {
-                    ExplorerDialogView(session: session, initialKind: kind)
-                } else {
-                    Color.clear
-                        .onAppear {
-                            appModel.activeModal = nil
-                        }
-                }
             }
         }
         .alert(item: Binding(
@@ -124,6 +114,10 @@ struct ContentView: View {
         .sheet(item: $appModel.paletteMode) { mode in
             CommandPaletteView(mode: mode)
                 .environmentObject(appModel)
+        }
+        .onChange(of: appModel.explorerWindowOpenToken) { _, token in
+            guard token != nil else { return }
+            openWindow(id: "explorer")
         }
     }
 
