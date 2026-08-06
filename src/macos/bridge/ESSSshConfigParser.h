@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-#pragma once
+#ifndef ESS_SSH_CONFIG_PARSER_H
+#define ESS_SSH_CONFIG_PARSER_H
 
 #import <Foundation/Foundation.h>
 
@@ -35,3 +36,5 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
+
+#endif

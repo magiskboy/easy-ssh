@@ -115,6 +115,61 @@ NSString *capabilityToNS(ExplorerCapability cap)
     return @"error";
 }
 
+TunnelType tunnelTypeFromNS(NSString *value)
+{
+    if ([value isEqualToString:@"remote"]) {
+        return TunnelType::Remote;
+    }
+    if ([value isEqualToString:@"dynamic"]) {
+        return TunnelType::Dynamic;
+    }
+    return TunnelType::Local;
+}
+
+TunnelEndpointKind endpointKindFromNS(NSString *value)
+{
+    if ([value isEqualToString:@"unix"] || [value isEqualToString:@"unixSocket"]) {
+        return TunnelEndpointKind::UnixSocket;
+    }
+    return TunnelEndpointKind::Tcp;
+}
+
+SocksAuthMode socksAuthFromNS(NSString *value)
+{
+    if ([value isEqualToString:@"usernamePassword"] || [value isEqualToString:@"password"]) {
+        return SocksAuthMode::UsernamePassword;
+    }
+    return SocksAuthMode::None;
+}
+
+TunnelDefinition tunnelDefinitionFromDict(NSDictionary *dict)
+{
+    TunnelDefinition def;
+    if (dict == nil) {
+        return def;
+    }
+    def.id = nsToUuid(dict[@"id"]);
+    def.connectionId = nsToUuid(dict[@"connectionId"]);
+    def.name = nsToQ(dict[@"name"] ?: @"");
+    def.type = tunnelTypeFromNS(dict[@"type"] ?: @"local");
+    def.enabled = dict[@"enabled"] == nil ? true : [dict[@"enabled"] boolValue];
+    def.localKind = endpointKindFromNS(dict[@"localKind"] ?: @"tcp");
+    def.localHost = nsToQ(dict[@"localHost"] ?: @"127.0.0.1");
+    def.localPort = static_cast<quint16>([dict[@"localPort"] integerValue]);
+    def.localSocketPath = nsToQ(dict[@"localSocketPath"] ?: @"");
+    def.remoteKind = endpointKindFromNS(dict[@"remoteKind"] ?: @"tcp");
+    def.remoteHost = nsToQ(dict[@"remoteHost"] ?: @"127.0.0.1");
+    def.remotePort = static_cast<quint16>([dict[@"remotePort"] integerValue]);
+    def.remoteSocketPath = nsToQ(dict[@"remoteSocketPath"] ?: @"");
+    def.socksAuth = socksAuthFromNS(dict[@"socksAuth"] ?: @"none");
+    def.socksUsername = nsToQ(dict[@"socksUsername"] ?: @"");
+    def.socksPassword = nsToQ(dict[@"socksPassword"] ?: @"");
+    if (def.id.isNull()) {
+        def.id = QUuid::createUuid();
+    }
+    return def;
+}
+
 NSDictionary *processToDict(const ProcessInfo &p)
 {
     return @{
@@ -1125,27 +1180,26 @@ void dispatchMain(dispatch_block_t block)
         Qt::QueuedConnection);
 }
 
-- (void)startLocalTunnelNamed:(NSString *)name
-                    localHost:(NSString *)localHost
-                    localPort:(NSInteger)localPort
-                   remoteHost:(NSString *)remoteHost
-                   remotePort:(NSInteger)remotePort
+- (void)startTunnel:(NSDictionary *)definition
 {
     if (m_worker == nullptr) {
         return;
     }
-    TunnelDefinition def;
-    def.id = QUuid::createUuid();
-    def.connectionId = m_connection.id;
-    def.name = nsToQ(name);
-    def.type = TunnelType::Local;
-    def.enabled = true;
-    def.localHost = nsToQ(localHost);
-    def.localPort = static_cast<quint16>(localPort);
-    def.remoteHost = nsToQ(remoteHost);
-    def.remotePort = static_cast<quint16>(remotePort);
+    TunnelDefinition def = tunnelDefinitionFromDict(definition);
+    if (def.connectionId.isNull()) {
+        def.connectionId = m_connection.id;
+    }
     QMetaObject::invokeMethod(
         m_worker, [worker = m_worker, def]() { worker->startTunnel(def); }, Qt::QueuedConnection);
+}
+
+- (NSString *)validationErrorForTunnel:(NSDictionary *)definition
+{
+    TunnelDefinition def = tunnelDefinitionFromDict(definition);
+    if (def.connectionId.isNull()) {
+        def.connectionId = m_connection.id;
+    }
+    return qToNS(def.validationError());
 }
 
 - (void)stopTunnel:(NSUUID *)tunnelId

@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-#pragma once
+#ifndef ESS_SESSION_CONTROLLER_H
+#define ESS_SESSION_CONTROLLER_H
 
 #import <Foundation/Foundation.h>
 
@@ -71,7 +72,7 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 @property (nonatomic, copy, nullable) void (^onTransferResumableChanged)(BOOL resumable);
 @property (nonatomic, copy, nullable) void (^onRemoteFsOpened)(NSInteger backend);
 
-/// Tunnels (local TCP now; remote/dynamic/UDS in Phase 10).
+/// Tunnel dictionaries use the same stable keys as ESSTunnelStore.
 @property (nonatomic, copy, nullable) void (^onTunnelStatusChanged)(NSUUID *tunnelId, NSString *status, NSString *detail);
 @property (nonatomic, copy, nullable) void (^onTunnelError)(NSUUID *tunnelId, NSString *message);
 
@@ -139,11 +140,8 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 - (void)resumeInterruptedTransfer;
 - (void)discardInterruptedTransfer;
 
-- (void)startLocalTunnelNamed:(NSString *)name
-                    localHost:(NSString *)localHost
-                    localPort:(NSInteger)localPort
-                   remoteHost:(NSString *)remoteHost
-                   remotePort:(NSInteger)remotePort;
+- (void)startTunnel:(NSDictionary *)definition;
+- (NSString *)validationErrorForTunnel:(NSDictionary *)definition;
 - (void)stopTunnel:(NSUUID *)tunnelId;
 - (void)stopAllTunnels;
 
@@ -168,3 +166,5 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 @end
 
 NS_ASSUME_NONNULL_END
+
+#endif

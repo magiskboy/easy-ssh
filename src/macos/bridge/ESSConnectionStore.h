@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-#pragma once
+#ifndef ESS_CONNECTION_STORE_H
+#define ESS_CONNECTION_STORE_H
 
 #import <Foundation/Foundation.h>
 
@@ -93,3 +94,5 @@ typedef NS_ENUM(NSInteger, ESSProxyMode) {
 @end
 
 NS_ASSUME_NONNULL_END
+
+#endif

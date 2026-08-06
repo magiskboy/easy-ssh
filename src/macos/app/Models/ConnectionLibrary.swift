@@ -89,8 +89,14 @@ final class ConnectionLibrary: ObservableObject {
             return false
         }
         let removed = appConnections.remove(at: idx)
+        let tunnels = ESSTunnelStore.load(forConnectionId: removed.connectionId)
         guard persistAppConnections() else { return false }
+        ESSTunnelStore.remove(byConnectionId: removed.connectionId)
         ESSSecretStore.shared().deleteAllSecrets(forConnectionId: removed.connectionId) { _, _ in }
+        for tunnel in tunnels {
+            guard let tunnelId = tunnel["id"] as? UUID else { continue }
+            ESSSecretStore.shared().deleteSecret(for: tunnelId, kind: .tunnelSocksPassword) { _, _ in }
+        }
         return true
     }
 

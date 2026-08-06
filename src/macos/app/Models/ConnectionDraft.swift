@@ -32,6 +32,37 @@ struct ConnectionDraft: Equatable {
             (usePrivateKey ? !privateKeyPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : true)
     }
 
+    /// Mirror core `ConnectionQuery::draftFromQuery` for palette / Quick Connect create.
+    static func draftFromQuery(_ query: String) -> ConnectionDraft {
+        var draft = ConnectionDraft()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return draft }
+
+        var user = ""
+        var hostPort = trimmed
+        if let at = trimmed.firstIndex(of: "@") {
+            user = String(trimmed[..<at]).trimmingCharacters(in: .whitespacesAndNewlines)
+            hostPort = String(trimmed[trimmed.index(after: at)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        if let parsed = parseHostPort(hostPort) {
+            draft.host = parsed.host
+            draft.port = parsed.port
+            if !user.isEmpty {
+                draft.username = user
+            }
+            if !user.isEmpty {
+                draft.name = user + "@" + parsed.host + (parsed.port == 22 ? "" : ":\(parsed.port)")
+            } else {
+                draft.name = parsed.host + (parsed.port == 22 ? "" : ":\(parsed.port)")
+            }
+        } else {
+            draft.name = trimmed
+            draft.host = trimmed
+        }
+        return draft
+    }
+
     /// Lightweight `user@host:port` / `host` parse for Quick Connect prefill.
     static func parseQuery(_ query: String) -> ConnectionDraft {
         var draft = ConnectionDraft()
@@ -60,5 +91,32 @@ struct ConnectionDraft: Equatable {
             draft.host = remainder
         }
         return draft
+    }
+
+    private static func parseHostPort(_ text: String) -> (host: String, port: Int)? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.hasPrefix("[") {
+            guard let close = trimmed.firstIndex(of: "]"), close > trimmed.startIndex else { return nil }
+            let host = String(trimmed[trimmed.index(after: trimmed.startIndex)..<close])
+            var port = 22
+            let after = trimmed[trimmed.index(after: close)...]
+            if after.hasPrefix(":") {
+                guard let p = Int(after.dropFirst()), p >= 1, p <= 65535 else { return nil }
+                port = p
+            }
+            return host.isEmpty ? nil : (host, port)
+        }
+
+        if let colon = trimmed.lastIndex(of: ":") {
+            let hostPart = String(trimmed[..<colon])
+            let portPart = String(trimmed[trimmed.index(after: colon)...])
+            if !hostPart.contains(":"), let port = Int(portPart), port >= 1, port <= 65535 {
+                return (hostPart, port)
+            }
+        }
+
+        return (trimmed, 22)
     }
 }

@@ -40,13 +40,10 @@ struct GeneralSettingsView: View {
             }
 
             Section("Window") {
-                Toggle("Close window to menu bar (Phase 8)", isOn: $settingsModel.closeToTray)
-                Toggle("Minimize to menu bar (Phase 8)", isOn: $settingsModel.minimizeToTray)
-                Toggle("Start in menu bar (Phase 8)", isOn: $settingsModel.startInTray)
-                Toggle("Notify when window is hidden (Phase 8)", isOn: $settingsModel.trayNotifications)
-                Text("Tray behavior is stored now and applied in a later phase.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle("Close window to menu bar", isOn: $settingsModel.closeToTray)
+                Toggle("Minimize to menu bar", isOn: $settingsModel.minimizeToTray)
+                Toggle("Start in menu bar", isOn: $settingsModel.startInTray)
+                Toggle("Notify when window is hidden", isOn: $settingsModel.trayNotifications)
             }
 
             Section("Transfers") {

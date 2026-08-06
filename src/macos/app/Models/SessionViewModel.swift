@@ -16,9 +16,6 @@ enum SessionUIState: String {
     case failed
 }
 
-/// Reserved extension point for tunnels UI on the same controller (Phase 10).
-final class SessionTunnelsModel: ObservableObject {}
-
 struct HostKeyPromptData: Identifiable {
     let id = UUID()
     let reason: ESSHostKeyPromptReason
@@ -59,11 +56,17 @@ final class SessionViewModel: ObservableObject, Identifiable {
 
     @Published var files: SessionFilesModel?
     @Published var explorers: SessionExplorersModel?
-    /// Future: attach when Tunnels UI is implemented.
     @Published var tunnels: SessionTunnelsModel?
 
     /// Injected once after the next shell opens (service logs).
     private var pendingExplorerLogs: (shellId: UUID, command: String, title: String)?
+    /// Shells opened for explorer logs — omitted from workspace capture.
+    private var explorerAuxShellIds = Set<UUID>()
+    /// Pending restore payload for this session (workspace Phase 8).
+    var pendingWorkspaceRestore: ESSWorkspaceSessionEntry?
+    private var workspaceRestoreBusy = false
+    /// Called after workspace restore completes for one session (queue advance).
+    var onWorkspaceRestoreFinished: (() -> Void)?
 
     /// App shell status sink (ErrorNotifier-style).
     var onStatus: ((String, StatusLevel) -> Void)?
@@ -118,9 +121,16 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.statusMessage = "Connected"
                 self.onStatus?("Connected: \(self.title)", .success)
                 self.resetShells()
-                self.addShell(id: shellId as UUID, focusAndLayout: true)
+                let initialId = shellId as UUID
+                if let restore = self.pendingWorkspaceRestore {
+                    self.addShell(id: initialId, focusAndLayout: false)
+                    self.continueWorkspaceRestore(initialShellId: initialId)
+                } else {
+                    self.addShell(id: initialId, focusAndLayout: true)
+                }
                 self.files?.onSessionConnected()
                 self.explorers?.onSessionConnected()
+                self.tunnels?.onSessionConnected()
                 if !self.didRecordRecent {
                     self.didRecordRecent = true
                     self.onConnectedOnce?(self.connection.connectionId as UUID)
@@ -186,6 +196,11 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.resetShells()
                 self.files?.onSessionDisconnected()
                 self.explorers?.onSessionDisconnected()
+                self.tunnels?.onSessionDisconnected()
+                if self.pendingWorkspaceRestore != nil {
+                    self.pendingWorkspaceRestore = nil
+                    self.onWorkspaceRestoreFinished?()
+                }
             }
         }
         controller.onDisconnected = { [weak self] in
@@ -200,6 +215,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.resetShells()
                 self.files?.onSessionDisconnected()
                 self.explorers?.onSessionDisconnected()
+                self.tunnels?.onSessionDisconnected()
             }
         }
         controller.onAgentForwardingWarning = { [weak self] message in
@@ -257,6 +273,17 @@ final class SessionViewModel: ObservableObject, Identifiable {
 
     // MARK: - Shell management
 
+    func openShell(id shellId: UUID, title: String? = nil) {
+        guard canOpenShell else { return }
+        let cols = focusedShell?.cols ?? 80
+        let rows = focusedShell?.rows ?? 24
+        addShell(id: shellId, focusAndLayout: false)
+        if let title, !title.isEmpty {
+            shells.first { $0.id == shellId }?.rename(title)
+        }
+        controller.openShell(shellId, cols: cols, rows: rows)
+    }
+
     func openShell() {
         guard canOpenShell else {
             if shells.count >= Self.maxShells {
@@ -282,6 +309,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
         let cols = focusedShell?.cols ?? 80
         let rows = focusedShell?.rows ?? 24
         pendingExplorerLogs = (shellId, command, title)
+        explorerAuxShellIds.insert(shellId)
         addShell(id: shellId, focusAndLayout: true)
         shells.first { $0.id == shellId }?.rename(title)
         controller.openShell(shellId, cols: cols, rows: rows)
@@ -476,6 +504,81 @@ final class SessionViewModel: ObservableObject, Identifiable {
         }
     }
 
+    func beginWorkspaceRestore(_ entry: ESSWorkspaceSessionEntry) {
+        pendingWorkspaceRestore = entry
+    }
+
+    func captureWorkspaceEntry() -> ESSWorkspaceSessionEntry {
+        let entry = ESSWorkspaceSessionEntry()
+        entry.connectionId = connection.connectionId as UUID
+        var shellEntries: [ESSWorkspaceShellEntry] = []
+        for shell in shells where !explorerAuxShellIds.contains(shell.id) {
+            let spec = ESSWorkspaceShellEntry()
+            spec.shellId = shell.id
+            spec.title = shell.title
+            shellEntries.append(spec)
+        }
+        entry.shells = shellEntries
+        if let focusedShellId {
+            entry.activeShellId = focusedShellId
+        }
+        if let explorers {
+            entry.activeToolId = explorers.selectedKind.bridgeKind
+        } else {
+            entry.activeToolId = ""
+        }
+        entry.tools = []
+        entry.dockState = ShellLayoutCodec.encode(layout)
+        return entry
+    }
+
+    private func continueWorkspaceRestore(initialShellId: UUID) {
+        guard !workspaceRestoreBusy, let entry = pendingWorkspaceRestore else { return }
+        workspaceRestoreBusy = true
+
+        let savedIds = Set(entry.shells.compactMap { $0.shellId as UUID? })
+        if !savedIds.isEmpty, !savedIds.contains(initialShellId) {
+            controller.closeShell(initialShellId)
+            removeShellLocally(id: initialShellId, fromRemote: false)
+        }
+
+        var alive = Set(shells.map(\.id))
+        for spec in entry.shells {
+            guard let id = spec.shellId as UUID? else { continue }
+            if alive.contains(id) { continue }
+            openShell(id: id, title: spec.title)
+            alive.insert(id)
+        }
+
+        for spec in entry.shells {
+            guard let id = spec.shellId as UUID?, !spec.title.isEmpty else { continue }
+            shells.first { $0.id == id }?.rename(spec.title)
+        }
+
+        if let data = entry.dockState as Data?, let restored = ShellLayoutCodec.decode(data) {
+            layout = restored
+        } else if layout == nil, let first = shells.first?.id {
+            layout = .leaf(first)
+        }
+
+        let toolId = entry.activeToolId ?? ""
+        if !toolId.isEmpty, let kind = ExplorerKind(rawValue: toolId) {
+            ensureExplorersModel()
+            explorers?.selectKind(kind)
+            onStatus?("Restored explorer: \(kind.title)", .status)
+        }
+
+        if let activeShell = entry.activeShellId as UUID?, shells.contains(where: { $0.id == activeShell }) {
+            focusShell(activeShell)
+        } else if let first = shells.first?.id {
+            focusShell(first)
+        }
+
+        pendingWorkspaceRestore = nil
+        workspaceRestoreBusy = false
+        onWorkspaceRestoreFinished?()
+    }
+
     // MARK: - Extension points (ready for Files / Tunnels UI)
 
     func ensureFilesModel() {
@@ -499,7 +602,13 @@ final class SessionViewModel: ObservableObject, Identifiable {
     }
 
     func ensureTunnelsModel() {
-        if tunnels == nil { tunnels = SessionTunnelsModel() }
+        if tunnels == nil {
+            let model = SessionTunnelsModel()
+            tunnels = model
+            model.attach(to: self)
+        } else {
+            tunnels?.attach(to: self)
+        }
     }
 
     var sessionController: ESSSessionController { controller }
@@ -520,6 +629,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
         renameRequest = nil
         pendingMultilinePaste = nil
         shellSerial = 0
+        explorerAuxShellIds.removeAll()
     }
 
     private func addShell(id: UUID, focusAndLayout: Bool) {

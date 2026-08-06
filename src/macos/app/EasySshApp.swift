@@ -7,6 +7,7 @@ import SwiftUI
 
 @main
 struct EasySshApp: App {
+    @NSApplicationDelegateAdaptor(EasySshAppDelegate.self) private var appDelegate
     @StateObject private var appModel = AppModel()
     @StateObject private var settingsModel = SettingsModel()
 
@@ -20,6 +21,10 @@ struct EasySshApp: App {
                 .environmentObject(appModel)
                 .environmentObject(settingsModel)
                 .frame(minWidth: 900, minHeight: 560)
+                .onAppear {
+                    appDelegate.appModel = appModel
+                    appDelegate.tray = appModel.tray
+                }
         }
         .commands {
             AppMenuCommands(appModel: appModel)
@@ -53,6 +58,11 @@ private struct AppMenuCommands: Commands {
             }
             .keyboardShortcut("w", modifiers: [.command])
             .disabled(appModel.selectedSession == nil)
+
+            Button("Quick Connect…") {
+                appModel.openQuickConnect()
+            }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.quickConnect"))
         }
 
         CommandGroup(after: .pasteboard) {
@@ -139,6 +149,7 @@ private struct AppMenuCommands: Commands {
                         .disabled(true)
                 }
             }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.goToShell"))
             .disabled(appModel.selectedSession?.shells.isEmpty ?? true)
 
             Divider()
@@ -183,9 +194,10 @@ private struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.shortcuts"))
 
-            Button("Command Palette…") {}
-                .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.commandPalette"))
-                .disabled(true)
+            Button("Command Palette…") {
+                appModel.openCommandPalette()
+            }
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "general.commandPalette"))
         }
 
         CommandGroup(replacing: .appInfo) {

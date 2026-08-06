@@ -54,7 +54,10 @@ struct ConnectionManagerView: View {
         .frame(width: 900, height: 640)
         .onAppear {
             library.reload()
-            if let first = filtered.first {
+            if let query = appModel.connectionManagerCreateQuery {
+                appModel.connectionManagerCreateQuery = nil
+                beginCreate(prefill: ConnectionDraft.draftFromQuery(query))
+            } else if let first = filtered.first {
                 select(first)
             }
         }
@@ -240,13 +243,21 @@ struct ConnectionManagerView: View {
     }
 
     private func beginCreate() {
+        beginCreate(prefill: ConnectionFormState())
+    }
+
+    private func beginCreate(prefill: ConnectionDraft) {
+        beginCreate(prefill: ConnectionFormState.from(draft: prefill))
+    }
+
+    private func beginCreate(prefill: ConnectionFormState) {
         isCreating = true
         selectedId = nil
-        var form = ConnectionFormState()
+        var form = prefill
         form.connectionId = UUID()
         editorForm = form
-        baselineForm = ConnectionFormState() // force dirty
-        baselineForm.connectionId = UUID() // different so isDirty
+        baselineForm = ConnectionFormState()
+        baselineForm.connectionId = UUID()
     }
 
     private func discardEdits() {

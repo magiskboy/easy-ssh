@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-#pragma once
+#ifndef ESS_SECRET_STORE_H
+#define ESS_SECRET_STORE_H
 
 #import <Foundation/Foundation.h>
 
@@ -52,3 +53,5 @@ typedef void (^ESSSecretReadCompletion)(NSString *_Nullable value, BOOL ok, NSSt
 @end
 
 NS_ASSUME_NONNULL_END
+
+#endif

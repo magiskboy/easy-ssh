@@ -4,7 +4,7 @@
 
 import Foundation
 
-enum SplitAxis: Equatable {
+enum SplitAxis: String, Equatable, Codable {
     /// Side-by-side (`HSplitView`) — Qt Right dock area.
     case horizontal
     /// Stacked (`VSplitView`) — Qt Bottom dock area.
@@ -12,7 +12,39 @@ enum SplitAxis: Equatable {
 }
 
 /// In-memory split tree for shells in one session (Phase 4 MVP; not persisted).
-indirect enum ShellLayoutNode: Equatable {
+indirect enum ShellLayoutNode: Equatable, Codable {
+    enum CodingKeys: String, CodingKey {
+        case leaf
+        case split
+        case axis
+        case first
+        case second
+        case id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let id = try container.decodeIfPresent(UUID.self, forKey: .id) {
+            self = .leaf(id)
+            return
+        }
+        let axis = try container.decode(SplitAxis.self, forKey: .axis)
+        let first = try container.decode(ShellLayoutNode.self, forKey: .first)
+        let second = try container.decode(ShellLayoutNode.self, forKey: .second)
+        self = .split(axis: axis, first: first, second: second)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .leaf(id):
+            try container.encode(id, forKey: .id)
+        case let .split(axis, first, second):
+            try container.encode(axis, forKey: .axis)
+            try container.encode(first, forKey: .first)
+            try container.encode(second, forKey: .second)
+        }
+    }
     case leaf(UUID)
     case split(axis: SplitAxis, first: ShellLayoutNode, second: ShellLayoutNode)
 
@@ -98,6 +130,17 @@ indirect enum ShellLayoutNode: Equatable {
                 return .split(axis: axis, first: l, second: r)
             }
         }
+    }
+}
+
+enum ShellLayoutCodec {
+    static func encode(_ node: ShellLayoutNode?) -> Data? {
+        guard let node else { return nil }
+        return try? JSONEncoder().encode(node)
+    }
+
+    static func decode(_ data: Data) -> ShellLayoutNode? {
+        try? JSONDecoder().decode(ShellLayoutNode.self, from: data)
     }
 }
 

@@ -49,7 +49,7 @@ struct ContentView: View {
                 case .explorers:
                     ExplorerHubView()
                 case .tunnels:
-                    PlaceholderFeatureView(mode: appModel.sidebarMode)
+                    TunnelListView()
                 }
             }
         }
@@ -57,6 +57,7 @@ struct ContentView: View {
             AppStatusBar()
         }
         .background(WindowFrameTracker())
+        .background(AppLifecycleBridge())
         .preferredColorScheme(appAppearanceColorScheme)
         .modifier(AppUIFontModifier(epoch: appModel.settingsEpoch))
         // Single sheet host — stacked .sheet modifiers silently fail on macOS.
@@ -97,6 +98,10 @@ struct ContentView: View {
                     appModel.status.dismissAlert()
                 }
             )
+        }
+        .sheet(item: $appModel.paletteMode) { mode in
+            CommandPaletteView(mode: mode)
+                .environmentObject(appModel)
         }
     }
 

@@ -29,6 +29,7 @@ let package = Package(
                 "ESSSessionController.h",
                 "ESSConnectionStore.h",
                 "ESSSecretStore.h",
+                "ESSTunnelStore.h",
                 "ESSAppSettings.h",
                 "ESSWorkspaceStore.h",
                 "ESSSshConfigParser.h"

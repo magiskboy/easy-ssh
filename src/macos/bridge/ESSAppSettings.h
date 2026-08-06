@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-#pragma once
+#ifndef ESS_APP_SETTINGS_H
+#define ESS_APP_SETTINGS_H
 
 #import <Foundation/Foundation.h>
 
@@ -16,7 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, copy, nullable) void (^onSettingsChanged)(void);
 
-+ (ESSAppSettings *)sharedSettings;
++ (ESSAppSettings *)sharedSettings NS_SWIFT_NAME(shared());
 
 // --- File Explorer ---
 @property (nonatomic, assign) BOOL showSizeColumn;
@@ -81,3 +82,5 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
+
+#endif
