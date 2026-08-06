@@ -9,10 +9,13 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $appModel.sidebarMode) {
+            List(selection: appModel.sidebarModeBinding) {
                 ForEach(SidebarMode.allCases) { mode in
                     Label(mode.title, systemImage: mode.systemImage)
                         .tag(mode)
+                        .foregroundStyle(mode.isImplemented ? .primary : .secondary)
+                        .opacity(mode.isImplemented ? 1 : 0.45)
+                        .disabled(!mode.isImplemented)
                 }
             }
             .navigationSplitViewColumnWidth(min: 140, ideal: 160, max: 220)
@@ -36,9 +39,28 @@ struct ContentView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            AppStatusBar()
+        }
+        .background(WindowFrameTracker())
         .sheet(isPresented: $appModel.showConnectSheet) {
             ConnectSheet()
                 .environmentObject(appModel)
+        }
+        .sheet(isPresented: $appModel.showAbout) {
+            AboutView()
+        }
+        .alert(item: Binding(
+            get: { appModel.status.alert },
+            set: { appModel.status.alert = $0 }
+        )) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK")) {
+                    appModel.status.dismissAlert()
+                }
+            )
         }
     }
 }

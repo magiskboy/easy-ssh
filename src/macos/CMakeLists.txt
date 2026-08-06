@@ -84,7 +84,9 @@ set(EASY_SSH_NATIVE_PACKAGE_DIR "${CMAKE_CURRENT_BINARY_DIR}/swift-package")
 set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/EasySshApp.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/QtRuntimeBootstrap.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/WindowFrameStore.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/AppModel.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/StatusBannerModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionViewModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionDraft.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/ContentView.swift"
@@ -92,6 +94,9 @@ set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/SessionContainerView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/HostKeySheet.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/PlaceholderFeatureView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/AppStatusBar.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/EmptyStateView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/AboutView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalRepresentable.swift"
 )
 
@@ -127,8 +132,14 @@ add_custom_command(
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/QtRuntimeBootstrap.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/QtRuntimeBootstrap.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/WindowFrameStore.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/WindowFrameStore.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/AppModel.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/AppModel.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/StatusBannerModel.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/StatusBannerModel.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionViewModel.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/SessionViewModel.swift"
@@ -150,6 +161,15 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/PlaceholderFeatureView.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/PlaceholderFeatureView.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/AppStatusBar.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/AppStatusBar.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/EmptyStateView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/EmptyStateView.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/AboutView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/AboutView.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalRepresentable.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/TerminalRepresentable.swift"

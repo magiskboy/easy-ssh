@@ -34,11 +34,15 @@ final class SessionViewModel: ObservableObject, Identifiable {
     @Published var pendingTerminalData: Data?
     @Published var lastCols: Int = 80
     @Published var lastRows: Int = 24
+    @Published var connectedAt: Date?
 
     /// Future: attach when Files UI is implemented.
     @Published var files: SessionFilesModel?
     /// Future: attach when Tunnels UI is implemented.
     @Published var tunnels: SessionTunnelsModel?
+
+    /// App shell status sink (ErrorNotifier-style).
+    var onStatus: ((String, StatusLevel) -> Void)?
 
     private let controller = ESSSessionController()
     private var shellId: UUID?
@@ -62,9 +66,11 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 guard let self else { return }
                 self.shellId = shellId
                 self.state = .connected
+                self.connectedAt = Date()
                 self.overlayMessage = nil
                 self.showReconnect = false
                 self.statusMessage = "Connected"
+                self.onStatus?("Connected: \(self.title)", .success)
             }
         }
         controller.onData = { [weak self] _, data in
@@ -80,6 +86,8 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.overlayMessage = "Shell closed. Reconnect to open a new shell."
                 self.showReconnect = true
                 self.statusMessage = "Shell closed"
+                self.connectedAt = nil
+                self.onStatus?("Shell closed: \(self.title)", .warning)
             }
         }
         controller.onHostKeyPrompt = { [weak self] reason, fingerprint, context in
@@ -96,29 +104,36 @@ final class SessionViewModel: ObservableObject, Identifiable {
             Task { @MainActor in
                 guard let self else { return }
                 self.state = .failed
+                self.connectedAt = nil
                 self.overlayMessage = message
                 self.showReconnect = true
                 self.statusMessage = message
+                self.onStatus?("Failed: \(self.title)", .error)
             }
         }
         controller.onDisconnected = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
                 self.state = .disconnected
+                self.connectedAt = nil
                 self.overlayMessage = "Disconnected from \(self.title)."
                 self.showReconnect = true
                 self.statusMessage = "Disconnected"
+                self.onStatus?("Disconnected: \(self.title)", .warning)
             }
         }
         controller.onAgentForwardingWarning = { [weak self] message in
             Task { @MainActor in
-                self?.statusMessage = message
+                guard let self else { return }
+                self.statusMessage = message
+                self.onStatus?(message, .warning)
             }
         }
     }
 
     func connect() {
         state = .connecting
+        connectedAt = nil
         overlayMessage = "Connecting…"
         showReconnect = false
         statusMessage = "Connecting…"
@@ -141,6 +156,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
 
     func reconnect() {
         state = .connecting
+        connectedAt = nil
         overlayMessage = "Connecting…"
         showReconnect = false
         controller.reconnect(withCols: lastCols, rows: lastRows)
@@ -151,8 +167,10 @@ final class SessionViewModel: ObservableObject, Identifiable {
         controller.respondHostKeyTrust(accept)
         if !accept {
             state = .failed
+            connectedAt = nil
             overlayMessage = "Host key rejected."
             showReconnect = true
+            onStatus?("Host key rejected: \(title)", .warning)
         }
     }
 

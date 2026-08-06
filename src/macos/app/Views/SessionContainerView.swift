@@ -10,16 +10,13 @@ struct SessionContainerView: View {
     var body: some View {
         VStack(spacing: 0) {
             if appModel.sessions.isEmpty {
-                ContentUnavailableView {
-                    Label("No Sessions", systemImage: "terminal")
-                } description: {
-                    Text("Connect to a host to open a SwiftTerm shell backed by Qt Core + libssh.")
-                } actions: {
-                    Button("New Connection…") {
-                        appModel.openConnectSheet()
-                    }
-                    .keyboardShortcut("n", modifiers: [.command])
-                }
+                EmptyStateView(
+                    title: "No Sessions",
+                    systemImage: "terminal",
+                    message: "Connect to a host to open a SwiftTerm shell backed by Qt Core + libssh.",
+                    actionTitle: "New Connection…",
+                    action: { appModel.openConnectSheet() }
+                )
             } else {
                 sessionTabs
                 Divider()
@@ -27,8 +24,11 @@ struct SessionContainerView: View {
                     SessionPane(session: session)
                         .id(session.id)
                 } else {
-                    Text("Select a session tab")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    EmptyStateView(
+                        title: "Select a Session",
+                        systemImage: "rectangle.stack",
+                        message: "Choose a session tab to focus its terminal."
+                    )
                 }
             }
         }
@@ -127,22 +127,6 @@ struct SessionPane: View {
                 .padding(24)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Text(session.statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if session.state == .connected {
-                    Button("Disconnect") {
-                        session.disconnect()
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.bar)
         }
         .sheet(item: $session.hostKeyPrompt) { prompt in
             HostKeySheet(prompt: prompt) { accept in

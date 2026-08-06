@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+#pragma once
+
 #import "EasySshRuntime.h"
 #import "ESSConnectionStore.h"
 #import "ESSSessionController.h"

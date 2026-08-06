@@ -49,4 +49,10 @@ char *g_argv[] = {g_arg0, nullptr};
     // Intentionally no-op while the process lives; QCoreApplication must outlive workers.
 }
 
++ (NSString *)logFilePath
+{
+    const QString path = ::logFilePath();
+    return [[NSString alloc] initWithUTF8String:path.toUtf8().constData()];
+}
+
 @end

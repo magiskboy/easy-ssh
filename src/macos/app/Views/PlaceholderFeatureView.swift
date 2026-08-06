@@ -8,10 +8,10 @@ struct PlaceholderFeatureView: View {
     let mode: SidebarMode
 
     var body: some View {
-        ContentUnavailableView {
-            Label(mode.title, systemImage: mode.systemImage)
-        } description: {
-            Text("\(mode.title) UI will plug into the same ESSSessionController bridge (SFTP / tunnels / explorers APIs are already forwarded).")
-        }
+        EmptyStateView(
+            title: mode.title,
+            systemImage: mode.systemImage,
+            message: mode.comingSoonMessage
+        )
     }
 }

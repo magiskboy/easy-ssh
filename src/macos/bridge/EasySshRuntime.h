@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
+#pragma once
+
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -21,6 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)start;
 + (BOOL)isRunning;
 + (void)shutdown;
+
+/// Absolute path of the process log file (see core Logging::logFilePath).
++ (NSString *)logFilePath;
 
 @end
 
