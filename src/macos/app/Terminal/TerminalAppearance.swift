@@ -6,7 +6,7 @@ import AppKit
 import SwiftTerm
 
 enum TerminalAppearance {
-    static func apply(to terminal: TerminalView) {
+    static func apply(to terminal: TerminalView, active: Bool = true) {
         let settings = ESSAppSettings.shared()
 
         let family = settings.terminalFontFamily
@@ -22,7 +22,15 @@ enum TerminalAppearance {
         let history = Int(settings.historySize)
         terminal.changeScrollback(history > 0 ? history : nil)
 
-        let blink = settings.cursorBlink
+        applyCursor(to: terminal, active: active)
+    }
+
+    /// Active pane: honor user blink setting. Inactive: force steady so the caret
+    /// stays visible without blinking (SwiftTerm only stops blink on resignFirstResponder,
+    /// and panes that never held key focus keep blinking otherwise).
+    static func applyCursor(to terminal: TerminalView, active: Bool) {
+        let settings = ESSAppSettings.shared()
+        let blink = active && settings.cursorBlink
         let style: CursorStyle
         switch Int(settings.cursorShape) {
         case 1:

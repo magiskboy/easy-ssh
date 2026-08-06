@@ -54,6 +54,10 @@ final class SessionViewModel: ObservableObject, Identifiable {
     /// Bumped when ESSAppSettings changes so terminals re-apply appearance.
     @Published var appearanceEpoch: UInt64 = 0
 
+    /// Shell that should become AppKit first responder once its `TerminalView` exists.
+    /// Cleared after `makeFirstResponder` succeeds (or focus moves elsewhere).
+    private(set) var pendingTerminalActivationId: UUID?
+
     @Published var files: SessionFilesModel?
     @Published var explorers: SessionExplorersModel?
     @Published var tunnels: SessionTunnelsModel?
@@ -372,16 +376,28 @@ final class SessionViewModel: ObservableObject, Identifiable {
         closeShell(id)
     }
 
-    func focusShell(_ shellId: UUID) {
+    /// Marks `shellId` as the session's focused shell and optionally transfers AppKit key focus
+    /// to its SwiftTerm view (so only that caret blinks; others stay steady/visible).
+    func focusShell(_ shellId: UUID, activateTerminal: Bool = true) {
         guard shells.contains(where: { $0.id == shellId }) else { return }
         let previous = focusedShellId
         focusedShellId = shellId
         guard var tree = layout else {
             layout = .leaf(shellId)
+            if activateTerminal {
+                requestTerminalActivation(for: shellId)
+            } else {
+                syncTerminalCursors(activeId: shellId)
+            }
             return
         }
         if tree.contains(shellId) {
             objectWillChange.send()
+            if activateTerminal {
+                requestTerminalActivation(for: shellId)
+            } else {
+                syncTerminalCursors(activeId: shellId)
+            }
             return
         }
         // Shell not in visible tree (overflow past max panes / smart layout off): swap into focus leaf.
@@ -393,6 +409,56 @@ final class SessionViewModel: ObservableObject, Identifiable {
             layout = tree
         } else {
             layout = .leaf(shellId)
+        }
+        if activateTerminal {
+            requestTerminalActivation(for: shellId)
+        } else {
+            syncTerminalCursors(activeId: shellId)
+        }
+    }
+
+    /// Queue AppKit first-responder transfer. Safe to call before the `TerminalView` exists;
+    /// `TerminalRepresentable.updateNSView` / a deferred flush will complete it.
+    func requestTerminalActivation(for shellId: UUID) {
+        guard focusedShellId == shellId else { return }
+        pendingTerminalActivationId = shellId
+        DispatchQueue.main.async { [weak self] in
+            self?.flushPendingTerminalActivation()
+        }
+    }
+
+    /// Make the pending terminal the window's first responder.
+    /// Returns `true` when activation completed or is no longer needed.
+    @discardableResult
+    func flushPendingTerminalActivation() -> Bool {
+        guard let shellId = pendingTerminalActivationId else { return true }
+        guard focusedShellId == shellId else {
+            pendingTerminalActivationId = nil
+            return true
+        }
+        // Keep pending while the find field owns key focus; close-find re-requests.
+        if showFindBar {
+            return false
+        }
+        guard let terminal = shells.first(where: { $0.id == shellId })?.terminalView,
+              let window = terminal.window
+        else {
+            return false
+        }
+        pendingTerminalActivationId = nil
+        if window.firstResponder !== terminal {
+            window.makeFirstResponder(terminal)
+        }
+        syncTerminalCursors(activeId: shellId)
+        return true
+    }
+
+    /// Ensure only the focused shell's caret blinks; all others stay steady/visible.
+    func syncTerminalCursors(activeId: UUID? = nil) {
+        let active = activeId ?? focusedShellId
+        for shell in shells {
+            guard let terminal = shell.terminalView else { continue }
+            TerminalAppearance.applyCursor(to: terminal, active: shell.id == active)
         }
     }
 
@@ -462,6 +528,9 @@ final class SessionViewModel: ObservableObject, Identifiable {
             shell.showFindBar = showFindBar
             if !showFindBar {
                 shell.clearFind()
+                requestTerminalActivation(for: shell.id)
+            } else {
+                pendingTerminalActivationId = nil
             }
         }
     }
@@ -672,6 +741,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
         if focusAndLayout {
             placeShellInLayout(id)
             focusedShellId = id
+            requestTerminalActivation(for: id)
         }
     }
 

@@ -6,6 +6,21 @@ import AppKit
 import SwiftTerm
 import SwiftUI
 
+/// SwiftTerm view that syncs session focus when the user clicks a pane.
+/// AppKit first-responder transfer (via `makeFirstResponder`) makes only the
+/// active caret blink; inactive terminals keep a steady visible caret outline.
+final class HostedTerminalView: TerminalView {
+    var onActivated: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        // SwiftUI hosting can skip AppKit's automatic first-responder transfer;
+        // take key focus explicitly so inactive panes stop blinking.
+        window?.makeFirstResponder(self)
+        onActivated?()
+        super.mouseDown(with: event)
+    }
+}
+
 struct TerminalRepresentable: NSViewRepresentable {
     @ObservedObject var session: SessionViewModel
     @ObservedObject var shell: ShellViewModel
@@ -14,26 +29,40 @@ struct TerminalRepresentable: NSViewRepresentable {
         TerminalCoordinator(session: session, shell: shell)
     }
 
-    func makeNSView(context: Context) -> TerminalView {
-        let terminal = TerminalView(frame: .zero)
+    func makeNSView(context: Context) -> HostedTerminalView {
+        let terminal = HostedTerminalView(frame: .zero)
         terminal.terminalDelegate = context.coordinator
-        TerminalAppearance.apply(to: terminal)
+        terminal.onActivated = { [weak coordinator = context.coordinator] in
+            guard let coordinator else { return }
+            coordinator.session.focusShell(coordinator.shell.id, activateTerminal: false)
+        }
+        let isActive = session.focusedShellId == shell.id
+        TerminalAppearance.apply(to: terminal, active: isActive)
+        context.coordinator.lastCursorActive = isActive
         context.coordinator.attach(terminal: terminal)
         installContextMenu(on: terminal, coordinator: context.coordinator)
         return terminal
     }
 
-    func updateNSView(_ nsView: TerminalView, context: Context) {
+    func updateNSView(_ nsView: HostedTerminalView, context: Context) {
         context.coordinator.session = session
         context.coordinator.shell = shell
+        nsView.onActivated = { [weak coordinator = context.coordinator] in
+            guard let coordinator else { return }
+            coordinator.session.focusShell(coordinator.shell.id, activateTerminal: false)
+        }
         if shell.terminalView !== nsView {
             shell.terminalView = nsView
         }
 
+        let isActive = session.focusedShellId == shell.id
         if context.coordinator.lastAppearanceEpoch != session.appearanceEpoch {
-            TerminalAppearance.apply(to: nsView)
+            TerminalAppearance.apply(to: nsView, active: isActive)
             context.coordinator.lastAppearanceEpoch = session.appearanceEpoch
+        } else if context.coordinator.lastCursorActive != isActive {
+            TerminalAppearance.applyCursor(to: nsView, active: isActive)
         }
+        context.coordinator.lastCursorActive = isActive
 
         // Drain any bytes queued before the NSView existed. Clear first to avoid
         // re-entrant updateNSView while feed() triggers layout.
@@ -42,10 +71,16 @@ struct TerminalRepresentable: NSViewRepresentable {
             let bytes = [UInt8](data)
             nsView.feed(byteArray: ArraySlice(bytes))
         }
+
+        // Complete a deferred activation after layout swap / first attach.
+        if session.pendingTerminalActivationId == shell.id {
+            _ = session.flushPendingTerminalActivation()
+        }
     }
 
     @MainActor
-    static func dismantleNSView(_ nsView: TerminalView, coordinator: TerminalCoordinator) {
+    static func dismantleNSView(_ nsView: HostedTerminalView, coordinator: TerminalCoordinator) {
+        nsView.onActivated = nil
         if coordinator.shell.terminalView === nsView {
             coordinator.shell.terminalView = nil
         }
@@ -82,6 +117,7 @@ final class TerminalCoordinator: NSObject, @preconcurrency TerminalViewDelegate 
     var shell: ShellViewModel
     private weak var terminal: TerminalView?
     var lastAppearanceEpoch: UInt64 = 0
+    var lastCursorActive: Bool?
 
     init(session: SessionViewModel, shell: ShellViewModel) {
         self.session = session
@@ -135,7 +171,7 @@ final class TerminalCoordinator: NSObject, @preconcurrency TerminalViewDelegate 
     }
 
     @objc func contextFind(_ sender: Any?) {
-        session.focusShell(shell.id)
+        session.focusShell(shell.id, activateTerminal: false)
         session.showFindBar = true
         shell.showFindBar = true
     }
