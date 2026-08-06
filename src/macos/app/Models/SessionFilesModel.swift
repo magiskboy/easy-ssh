@@ -605,6 +605,11 @@ final class SessionFilesModel: ObservableObject {
         applyFilter(for: cwd)
     }
 
+    func applySettingsChanged() {
+        reloadHiddenFilter()
+        objectWillChange.send()
+    }
+
     private func handlePathCanonicalized(requested: String, canonical: String) {
         if let pending = pendingRootRequest, pending == requested || requested == "." {
             pendingRootRequest = nil

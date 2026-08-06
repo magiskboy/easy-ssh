@@ -40,11 +40,14 @@ enum TerminalAppearance {
     static func applyColorScheme(_ name: String, to terminal: TerminalView) {
         let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch key {
-        case "blackonwhite", "whiteonlightyellow", "papercolorlight", "solarizedlight":
+        case "blackonwhite", "whiteonlightyellow", "papercolorlight", "solarizedlight", "blackonlightyellow":
             terminal.nativeForegroundColor = .black
             terminal.nativeBackgroundColor = .white
         case "native", "system":
             terminal.configureNativeColors()
+        case "solarized", "nord", "falcon", "breezemodified", "ubuntu", "tango", "darkpastels", "greenonblack":
+            terminal.nativeForegroundColor = .white
+            terminal.nativeBackgroundColor = .black
         default:
             // WhiteOnBlack, Linux, DarkPastels, Tango, etc.
             terminal.nativeForegroundColor = .white

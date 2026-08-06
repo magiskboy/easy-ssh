@@ -147,8 +147,10 @@ private struct FileSessionTabChip: View {
 }
 
 struct FileExplorerPane: View {
+    @EnvironmentObject private var appModel: AppModel
     @ObservedObject var session: SessionViewModel
     @ObservedObject private var files: SessionFilesModel
+    @FocusState private var listFocused: Bool
 
     init(session: SessionViewModel) {
         self.session = session
@@ -235,6 +237,43 @@ struct FileExplorerPane: View {
             let names = files.overwriteConfirm?.conflicts ?? []
             Text("Already on the server:\n\(names.joined(separator: "\n"))")
         }
+        .focusable()
+        .focused($listFocused)
+        .onAppear { listFocused = true }
+        .onKeyPress { press in
+            handleFileExplorerShortcut(press)
+        }
+        .id(appModel.settingsEpoch)
+    }
+
+    private func handleFileExplorerShortcut(_ press: KeyPress) -> KeyPress.Result {
+        _ = appModel.settingsEpoch
+        let settings = ESSAppSettings.shared()
+        if KeySequence.matches(press, portable: settings.shortcut(forActionId: "fileExplorer.refresh")) {
+            files.refresh()
+            return .handled
+        }
+        if KeySequence.matches(press, portable: settings.shortcut(forActionId: "fileExplorer.upload")) {
+            files.uploadFiles()
+            return .handled
+        }
+        if KeySequence.matches(press, portable: settings.shortcut(forActionId: "fileExplorer.download")) {
+            files.downloadSelected()
+            return .handled
+        }
+        if KeySequence.matches(press, portable: settings.shortcut(forActionId: "fileExplorer.rename")) {
+            files.promptRename()
+            return .handled
+        }
+        if KeySequence.matches(press, portable: settings.shortcut(forActionId: "fileExplorer.delete")) {
+            files.promptDelete()
+            return .handled
+        }
+        if KeySequence.matches(press, portable: settings.shortcut(forActionId: "fileExplorer.openWith")) {
+            files.openWithSelected()
+            return .handled
+        }
+        return .ignored
     }
 
     private var header: some View {

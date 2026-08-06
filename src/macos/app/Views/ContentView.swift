@@ -57,6 +57,8 @@ struct ContentView: View {
             AppStatusBar()
         }
         .background(WindowFrameTracker())
+        .preferredColorScheme(appAppearanceColorScheme)
+        .modifier(AppUIFontModifier(epoch: appModel.settingsEpoch))
         // Single sheet host — stacked .sheet modifiers silently fail on macOS.
         .sheet(item: $appModel.activeModal) { modal in
             switch modal {
@@ -95,6 +97,36 @@ struct ContentView: View {
                     appModel.status.dismissAlert()
                 }
             )
+        }
+    }
+
+    private var appAppearanceColorScheme: ColorScheme? {
+        _ = appModel.settingsEpoch
+        let themeId = ESSAppSettings.shared().themeId
+        return AppAppearance.preferredColorScheme(themeId: themeId)
+    }
+}
+
+private struct AppUIFontModifier: ViewModifier {
+    let epoch: Int
+
+    private var resolvedFont: Font? {
+        let _ = epoch
+        let settings = ESSAppSettings.shared()
+        return AppAppearance.uiFont(
+            family: settings.uiFontFamily,
+            pointSize: settings.uiFontPointSize,
+            mode: settings.uiFontMode
+        )
+    }
+
+    func body(content: Content) -> some View {
+        Group {
+            if let resolvedFont {
+                content.font(resolvedFont)
+            } else {
+                content
+            }
         }
     }
 }

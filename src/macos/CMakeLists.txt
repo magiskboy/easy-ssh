@@ -91,7 +91,10 @@ set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/QtRuntimeBootstrap.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/WindowFrameStore.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/ConnectionSecretHelper.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/KeySequence.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/AppAppearance.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/AppModel.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SettingsModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/StatusBannerModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionViewModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionFilesModel.swift"
@@ -109,6 +112,11 @@ set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/AppStatusBar.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/EmptyStateView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/AboutView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/SettingsRootView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/GeneralSettingsView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/FileExplorerSettingsView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShellSettingsView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShortcutsSettingsView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/ConnectionEditorForm.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/ConnectionManagerView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/PasswordPromptSheet.swift"
@@ -158,8 +166,17 @@ add_custom_command(
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/ConnectionSecretHelper.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ConnectionSecretHelper.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/KeySequence.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/KeySequence.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Support/AppAppearance.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/AppAppearance.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/AppModel.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/AppModel.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SettingsModel.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/SettingsModel.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/StatusBannerModel.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/StatusBannerModel.swift"
@@ -211,6 +228,21 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/AboutView.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/AboutView.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/SettingsRootView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/SettingsRootView.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/GeneralSettingsView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/GeneralSettingsView.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/FileExplorerSettingsView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/FileExplorerSettingsView.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShellSettingsView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellSettingsView.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShortcutsSettingsView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShortcutsSettingsView.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/ConnectionEditorForm.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ConnectionEditorForm.swift"

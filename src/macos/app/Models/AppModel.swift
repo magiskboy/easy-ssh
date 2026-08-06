@@ -88,6 +88,10 @@ final class AppModel: ObservableObject {
     @Published var passwordPromptValue: String = ""
     /// Session waiting on the shared host-key sheet (presented via `activeModal`).
     @Published var hostKeySessionId: UUID?
+    /// Bumped when persisted settings are applied so views re-read ESSAppSettings.
+    @Published var settingsEpoch = 0
+    /// Select this tab when the Settings window opens.
+    @Published var pendingSettingsTab: SettingsTab?
     /// Cancels stale keychain / timeout completions when a newer connect starts.
     private var connectAttemptID = UUID()
 
@@ -109,12 +113,23 @@ final class AppModel: ObservableObject {
         ESSAppSettings.shared().onSettingsChanged = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
+                self.settingsEpoch &+= 1
                 for session in self.sessions {
                     session.refreshAppearance()
-                    session.files?.reloadHiddenFilter()
+                    session.files?.applySettingsChanged()
                 }
             }
         }
+    }
+
+    func openSettings(tab: SettingsTab = .general) {
+        pendingSettingsTab = tab
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    func shortcutPortable(for actionId: String) -> String? {
+        _ = settingsEpoch
+        return ESSAppSettings.shared().shortcut(forActionId: actionId)
     }
 
     var selectedSession: SessionViewModel? {
