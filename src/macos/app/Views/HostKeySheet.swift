@@ -5,7 +5,7 @@
 import SwiftUI
 
 struct HostKeySheet: View {
-    let prompt: SessionViewModel.HostKeyPromptData
+    let prompt: HostKeyPromptData
     let onRespond: (Bool) -> Void
 
     var body: some View {

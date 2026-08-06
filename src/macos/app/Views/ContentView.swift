@@ -53,20 +53,32 @@ struct ContentView: View {
             AppStatusBar()
         }
         .background(WindowFrameTracker())
-        .sheet(isPresented: $appModel.showConnectSheet) {
-            ConnectSheet()
-                .environmentObject(appModel)
-        }
-        .sheet(isPresented: $appModel.showConnectionManager) {
-            ConnectionManagerView()
-                .environmentObject(appModel)
-        }
-        .sheet(item: $appModel.passwordPrompt) { _ in
-            PasswordPromptSheet()
-                .environmentObject(appModel)
-        }
-        .sheet(isPresented: $appModel.showAbout) {
-            AboutView()
+        // Single sheet host — stacked .sheet modifiers silently fail on macOS.
+        .sheet(item: $appModel.activeModal) { modal in
+            switch modal {
+            case .connect:
+                ConnectSheet()
+                    .environmentObject(appModel)
+            case .connectionManager:
+                ConnectionManagerView()
+                    .environmentObject(appModel)
+            case .passwordPrompt:
+                PasswordPromptSheet()
+                    .environmentObject(appModel)
+            case .hostKeyPrompt:
+                if let prompt = appModel.activeHostKeyPrompt {
+                    HostKeySheet(prompt: prompt) { accept in
+                        appModel.respondHostKey(accept: accept)
+                    }
+                } else {
+                    Color.clear
+                        .onAppear {
+                            appModel.activeModal = nil
+                        }
+                }
+            case .about:
+                AboutView()
+            }
         }
         .alert(item: Binding(
             get: { appModel.status.alert },

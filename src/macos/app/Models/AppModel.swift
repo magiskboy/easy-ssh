@@ -56,6 +56,24 @@ struct PasswordPromptRequest: Identifiable {
     var gatewaySecret: String? = nil
 }
 
+enum AppModal: Identifiable, Equatable {
+    case connect
+    case connectionManager
+    case passwordPrompt
+    case hostKeyPrompt
+    case about
+
+    var id: String {
+        switch self {
+        case .connect: return "connect"
+        case .connectionManager: return "connectionManager"
+        case .passwordPrompt: return "passwordPrompt"
+        case .hostKeyPrompt: return "hostKeyPrompt"
+        case .about: return "about"
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     let status = StatusBannerModel()
@@ -64,12 +82,14 @@ final class AppModel: ObservableObject {
     @Published var sidebarMode: SidebarMode = .sessions
     @Published var sessions: [SessionViewModel] = []
     @Published var selectedSessionId: UUID?
-    @Published var showConnectSheet: Bool = false
-    @Published var showConnectionManager: Bool = false
-    @Published var showAbout: Bool = false
+    @Published var activeModal: AppModal?
     @Published var connectDraft = ConnectionDraft()
     @Published var passwordPrompt: PasswordPromptRequest?
     @Published var passwordPromptValue: String = ""
+    /// Session waiting on the shared host-key sheet (presented via `activeModal`).
+    @Published var hostKeySessionId: UUID?
+    /// Cancels stale keychain / timeout completions when a newer connect starts.
+    private var connectAttemptID = UUID()
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -85,6 +105,15 @@ final class AppModel: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+
+        ESSAppSettings.shared().onSettingsChanged = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                for session in self.sessions {
+                    session.refreshAppearance()
+                }
+            }
+        }
     }
 
     var selectedSession: SessionViewModel? {
@@ -107,12 +136,57 @@ final class AppModel: ObservableObject {
 
     func openConnectSheet() {
         connectDraft = ConnectionDraft()
-        showConnectSheet = true
+        activeModal = .connect
     }
 
     func openConnectionManager() {
         library.reload()
-        showConnectionManager = true
+        activeModal = .connectionManager
+    }
+
+    /// Close Connection Manager, then connect on the next turn so a password sheet can present
+    /// on the same `.sheet(item:)` host (macOS drops stacked sheets).
+    func openSessionFromManager(connectionId: UUID) {
+        guard let info = library.connection(id: connectionId) else {
+            status.notify(
+                title: "Connect",
+                message: "Connection not found.",
+                level: .error
+            )
+            if activeModal == .connectionManager {
+                activeModal = nil
+            }
+            return
+        }
+        openSessionFromManager(connection: info)
+    }
+
+    func openSessionFromManager(connection: ESSConnectionInfo) {
+        if activeModal == .connectionManager {
+            activeModal = nil
+        }
+        let label = connection.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = label.isEmpty
+            ? (connection.displayText.isEmpty
+                ? "\(connection.username)@\(connection.host)"
+                : connection.displayText)
+            : label
+        status.post("Opening: \(title)…", level: .status)
+
+        // Password auth needs a tick so the manager sheet can finish dismissing before the
+        // password sheet presents on the same host. Private-key sessions need no modal.
+        if connection.authType == .password {
+            DispatchQueue.main.async { [weak self] in
+                self?.connect(with: connection, inlineCredentials: nil)
+            }
+        } else {
+            connect(with: connection, inlineCredentials: nil)
+        }
+    }
+
+    private func dismissModals() {
+        activeModal = nil
+        passwordPrompt = nil
     }
 
     func connect(with draft: ConnectionDraft) {
@@ -138,7 +212,7 @@ final class AppModel: ObservableObject {
         } else {
             openSession(connection: form.makeConnectionInfo(), credentials: form.makeCredentials())
         }
-        showConnectSheet = false
+        dismissModals()
     }
 
     func connect(withId id: UUID) {
@@ -184,41 +258,77 @@ final class AppModel: ObservableObject {
             return
         }
 
+        // Private key / agent without a custom gateway: do not wait on Qt keychain.
+        // Unencrypted keys and ssh-agent work with an empty passphrase; encrypted keys
+        // can still be saved via New Connection with an inline passphrase.
+        if info.authType != .password, !ConnectionSecretHelper.needsGatewaySecret(info) {
+            let creds = ESSSessionCredentials()
+            openSession(connection: info, credentials: creds)
+            return
+        }
+
+        let attempt = UUID()
+        connectAttemptID = attempt
+
         ConnectionSecretHelper.loadCredentials(for: info) { [weak self] target, gateway in
             Task { @MainActor in
-                guard let self else { return }
-
-                if Self.missingRequiredGatewaySecret(info, gateway: gateway) {
-                    self.status.notify(
-                        title: "Gateway Credentials",
-                        message:
-                            "ProxyJump gateway credentials are missing. "
-                            + "Edit the connection and set the gateway password or passphrase.",
-                        level: .error
-                    )
-                    return
-                }
-
-                if info.authType == .password {
-                    if let target, !target.isEmpty {
-                        let creds = ESSSessionCredentials()
-                        creds.targetSecret = target
-                        creds.gatewaySecret = gateway
-                        self.openSession(connection: info, credentials: creds)
-                    } else {
-                        self.passwordPromptValue = ""
-                        self.passwordPrompt = PasswordPromptRequest(
-                            connection: info,
-                            gatewaySecret: gateway
-                        )
-                    }
-                } else {
-                    let creds = ESSSessionCredentials()
-                    creds.targetSecret = target
-                    creds.gatewaySecret = gateway
-                    self.openSession(connection: info, credentials: creds)
-                }
+                guard let self, self.connectAttemptID == attempt else { return }
+                self.connectAttemptID = UUID()
+                self.finishConnectAfterSecrets(info: info, target: target, gateway: gateway)
             }
+        }
+
+        // Qt keychain jobs can stall when QCoreApplication has no dedicated exec loop.
+        // Unblock the UI so password prompt / session still appears.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            guard let self, self.connectAttemptID == attempt else { return }
+            self.connectAttemptID = UUID()
+            self.finishConnectAfterSecrets(info: info, target: nil, gateway: nil)
+        }
+    }
+
+    private func finishConnectAfterSecrets(
+        info: ESSConnectionInfo,
+        target: String?,
+        gateway: String?
+    ) {
+        if Self.missingRequiredGatewaySecret(info, gateway: gateway) {
+            status.notify(
+                title: "Gateway Credentials",
+                message:
+                    "ProxyJump gateway credentials are missing. "
+                    + "Edit the connection and set the gateway password or passphrase.",
+                level: .error
+            )
+            return
+        }
+
+        if info.authType == .password {
+            if let target, !target.isEmpty {
+                let creds = ESSSessionCredentials()
+                creds.targetSecret = target
+                creds.gatewaySecret = gateway
+                openSession(connection: info, credentials: creds)
+            } else {
+                presentPasswordPrompt(connection: info, gatewaySecret: gateway)
+            }
+        } else {
+            let creds = ESSSessionCredentials()
+            creds.targetSecret = target
+            creds.gatewaySecret = gateway
+            openSession(connection: info, credentials: creds)
+        }
+    }
+
+    private func presentPasswordPrompt(connection: ESSConnectionInfo, gatewaySecret: String?) {
+        passwordPromptValue = ""
+        passwordPrompt = PasswordPromptRequest(
+            connection: connection,
+            gatewaySecret: gatewaySecret
+        )
+        // Defer so a just-dismissed Connection Manager sheet can finish tearing down.
+        DispatchQueue.main.async { [weak self] in
+            self?.activeModal = .passwordPrompt
         }
     }
 
@@ -229,15 +339,25 @@ final class AppModel: ObservableObject {
         creds.gatewaySecret = request.gatewaySecret
         passwordPrompt = nil
         passwordPromptValue = ""
+        activeModal = nil
         openSession(connection: request.connection, credentials: creds)
     }
 
     func cancelPasswordPrompt() {
         passwordPrompt = nil
         passwordPromptValue = ""
+        if activeModal == .passwordPrompt {
+            activeModal = nil
+        }
     }
 
     func closeSession(_ id: UUID) {
+        if hostKeySessionId == id {
+            hostKeySessionId = nil
+            if activeModal == .hostKeyPrompt {
+                activeModal = nil
+            }
+        }
         let name = sessions.first { $0.id == id }?.title
         if let idx = sessions.firstIndex(where: { $0.id == id }) {
             sessions[idx].disconnect()
@@ -296,6 +416,46 @@ final class AppModel: ObservableObject {
         selectedSession?.pasteClipboard()
     }
 
+    func copySelectionFromActiveSession() {
+        selectedSession?.copySelection()
+    }
+
+    func openShellInSelectedSession() {
+        selectedSession?.openShell()
+    }
+
+    func closeShellInSelectedSession() {
+        selectedSession?.closeFocusedShell()
+    }
+
+    func renameShellInSelectedSession() {
+        selectedSession?.beginRenameFocusedShell()
+    }
+
+    func focusShellInSelectedSession(_ shellId: UUID) {
+        selectedSession?.focusShell(shellId)
+    }
+
+    func clearTerminalInSelectedSession() {
+        selectedSession?.clearFocusedTerminal()
+    }
+
+    func toggleFindInSelectedSession() {
+        selectedSession?.toggleFindBar()
+    }
+
+    func saveLogInSelectedSession() {
+        selectedSession?.saveLogForFocusedShell()
+    }
+
+    func saveScreenshotInSelectedSession() {
+        selectedSession?.saveScreenshotForFocusedShell()
+    }
+
+    var canUseTerminalActions: Bool {
+        selectedSession?.state == .connected && selectedSession?.focusedShell != nil
+    }
+
     func openLogFile() {
         let path = EasySshRuntime.logFilePath()
         let url = URL(fileURLWithPath: path)
@@ -328,8 +488,7 @@ final class AppModel: ObservableObject {
         wireSession(session)
         sessions.append(session)
         selectedSessionId = session.id
-        showConnectSheet = false
-        showConnectionManager = false
+        dismissModals()
         sidebarMode = .sessions
         status.post("Connecting: \(session.title)…", level: .status)
         session.connect()
@@ -342,5 +501,29 @@ final class AppModel: ObservableObject {
         session.onConnectedOnce = { connectionId in
             ESSAppSettings.shared().recordRecentConnection(connectionId)
         }
+        session.onHostKeyPromptUI = { [weak self, weak session] _ in
+            guard let self, let session else { return }
+            self.hostKeySessionId = session.id
+            // Present on the shared sheet host — SessionPane cannot stack another .sheet on macOS.
+            DispatchQueue.main.async {
+                self.activeModal = .hostKeyPrompt
+            }
+        }
+    }
+
+    func respondHostKey(accept: Bool) {
+        let session = hostKeySessionId.flatMap { id in sessions.first { $0.id == id } }
+            ?? selectedSession
+        hostKeySessionId = nil
+        if activeModal == .hostKeyPrompt {
+            activeModal = nil
+        }
+        session?.respondHostKey(accept: accept)
+    }
+
+    var activeHostKeyPrompt: HostKeyPromptData? {
+        let session = hostKeySessionId.flatMap { id in sessions.first { $0.id == id } }
+            ?? selectedSession
+        return session?.hostKeyPrompt
     }
 }

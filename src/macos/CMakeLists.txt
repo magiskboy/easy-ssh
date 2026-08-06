@@ -89,6 +89,8 @@ set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/AppModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/StatusBannerModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionViewModel.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellViewModel.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellLayout.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionDraft.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionLibrary.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionFormState.swift"
@@ -105,6 +107,8 @@ set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/PasswordPromptSheet.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/SessionsEmptyView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalRepresentable.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalAppearance.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalFindBar.swift"
 )
 
 set(swiftterm_SOURCE_DIR "${swiftterm_SOURCE_DIR}")
@@ -154,6 +158,12 @@ add_custom_command(
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionViewModel.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/SessionViewModel.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellViewModel.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellViewModel.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellLayout.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellLayout.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionDraft.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ConnectionDraft.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -201,6 +211,12 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalRepresentable.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/TerminalRepresentable.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalAppearance.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/TerminalAppearance.swift"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Terminal/TerminalFindBar.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/TerminalFindBar.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/bridge/EasySsh-Bridging-Header.h"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/EasySsh-Bridging-Header.h"

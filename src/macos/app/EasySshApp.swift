@@ -38,14 +38,41 @@ struct EasySshApp: App {
             }
 
             CommandGroup(after: .pasteboard) {
-                Button("Copy Selection") {}
-                    .disabled(true)
+                Button("Copy Selection") {
+                    appModel.copySelectionFromActiveSession()
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(!appModel.canUseTerminalActions)
 
                 Button("Paste to Terminal") {
                     appModel.pasteClipboardIntoActiveSession()
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
-                .disabled(appModel.selectedSession?.state != .connected)
+                .disabled(!appModel.canUseTerminalActions)
+
+                Button("Find in Terminal…") {
+                    appModel.toggleFindInSelectedSession()
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(!appModel.canUseTerminalActions)
+
+                Button("Clear Screen") {
+                    appModel.clearTerminalInSelectedSession()
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(!appModel.canUseTerminalActions)
+
+                Divider()
+
+                Button("Save Log…") {
+                    appModel.saveLogInSelectedSession()
+                }
+                .disabled(!appModel.canUseTerminalActions)
+
+                Button("Save Screenshot…") {
+                    appModel.saveScreenshotInSelectedSession()
+                }
+                .disabled(!appModel.canUseTerminalActions)
             }
 
             CommandMenu("View") {
@@ -61,6 +88,41 @@ struct EasySshApp: App {
             }
 
             CommandMenu("Session") {
+                Button("New Shell") {
+                    appModel.openShellInSelectedSession()
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .disabled(!(appModel.selectedSession?.canOpenShell ?? false))
+
+                Button("Close Shell") {
+                    appModel.closeShellInSelectedSession()
+                }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
+                .disabled(!appModel.canUseTerminalActions)
+
+                Button("Rename Shell…") {
+                    appModel.renameShellInSelectedSession()
+                }
+                .disabled(!appModel.canUseTerminalActions)
+
+                Divider()
+
+                Menu("Go to Shell") {
+                    if let session = appModel.selectedSession, !session.shells.isEmpty {
+                        ForEach(session.shells) { shell in
+                            Button(shell.title) {
+                                appModel.focusShellInSelectedSession(shell.id)
+                            }
+                        }
+                    } else {
+                        Button("No shells") {}
+                            .disabled(true)
+                    }
+                }
+                .disabled(appModel.selectedSession?.shells.isEmpty ?? true)
+
+                Divider()
+
                 Button("Disconnect") {
                     appModel.disconnectSelectedSession()
                 }
@@ -102,7 +164,7 @@ struct EasySshApp: App {
 
             CommandGroup(replacing: .appInfo) {
                 Button("About Easy SSH") {
-                    appModel.showAbout = true
+                    appModel.activeModal = .about
                 }
             }
         }

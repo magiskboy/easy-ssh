@@ -6,7 +6,6 @@ import SwiftUI
 
 struct ConnectionManagerView: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
     @State private var sourceFilter: ConnectionSourceFilter = .all
@@ -16,6 +15,13 @@ struct ConnectionManagerView: View {
     @State private var isCreating = false
     @State private var showDeleteConfirm = false
     @State private var pendingDeleteId: UUID?
+    @State private var managerAlert: ManagerAlert?
+
+    private struct ManagerAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     private var library: ConnectionLibrary { appModel.library }
 
@@ -70,6 +76,13 @@ struct ConnectionManagerView: View {
             }
         } message: {
             Text("This removes the saved connection and its Keychain secrets. Open sessions are not closed.")
+        }
+        .alert(item: $managerAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
+            )
         }
     }
 
@@ -183,11 +196,9 @@ struct ConnectionManagerView: View {
     private var footer: some View {
         HStack {
             Button("Open Session") {
-                if let info = selectedInfo {
-                    openSelected(info)
-                }
+                openSelectedSession()
             }
-            .disabled(selectedInfo == nil || isCreating)
+            .disabled(selectedId == nil || isCreating)
             .keyboardShortcut(.defaultAction)
 
             if let info = selectedInfo, info.source == .app, !isCreating {
@@ -211,8 +222,10 @@ struct ConnectionManagerView: View {
             }
 
             Spacer()
-            Button("Close") { dismiss() }
-                .keyboardShortcut(.cancelAction)
+            Button("Close") {
+                appModel.activeModal = nil
+            }
+            .keyboardShortcut(.cancelAction)
         }
         .padding(12)
     }
@@ -305,28 +318,46 @@ struct ConnectionManagerView: View {
         select(info)
     }
 
+    private func openSelectedSession() {
+        if isCreating {
+            presentBlocker(
+                title: "Unsaved Connection",
+                message: "Save the new connection before opening a session."
+            )
+            return
+        }
+        guard let selectedId else {
+            presentBlocker(
+                title: "No Connection Selected",
+                message: "Select a connection in the list first."
+            )
+            return
+        }
+        guard let info = library.connection(id: selectedId)
+            ?? filtered.first(where: { ($0.connectionId as UUID) == selectedId })
+        else {
+            presentBlocker(
+                title: "Connection Missing",
+                message: "The selected connection is no longer in the library. Reload and try again."
+            )
+            return
+        }
+        appModel.openSessionFromManager(connection: info)
+    }
+
     private func openSelected(_ info: ESSConnectionInfo) {
         if isCreating {
-            appModel.status.notify(
+            presentBlocker(
                 title: "Unsaved Connection",
-                message: "Save the new connection before opening a session.",
-                level: .warning
+                message: "Save the new connection before opening a session."
             )
             return
         }
-        if isDirty && info.source == .app {
-            appModel.status.notify(
-                title: "Unsaved Changes",
-                message: "Save or discard changes before opening a session.",
-                level: .warning
-            )
-            return
-        }
-        if let error = ConnectionFormState.from(info).validationError(isCreate: false) {
-            appModel.status.notify(title: "Validation", message: error, level: .warning)
-            return
-        }
-        appModel.connect(with: info, inlineCredentials: nil)
+        appModel.openSessionFromManager(connection: info)
+    }
+
+    private func presentBlocker(title: String, message: String) {
+        managerAlert = ManagerAlert(title: title, message: message)
     }
 
     private func importSelectedOrPick() {
