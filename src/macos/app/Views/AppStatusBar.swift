@@ -42,8 +42,8 @@ struct AppStatusBar: View {
 
     private var sessionInfoText: String? {
         guard let session = appModel.selectedSession else { return nil }
-        let host = session.draft.host.isEmpty ? "—" : session.draft.host
-        let user = session.draft.username.isEmpty ? "—" : session.draft.username
+        let host = session.connection.host.isEmpty ? "—" : session.connection.host
+        let user = session.connection.username.isEmpty ? "—" : session.connection.username
         let shell = "main"
         let ttl: String
         if session.state == .connected, let connectedAt = session.connectedAt {

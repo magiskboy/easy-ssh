@@ -20,13 +20,23 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 140, ideal: 160, max: 220)
             .safeAreaInset(edge: .bottom) {
-                Button {
-                    appModel.openConnectSheet()
-                } label: {
-                    Label("New Connection", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        appModel.openConnectSheet()
+                    } label: {
+                        Label("New Connection", systemImage: "plus.circle.fill")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.borderless)
+
+                    Button {
+                        appModel.openConnectionManager()
+                    } label: {
+                        Label("Browse Connections", systemImage: "list.bullet.rectangle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(.borderless)
                 .padding(12)
             }
         } detail: {
@@ -45,6 +55,14 @@ struct ContentView: View {
         .background(WindowFrameTracker())
         .sheet(isPresented: $appModel.showConnectSheet) {
             ConnectSheet()
+                .environmentObject(appModel)
+        }
+        .sheet(isPresented: $appModel.showConnectionManager) {
+            ConnectionManagerView()
+                .environmentObject(appModel)
+        }
+        .sheet(item: $appModel.passwordPrompt) { _ in
+            PasswordPromptSheet()
                 .environmentObject(appModel)
         }
         .sheet(isPresented: $appModel.showAbout) {

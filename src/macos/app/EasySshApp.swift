@@ -25,6 +25,11 @@ struct EasySshApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command])
 
+                Button("Browse Connections…") {
+                    appModel.openConnectionManager()
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+
                 Button("Close Session") {
                     appModel.closeSelectedSession()
                 }

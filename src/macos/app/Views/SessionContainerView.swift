@@ -10,13 +10,7 @@ struct SessionContainerView: View {
     var body: some View {
         VStack(spacing: 0) {
             if appModel.sessions.isEmpty {
-                EmptyStateView(
-                    title: "No Sessions",
-                    systemImage: "terminal",
-                    message: "Connect to a host to open a SwiftTerm shell backed by Qt Core + libssh.",
-                    actionTitle: "New Connection…",
-                    action: { appModel.openConnectSheet() }
-                )
+                SessionsEmptyView()
             } else {
                 sessionTabs
                 Divider()
@@ -33,7 +27,14 @@ struct SessionContainerView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    appModel.openConnectionManager()
+                } label: {
+                    Image(systemName: "list.bullet.rectangle")
+                }
+                .help("Browse Connections")
+
                 Button {
                     appModel.openConnectSheet()
                 } label: {

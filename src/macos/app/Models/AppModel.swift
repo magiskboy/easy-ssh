@@ -49,16 +49,25 @@ enum SidebarMode: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+struct PasswordPromptRequest: Identifiable {
+    let id = UUID()
+    let connection: ESSConnectionInfo
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     let status = StatusBannerModel()
+    let library = ConnectionLibrary()
 
     @Published var sidebarMode: SidebarMode = .sessions
     @Published var sessions: [SessionViewModel] = []
     @Published var selectedSessionId: UUID?
     @Published var showConnectSheet: Bool = false
+    @Published var showConnectionManager: Bool = false
     @Published var showAbout: Bool = false
     @Published var connectDraft = ConnectionDraft()
+    @Published var passwordPrompt: PasswordPromptRequest?
+    @Published var passwordPromptValue: String = ""
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -68,10 +77,20 @@ final class AppModel: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+
+        library.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     var selectedSession: SessionViewModel? {
         sessions.first { $0.id == selectedSessionId }
+    }
+
+    var recentConnections: [ESSConnectionInfo] {
+        library.recentConnections(limit: 8)
     }
 
     var sidebarModeBinding: Binding<SidebarMode> {
@@ -89,15 +108,88 @@ final class AppModel: ObservableObject {
         showConnectSheet = true
     }
 
+    func openConnectionManager() {
+        library.reload()
+        showConnectionManager = true
+    }
+
     func connect(with draft: ConnectionDraft) {
-        let session = SessionViewModel(draft: draft)
-        wireSession(session)
-        sessions.append(session)
-        selectedSessionId = session.id
+        let form = ConnectionFormState.from(draft: draft)
+        if draft.saveConnection {
+            let info = form.makeConnectionInfo()
+            guard library.add(info) else {
+                status.notify(
+                    title: "Save Connection",
+                    message: "Could not save the connection to disk.",
+                    level: .error
+                )
+                return
+            }
+            ConnectionSecretHelper.persistSecrets(
+                for: info,
+                previousAuthType: nil,
+                isEdit: false,
+                password: draft.usePrivateKey ? nil : draft.password,
+                passphrase: draft.usePrivateKey ? draft.passphrase : nil
+            )
+            openSession(connection: info, credentials: form.makeCredentials())
+        } else {
+            openSession(connection: form.makeConnectionInfo(), credentials: form.makeCredentials())
+        }
         showConnectSheet = false
-        sidebarMode = .sessions
-        status.post("Connecting: \(draft.displayName)…", level: .status)
-        session.connect()
+    }
+
+    func connect(withId id: UUID) {
+        guard let info = library.connection(id: id) else {
+            status.notify(
+                title: "Connect",
+                message: "Connection not found.",
+                level: .error
+            )
+            return
+        }
+        connect(with: info, inlineCredentials: nil)
+    }
+
+    func connect(with info: ESSConnectionInfo, inlineCredentials: ESSSessionCredentials?) {
+        if let inline = inlineCredentials, let secret = inline.targetSecret, !secret.isEmpty {
+            openSession(connection: info, credentials: inline)
+            return
+        }
+
+        ConnectionSecretHelper.loadTargetSecret(for: info) { [weak self] secret in
+            Task { @MainActor in
+                guard let self else { return }
+                if info.authType == .password {
+                    if let secret, !secret.isEmpty {
+                        let creds = ESSSessionCredentials()
+                        creds.targetSecret = secret
+                        self.openSession(connection: info, credentials: creds)
+                    } else {
+                        self.passwordPromptValue = ""
+                        self.passwordPrompt = PasswordPromptRequest(connection: info)
+                    }
+                } else {
+                    let creds = ESSSessionCredentials()
+                    creds.targetSecret = secret
+                    self.openSession(connection: info, credentials: creds)
+                }
+            }
+        }
+    }
+
+    func submitPasswordPrompt() {
+        guard let request = passwordPrompt else { return }
+        let creds = ESSSessionCredentials()
+        creds.targetSecret = passwordPromptValue
+        passwordPrompt = nil
+        passwordPromptValue = ""
+        openSession(connection: request.connection, credentials: creds)
+    }
+
+    func cancelPasswordPrompt() {
+        passwordPrompt = nil
+        passwordPromptValue = ""
     }
 
     func closeSession(_ id: UUID) {
@@ -173,9 +265,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Private
+
+    private func openSession(connection: ESSConnectionInfo, credentials: ESSSessionCredentials?) {
+        let session = SessionViewModel(connection: connection, credentials: credentials)
+        wireSession(session)
+        sessions.append(session)
+        selectedSessionId = session.id
+        showConnectSheet = false
+        showConnectionManager = false
+        sidebarMode = .sessions
+        status.post("Connecting: \(session.title)…", level: .status)
+        session.connect()
+    }
+
     private func wireSession(_ session: SessionViewModel) {
         session.onStatus = { [weak self] message, level in
             self?.status.post(message, level: level)
+        }
+        session.onConnectedOnce = { connectionId in
+            ESSAppSettings.shared().recordRecentConnection(connectionId)
         }
     }
 }

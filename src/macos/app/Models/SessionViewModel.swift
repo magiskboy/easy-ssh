@@ -22,7 +22,8 @@ final class SessionTunnelsModel: ObservableObject {}
 @MainActor
 final class SessionViewModel: ObservableObject, Identifiable {
     let id = UUID()
-    let draft: ConnectionDraft
+    let connection: ESSConnectionInfo
+    private var credentials: ESSSessionCredentials?
 
     @Published var title: String
     @Published var state: SessionUIState = .idle
@@ -43,9 +44,12 @@ final class SessionViewModel: ObservableObject, Identifiable {
 
     /// App shell status sink (ErrorNotifier-style).
     var onStatus: ((String, StatusLevel) -> Void)?
+    /// Fired once when the session becomes connected (for recent-connection tracking).
+    var onConnectedOnce: ((UUID) -> Void)?
 
     private let controller = ESSSessionController()
     private var shellId: UUID?
+    private var didRecordRecent = false
 
     struct HostKeyPromptData: Identifiable {
         let id = UUID()
@@ -54,10 +58,21 @@ final class SessionViewModel: ObservableObject, Identifiable {
         let contextLabel: String
     }
 
-    init(draft: ConnectionDraft) {
-        self.draft = draft
-        self.title = draft.displayName
+    init(connection: ESSConnectionInfo, credentials: ESSSessionCredentials?) {
+        self.connection = connection
+        self.credentials = credentials
+        let name = connection.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.title = name.isEmpty
+            ? (connection.displayText.isEmpty
+                ? "\(connection.username)@\(connection.host):\(connection.port)"
+                : connection.displayText)
+            : name
         wireController()
+    }
+
+    convenience init(draft: ConnectionDraft) {
+        let form = ConnectionFormState.from(draft: draft)
+        self.init(connection: form.makeConnectionInfo(), credentials: form.makeCredentials())
     }
 
     private func wireController() {
@@ -71,6 +86,10 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.showReconnect = false
                 self.statusMessage = "Connected"
                 self.onStatus?("Connected: \(self.title)", .success)
+                if !self.didRecordRecent {
+                    self.didRecordRecent = true
+                    self.onConnectedOnce?(self.connection.connectionId as UUID)
+                }
             }
         }
         controller.onData = { [weak self] _, data in
@@ -137,14 +156,9 @@ final class SessionViewModel: ObservableObject, Identifiable {
         overlayMessage = "Connecting…"
         showReconnect = false
         statusMessage = "Connecting…"
-        let auth: ESSAuthType = draft.usePrivateKey ? .privateKey : .password
         controller.connect(
-            withHost: draft.host.trimmingCharacters(in: .whitespacesAndNewlines),
-            port: draft.port,
-            username: draft.username.trimmingCharacters(in: .whitespacesAndNewlines),
-            authType: auth,
-            password: draft.usePrivateKey ? nil : draft.password,
-            privateKeyPath: draft.usePrivateKey ? draft.privateKeyPath : nil,
+            withConnection: connection,
+            credentials: credentials,
             cols: lastCols,
             rows: lastRows
         )
