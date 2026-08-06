@@ -45,7 +45,7 @@ struct ConnectionManagerView: View {
             Divider()
             footer
         }
-        .frame(width: 820, height: 560)
+        .frame(width: 900, height: 640)
         .onAppear {
             library.reload()
             if let first = filtered.first {
@@ -145,19 +145,26 @@ struct ConnectionManagerView: View {
         VStack(alignment: .leading, spacing: 0) {
             if selectedId != nil || isCreating {
                 ConnectionEditorForm(form: $editorForm, isReadOnly: editorForm.isReadOnly && !isCreating)
-                Spacer(minLength: 0)
+                Divider()
                 HStack {
                     if editorForm.source == .sshConfig, !isCreating {
                         Text("SSH Config hosts are read-only. Import to edit.")
                             .foregroundStyle(.secondary)
                             .font(.caption)
+                    } else if let error = editorForm.validationError(isCreate: isCreating),
+                              isDirty
+                    {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                            .lineLimit(2)
                     }
                     Spacer()
                     if isDirty && (isCreating || editorForm.source == .app) {
                         Button("Discard") { discardEdits() }
                         Button("Save") { saveEdits() }
                             .keyboardShortcut(.defaultAction)
-                            .disabled(!editorForm.isValid)
+                            .disabled(!editorForm.isValid(isCreate: isCreating))
                     }
                 }
                 .padding(12)
@@ -241,6 +248,11 @@ struct ConnectionManagerView: View {
     }
 
     private func saveEdits() {
+        if let error = editorForm.validationError(isCreate: isCreating) {
+            appModel.status.notify(title: "Validation", message: error, level: .warning)
+            return
+        }
+
         if isCreating {
             let info = editorForm.makeConnectionInfo()
             guard library.add(info) else {
@@ -256,7 +268,10 @@ struct ConnectionManagerView: View {
                 previousAuthType: nil,
                 isEdit: false,
                 password: editorForm.usePrivateKey ? nil : editorForm.password,
-                passphrase: editorForm.usePrivateKey ? editorForm.passphrase : nil
+                passphrase: editorForm.usePrivateKey ? editorForm.passphrase : nil,
+                gatewayPassword: editorForm.gatewayPassword.isEmpty ? nil : editorForm.gatewayPassword,
+                gatewayPassphrase: editorForm.gatewayPassphrase.isEmpty
+                    ? nil : editorForm.gatewayPassphrase
             )
             select(info)
             return
@@ -264,7 +279,7 @@ struct ConnectionManagerView: View {
 
         guard let existing = selectedInfo, existing.source == .app else { return }
         let previousAuth = existing.authType
-        let info = editorForm.makeConnectionInfo(preservingAdvancedFrom: existing)
+        let info = editorForm.makeConnectionInfo()
         guard library.update(info) else {
             appModel.status.notify(
                 title: "Save Connection",
@@ -277,25 +292,39 @@ struct ConnectionManagerView: View {
             for: info,
             previousAuthType: previousAuth,
             isEdit: true,
-            password: editorForm.usePrivateKey ? nil : (editorForm.password.isEmpty ? nil : editorForm.password),
+            password: editorForm.usePrivateKey
+                ? nil
+                : (editorForm.password.isEmpty ? nil : editorForm.password),
             passphrase: editorForm.usePrivateKey
                 ? (editorForm.passphrase.isEmpty ? nil : editorForm.passphrase)
-                : nil
+                : nil,
+            gatewayPassword: editorForm.gatewayPassword.isEmpty ? nil : editorForm.gatewayPassword,
+            gatewayPassphrase: editorForm.gatewayPassphrase.isEmpty
+                ? nil : editorForm.gatewayPassphrase
         )
         select(info)
     }
 
     private func openSelected(_ info: ESSConnectionInfo) {
-        if isDirty && (isCreating || info.source == .app) {
-            // Prefer saved state; require save first for creates.
-            if isCreating {
-                appModel.status.notify(
-                    title: "Unsaved Connection",
-                    message: "Save the new connection before opening a session.",
-                    level: .warning
-                )
-                return
-            }
+        if isCreating {
+            appModel.status.notify(
+                title: "Unsaved Connection",
+                message: "Save the new connection before opening a session.",
+                level: .warning
+            )
+            return
+        }
+        if isDirty && info.source == .app {
+            appModel.status.notify(
+                title: "Unsaved Changes",
+                message: "Save or discard changes before opening a session.",
+                level: .warning
+            )
+            return
+        }
+        if let error = ConnectionFormState.from(info).validationError(isCreate: false) {
+            appModel.status.notify(title: "Validation", message: error, level: .warning)
+            return
         }
         appModel.connect(with: info, inlineCredentials: nil)
     }

@@ -52,6 +52,8 @@ enum SidebarMode: String, CaseIterable, Identifiable, Hashable {
 struct PasswordPromptRequest: Identifiable {
     let id = UUID()
     let connection: ESSConnectionInfo
+    /// Pre-loaded gateway secret (if any) so the target password prompt does not drop it.
+    var gatewaySecret: String? = nil
 }
 
 @MainActor
@@ -152,26 +154,68 @@ final class AppModel: ObservableObject {
     }
 
     func connect(with info: ESSConnectionInfo, inlineCredentials: ESSSessionCredentials?) {
-        if let inline = inlineCredentials, let secret = inline.targetSecret, !secret.isEmpty {
+        if let inline = inlineCredentials,
+           let secret = inline.targetSecret,
+           !secret.isEmpty
+        {
+            if ConnectionSecretHelper.needsGatewaySecret(info),
+               inline.gatewaySecret == nil || inline.gatewaySecret?.isEmpty == true
+            {
+                ConnectionSecretHelper.loadGatewaySecret(for: info) { [weak self] gateway in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if Self.missingRequiredGatewaySecret(info, gateway: gateway) {
+                            self.status.notify(
+                                title: "Gateway Credentials",
+                                message:
+                                    "ProxyJump gateway credentials are missing. "
+                                    + "Edit the connection and set the gateway password or passphrase.",
+                                level: .error
+                            )
+                            return
+                        }
+                        inline.gatewaySecret = gateway
+                        self.openSession(connection: info, credentials: inline)
+                    }
+                }
+                return
+            }
             openSession(connection: info, credentials: inline)
             return
         }
 
-        ConnectionSecretHelper.loadTargetSecret(for: info) { [weak self] secret in
+        ConnectionSecretHelper.loadCredentials(for: info) { [weak self] target, gateway in
             Task { @MainActor in
                 guard let self else { return }
+
+                if Self.missingRequiredGatewaySecret(info, gateway: gateway) {
+                    self.status.notify(
+                        title: "Gateway Credentials",
+                        message:
+                            "ProxyJump gateway credentials are missing. "
+                            + "Edit the connection and set the gateway password or passphrase.",
+                        level: .error
+                    )
+                    return
+                }
+
                 if info.authType == .password {
-                    if let secret, !secret.isEmpty {
+                    if let target, !target.isEmpty {
                         let creds = ESSSessionCredentials()
-                        creds.targetSecret = secret
+                        creds.targetSecret = target
+                        creds.gatewaySecret = gateway
                         self.openSession(connection: info, credentials: creds)
                     } else {
                         self.passwordPromptValue = ""
-                        self.passwordPrompt = PasswordPromptRequest(connection: info)
+                        self.passwordPrompt = PasswordPromptRequest(
+                            connection: info,
+                            gatewaySecret: gateway
+                        )
                     }
                 } else {
                     let creds = ESSSessionCredentials()
-                    creds.targetSecret = secret
+                    creds.targetSecret = target
+                    creds.gatewaySecret = gateway
                     self.openSession(connection: info, credentials: creds)
                 }
             }
@@ -182,6 +226,7 @@ final class AppModel: ObservableObject {
         guard let request = passwordPrompt else { return }
         let creds = ESSSessionCredentials()
         creds.targetSecret = passwordPromptValue
+        creds.gatewaySecret = request.gatewaySecret
         passwordPrompt = nil
         passwordPromptValue = ""
         openSession(connection: request.connection, credentials: creds)
@@ -266,6 +311,17 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: - Private
+
+    /// Gateway password auth requires a non-empty secret; private-key passphrase may be empty.
+    private static func missingRequiredGatewaySecret(
+        _ info: ESSConnectionInfo,
+        gateway: String?
+    ) -> Bool {
+        guard ConnectionSecretHelper.needsGatewaySecret(info) else { return false }
+        let hop = info.jumpHops[0]
+        guard hop.authType == .password else { return false }
+        return gateway == nil || gateway?.isEmpty == true
+    }
 
     private func openSession(connection: ESSConnectionInfo, credentials: ESSSessionCredentials?) {
         let session = SessionViewModel(connection: connection, credentials: credentials)
