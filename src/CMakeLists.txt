@@ -30,6 +30,8 @@ set(EASY_SSH_CORE_SOURCES
     core/session/SessionTypes.h
     core/session/Session.cpp
     core/session/Session.h
+    core/session/SessionRemoteExec.cpp
+    core/session/SessionRemoteExec.h
     core/session/SessionManager.cpp
     core/session/SessionManager.h
     core/session/WorkspaceState.cpp
@@ -55,6 +57,7 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/SftpTypes.h
     core/explorer/ExplorerTypes.h
     core/explorer/IExplorerSource.h
+    core/explorer/IRemoteExec.h
     core/explorer/process/ProcessInfo.h
     core/explorer/process/ProcessParser.cpp
     core/explorer/process/ProcessParser.h

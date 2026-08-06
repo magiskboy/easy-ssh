@@ -5,21 +5,21 @@
 #include "ContainerSource.h"
 
 #include "core/explorer/container/ContainerParser.h"
-#include "core/session/Session.h"
+#include "core/explorer/IRemoteExec.h"
 
 #include <QTimer>
 #include <QUuid>
 
-ContainerSource::ContainerSource(Session *session, QObject *parent)
-    : IExplorerSource(parent), m_session(session)
+ContainerSource::ContainerSource(IRemoteExec *exec, QObject *parent)
+    : IExplorerSource(parent), m_exec(exec)
 {
     m_timer = new QTimer(this);
     m_timer->setInterval(m_pollIntervalMs);
     connect(m_timer, &QTimer::timeout, this, &ContainerSource::onPollTick);
 
-    if (m_session) {
-        connect(m_session,
-                &Session::commandFinished,
+    if (m_exec) {
+        connect(m_exec,
+                &IRemoteExec::commandFinished,
                 this,
                 [this](const QString &requestId,
                        int exitStatus,
@@ -89,7 +89,7 @@ void ContainerSource::onPollTick()
 
 void ContainerSource::requestList()
 {
-    if (!m_session) {
+    if (!m_exec) {
         setCapability(ExplorerCapability::Error, tr("No session"));
         setBusy(false);
         return;
@@ -98,7 +98,7 @@ void ContainerSource::requestList()
     m_activeRequestId = makeRequestId();
     m_requestInFlight = true;
     setBusy(true);
-    m_session->execCommand(m_activeRequestId, ContainerParser::listCommand());
+    m_exec->execCommand(m_activeRequestId, ContainerParser::listCommand());
 }
 
 void ContainerSource::onCommandFinished(const QString &requestId,

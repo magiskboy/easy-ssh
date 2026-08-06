@@ -46,13 +46,19 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 ///   bytesDone (NSNumber), bytesTotal (NSNumber), backend (NSNumber FsBackend),
 ///   lastMessage (NSString).
 ///
-/// Explorer row keys (Phase 6 — documented only; not emitted yet):
+/// Explorer row keys (Phase 6):
 ///   Process: pid, ppid, uid, user, cpuPercent, memPercent, stateCode, nice, priority,
 ///            elapsedSeconds, cpuTime, rssKiB, vszKiB, comm, command
 ///   Container: runtime, containerId, name, image, state, pid, runtimeNamespace,
 ///              cpuPercent, memPercent, memUsage
 ///   Service: manager, unit, description, loadState, activeState, subState, unitFileState, mainPid
-///   SystemInfo: structured sections from SystemInfoParser (cpu/mem/disk/gpu widgets)
+///   SystemInfo: nested dictionaries (os, load, cpu, mem, disks, diskIo, nics, temps, gpus,
+///               gpuProcesses, virt)
+///
+/// Explorer kinds for start/stop/refresh: @"process" | @"container" | @"service" | @"systemInfo"
+///
+/// Capability values (onExplorerCapability): @"checking" | @"available" | @"unavailable" |
+///   @"permissionDenied" | @"error"
 @property (nonatomic, copy, nullable) void (^onDirectoryListed)(NSString *path, NSArray<NSDictionary *> *entries);
 @property (nonatomic, copy, nullable) void (^onEntryResolved)(NSString *path, BOOL isDir, BOOL ok, NSString *error);
 @property (nonatomic, copy, nullable) void (^onPathCanonicalized)(NSString *requested, NSString *canonical);
@@ -74,6 +80,19 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
                                                                 NSData *stdoutData,
                                                                 NSData *stderrData,
                                                                 NSString *errorMessage);
+
+/// Explorers (Phase 6). Kind is process|container|service|systemInfo.
+@property (nonatomic, copy, nullable) void (^onExplorerCapability)(NSString *kind,
+                                                                   NSString *capability,
+                                                                   NSString *message);
+@property (nonatomic, copy, nullable) void (^onExplorerBusy)(NSString *kind, BOOL busy);
+@property (nonatomic, copy, nullable) void (^onExplorerFailed)(NSString *kind, NSString *message);
+@property (nonatomic, copy, nullable) void (^onProcessSnapshot)(NSArray<NSDictionary *> *rows);
+@property (nonatomic, copy, nullable) void (^onContainerSnapshot)(NSArray<NSDictionary *> *rows);
+@property (nonatomic, copy, nullable) void (^onServiceSnapshot)(NSArray<NSDictionary *> *rows);
+@property (nonatomic, copy, nullable) void (^onSystemInfoSnapshot)(NSDictionary *snapshot);
+@property (nonatomic, copy, nullable) void (^onContainerInspect)(NSDictionary *info, NSString * _Nullable error);
+@property (nonatomic, copy, nullable) void (^onServiceInspect)(NSDictionary *info, NSString * _Nullable error);
 
 @property (nonatomic, readonly, nullable) NSUUID *primaryShellId;
 @property (nonatomic, readonly, getter=isConnected) BOOL connected;
@@ -129,6 +148,22 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 - (void)stopAllTunnels;
 
 - (void)execCommand:(NSString *)command requestId:(NSString *)requestId;
+
+- (void)startExplorer:(NSString *)kind;
+- (void)stopExplorer:(NSString *)kind;
+- (void)refreshExplorer:(NSString *)kind;
+- (void)stopAllExplorers;
+
+/// Inspect uses seed fields from a list row dictionary.
+- (void)inspectContainer:(NSDictionary *)seed;
+- (void)inspectService:(NSDictionary *)seed;
+
+/// Format last SystemInfo snapshot (empty string if none).
+- (NSString *)systemInfoText;
+- (NSString *)systemInfoJson;
+
+/// journalctl follow command for a service row (empty if invalid).
+- (NSString *)serviceFollowLogsCommand:(NSDictionary *)seed lines:(NSInteger)lines;
 
 @end
 

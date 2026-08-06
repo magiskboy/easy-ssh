@@ -5,7 +5,7 @@
 #include "SystemInfoSource.h"
 
 #include "core/explorer/systeminfo/SystemInfoParser.h"
-#include "core/session/Session.h"
+#include "core/explorer/IRemoteExec.h"
 
 #include <QHash>
 #include <QTimer>
@@ -37,16 +37,16 @@ double usageFromDelta(const CpuCoreTicks &prev, const CpuCoreTicks &cur)
 }
 } // namespace
 
-SystemInfoSource::SystemInfoSource(Session *session, QObject *parent)
-    : IExplorerSource(parent), m_session(session)
+SystemInfoSource::SystemInfoSource(IRemoteExec *exec, QObject *parent)
+    : IExplorerSource(parent), m_exec(exec)
 {
     m_timer = new QTimer(this);
     m_timer->setInterval(m_pollIntervalMs);
     connect(m_timer, &QTimer::timeout, this, &SystemInfoSource::onPollTick);
 
-    if (m_session) {
-        connect(m_session,
-                &Session::commandFinished,
+    if (m_exec) {
+        connect(m_exec,
+                &IRemoteExec::commandFinished,
                 this,
                 [this](const QString &requestId,
                        int exitStatus,
@@ -118,7 +118,7 @@ void SystemInfoSource::onPollTick()
 
 void SystemInfoSource::requestFetch()
 {
-    if (!m_session) {
+    if (!m_exec) {
         setCapability(ExplorerCapability::Error, tr("No session"));
         setBusy(false);
         return;
@@ -127,7 +127,7 @@ void SystemInfoSource::requestFetch()
     m_activeRequestId = makeRequestId();
     m_requestInFlight = true;
     setBusy(true);
-    m_session->execCommand(m_activeRequestId, SystemInfoParser::fetchCommand());
+    m_exec->execCommand(m_activeRequestId, SystemInfoParser::fetchCommand());
 }
 
 void SystemInfoSource::handleCommandFinished(const QString &requestId,

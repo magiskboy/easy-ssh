@@ -8,14 +8,34 @@
 #import "ESSConnectionMapping.h"
 #import "EasySshRuntime.h"
 
+#include "ESSRemoteExecHost.h"
+
 #include "core/connection/Connection.h"
+#include "core/explorer/ExplorerTypes.h"
+#include "core/explorer/IExplorerSource.h"
+#include "core/explorer/IRemoteExec.h"
+#include "core/explorer/container/ContainerInfo.h"
+#include "core/explorer/container/ContainerInspectInfo.h"
+#include "core/explorer/container/ContainerParser.h"
+#include "core/explorer/container/ContainerSource.h"
+#include "core/explorer/process/ProcessInfo.h"
+#include "core/explorer/process/ProcessSource.h"
+#include "core/explorer/service/ServiceInfo.h"
+#include "core/explorer/service/ServiceInspectInfo.h"
+#include "core/explorer/service/ServiceParser.h"
+#include "core/explorer/service/ServiceSource.h"
+#include "core/explorer/systeminfo/SystemInfo.h"
+#include "core/explorer/systeminfo/SystemInfoParser.h"
+#include "core/explorer/systeminfo/SystemInfoSource.h"
 #include "core/fs/TransferTypes.h"
 #include "core/ssh/SshWorker.h"
 #include "core/tunnel/Tunnel.h"
 
 #include <QMetaObject>
+#include <QPointer>
 #include <QThread>
 #include <QUuid>
+#include <optional>
 
 #include <utility>
 
@@ -78,6 +98,341 @@ QStringList toQStringList(NSArray<NSString *> *arr)
     return out;
 }
 
+NSString *capabilityToNS(ExplorerCapability cap)
+{
+    switch (cap) {
+    case ExplorerCapability::Checking:
+        return @"checking";
+    case ExplorerCapability::Available:
+        return @"available";
+    case ExplorerCapability::Unavailable:
+        return @"unavailable";
+    case ExplorerCapability::PermissionDenied:
+        return @"permissionDenied";
+    case ExplorerCapability::Error:
+        return @"error";
+    }
+    return @"error";
+}
+
+NSDictionary *processToDict(const ProcessInfo &p)
+{
+    return @{
+        @"pid" : @(p.pid),
+        @"ppid" : @(p.ppid),
+        @"uid" : @(p.uid),
+        @"user" : qToNS(p.user),
+        @"cpuPercent" : @(p.cpuPercent),
+        @"memPercent" : @(p.memPercent),
+        @"stateCode" : qToNS(p.stateCode),
+        @"nice" : @(p.nice),
+        @"priority" : @(p.priority),
+        @"elapsedSeconds" : @(p.elapsedSeconds),
+        @"cpuTime" : qToNS(p.cpuTime),
+        @"rssKiB" : @(p.rssKiB),
+        @"vszKiB" : @(p.vszKiB),
+        @"comm" : qToNS(p.comm),
+        @"command" : qToNS(p.command),
+    };
+}
+
+NSDictionary *containerToDict(const ContainerInfo &c)
+{
+    return @{
+        @"runtime" : qToNS(c.runtime),
+        @"containerId" : qToNS(c.containerId),
+        @"name" : qToNS(c.name),
+        @"image" : qToNS(c.image),
+        @"state" : qToNS(c.state),
+        @"pid" : @(c.pid),
+        @"runtimeNamespace" : qToNS(c.runtimeNamespace),
+        @"cpuPercent" : @(c.cpuPercent),
+        @"memPercent" : @(c.memPercent),
+        @"memUsage" : qToNS(c.memUsage),
+    };
+}
+
+NSDictionary *serviceToDict(const ServiceInfo &s)
+{
+    return @{
+        @"manager" : qToNS(s.manager),
+        @"unit" : qToNS(s.unit),
+        @"description" : qToNS(s.description),
+        @"loadState" : qToNS(s.loadState),
+        @"activeState" : qToNS(s.activeState),
+        @"subState" : qToNS(s.subState),
+        @"unitFileState" : qToNS(s.unitFileState),
+        @"mainPid" : @(s.mainPid),
+    };
+}
+
+NSArray *stringListToNS(const QStringList &list)
+{
+    NSMutableArray *out = [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(list.size())];
+    for (const QString &s : list) {
+        [out addObject:qToNS(s)];
+    }
+    return out;
+}
+
+NSDictionary *containerInspectToDict(const ContainerInspectInfo &info)
+{
+    NSMutableDictionary *mounts = [NSMutableDictionary dictionary];
+    for (const auto &pair : info.mounts) {
+        mounts[qToNS(pair.first)] = qToNS(pair.second);
+    }
+    NSMutableDictionary *dict = [containerToDict(info.base) mutableCopy];
+    [dict addEntriesFromDictionary:@{
+        @"createdAt" : qToNS(info.createdAt),
+        @"startedAt" : qToNS(info.startedAt),
+        @"finishedAt" : qToNS(info.finishedAt),
+        @"imageId" : qToNS(info.imageId),
+        @"imageName" : qToNS(info.imageName),
+        @"driver" : qToNS(info.driver),
+        @"ociRuntime" : qToNS(info.ociRuntime),
+        @"hostname" : qToNS(info.hostname),
+        @"user" : qToNS(info.user),
+        @"workingDir" : qToNS(info.workingDir),
+        @"entrypoint" : qToNS(info.entrypoint),
+        @"command" : qToNS(info.command),
+        @"env" : stringListToNS(info.env),
+        @"mounts" : mounts,
+        @"ipAddress" : qToNS(info.ipAddress),
+        @"gateway" : qToNS(info.gateway),
+        @"macAddress" : qToNS(info.macAddress),
+        @"ports" : qToNS(info.ports),
+        @"exitCode" : @(info.exitCode),
+        @"restartCount" : @(info.restartCount),
+        @"oomKilled" : @(info.oomKilled),
+        @"stateError" : qToNS(info.stateError),
+        @"labels" : qToNS(info.labels),
+    }];
+    return dict;
+}
+
+NSDictionary *serviceInspectToDict(const ServiceInspectInfo &info)
+{
+    NSMutableDictionary *dict = [serviceToDict(info.base) mutableCopy];
+    [dict addEntriesFromDictionary:@{
+        @"fragmentPath" : qToNS(info.fragmentPath),
+        @"activeEnterTimestamp" : qToNS(info.activeEnterTimestamp),
+        @"execMainStartTimestamp" : qToNS(info.execMainStartTimestamp),
+        @"type" : qToNS(info.type),
+        @"restart" : qToNS(info.restart),
+        @"remainAfterExit" : @(info.remainAfterExit),
+    }];
+    return dict;
+}
+
+NSDictionary *cpuTicksToDict(const CpuCoreTicks &t)
+{
+    return @{
+        @"index" : @(t.index),
+        @"user" : @(t.user),
+        @"nice" : @(t.nice),
+        @"system" : @(t.system),
+        @"idle" : @(t.idle),
+        @"iowait" : @(t.iowait),
+        @"irq" : @(t.irq),
+        @"softirq" : @(t.softirq),
+        @"steal" : @(t.steal),
+    };
+}
+
+NSDictionary *systemInfoToDict(const SystemInfo &info)
+{
+    NSMutableArray *cores = [NSMutableArray array];
+    for (const CpuCoreTicks &t : info.cpu.cores) {
+        [cores addObject:cpuTicksToDict(t)];
+    }
+    NSMutableArray *coreUsage = [NSMutableArray array];
+    for (double v : info.cpu.coreUsagePercent) {
+        [coreUsage addObject:@(v)];
+    }
+    NSMutableArray *coreFreq = [NSMutableArray array];
+    for (qint64 v : info.cpu.coreFreqKHz) {
+        [coreFreq addObject:@(v)];
+    }
+    NSMutableArray *disks = [NSMutableArray array];
+    for (const DiskInfo &d : info.disks) {
+        [disks addObject:@{
+            @"filesystem" : qToNS(d.filesystem),
+            @"mountpoint" : qToNS(d.mountpoint),
+            @"sizeKb" : @(d.sizeKb),
+            @"usedKb" : @(d.usedKb),
+            @"availKb" : @(d.availKb),
+            @"usePercent" : @(d.usePercent),
+        }];
+    }
+    NSMutableArray *diskIo = [NSMutableArray array];
+    for (const DiskIoInfo &d : info.diskIo) {
+        [diskIo addObject:@{
+            @"name" : qToNS(d.name),
+            @"readsCompleted" : @(d.readsCompleted),
+            @"writesCompleted" : @(d.writesCompleted),
+            @"sectorsRead" : @(d.sectorsRead),
+            @"sectorsWritten" : @(d.sectorsWritten),
+            @"ioTicksMs" : @(d.ioTicksMs),
+            @"readBps" : @(d.readBps),
+            @"writeBps" : @(d.writeBps),
+            @"readIops" : @(d.readIops),
+            @"writeIops" : @(d.writeIops),
+            @"utilPercent" : @(d.utilPercent),
+        }];
+    }
+    NSMutableArray *nics = [NSMutableArray array];
+    for (const NicInfo &n : info.nics) {
+        [nics addObject:@{
+            @"name" : qToNS(n.name),
+            @"mac" : qToNS(n.mac),
+            @"operState" : qToNS(n.operState),
+            @"ipv4" : qToNS(n.ipv4),
+            @"ipv6" : qToNS(n.ipv6),
+            @"speedMbps" : @(n.speedMbps),
+            @"mtu" : @(n.mtu),
+            @"rxBytes" : @(n.rxBytes),
+            @"txBytes" : @(n.txBytes),
+            @"rxPackets" : @(n.rxPackets),
+            @"txPackets" : @(n.txPackets),
+            @"rxErrors" : @(n.rxErrors),
+            @"txErrors" : @(n.txErrors),
+            @"rxBps" : @(n.rxBps),
+            @"txBps" : @(n.txBps),
+        }];
+    }
+    NSMutableArray *temps = [NSMutableArray array];
+    for (const TempSensorInfo &t : info.temps) {
+        [temps addObject:@{@"name" : qToNS(t.name), @"celsius" : @(t.celsius)}];
+    }
+    NSMutableArray *gpus = [NSMutableArray array];
+    for (const GpuInfo &g : info.gpus) {
+        [gpus addObject:@{
+            @"index" : @(g.index),
+            @"name" : qToNS(g.name),
+            @"uuid" : qToNS(g.uuid),
+            @"pciBusId" : qToNS(g.pciBusId),
+            @"driverVersion" : qToNS(g.driverVersion),
+            @"pstate" : qToNS(g.pstate),
+            @"utilGpuPercent" : @(g.utilGpuPercent),
+            @"utilMemPercent" : @(g.utilMemPercent),
+            @"memTotalMiB" : @(g.memTotalMiB),
+            @"memUsedMiB" : @(g.memUsedMiB),
+            @"memFreeMiB" : @(g.memFreeMiB),
+            @"tempCelsius" : @(g.tempCelsius),
+            @"powerDrawW" : @(g.powerDrawW),
+            @"powerLimitW" : @(g.powerLimitW),
+            @"clockSmMHz" : @(g.clockSmMHz),
+            @"clockMemMHz" : @(g.clockMemMHz),
+        }];
+    }
+    NSMutableArray *gpuProcesses = [NSMutableArray array];
+    for (const GpuProcessInfo &p : info.gpuProcesses) {
+        [gpuProcesses addObject:@{
+            @"pid" : @(p.pid),
+            @"name" : qToNS(p.name),
+            @"gpuUuid" : qToNS(p.gpuUuid),
+            @"usedMemoryMiB" : @(p.usedMemoryMiB),
+        }];
+    }
+
+    return @{
+        @"os" : @{
+            @"prettyName" : qToNS(info.os.prettyName),
+            @"kernel" : qToNS(info.os.kernel),
+            @"arch" : qToNS(info.os.arch),
+            @"hostname" : qToNS(info.os.hostname),
+            @"uptimeSec" : @(info.os.uptimeSec),
+        },
+        @"load" : @{
+            @"load1" : @(info.load.load1),
+            @"load5" : @(info.load.load5),
+            @"load15" : @(info.load.load15),
+        },
+        @"cpu" : @{
+            @"model" : qToNS(info.cpu.model),
+            @"logicalCpus" : @(info.cpu.logicalCpus),
+            @"aggregate" : cpuTicksToDict(info.cpu.aggregate),
+            @"cores" : cores,
+            @"usagePercent" : @(info.cpu.usagePercent),
+            @"coreUsagePercent" : coreUsage,
+            @"governor" : qToNS(info.cpu.governor),
+            @"freqMinKHz" : @(info.cpu.freqMinKHz),
+            @"freqMaxKHz" : @(info.cpu.freqMaxKHz),
+            @"coreFreqKHz" : coreFreq,
+        },
+        @"mem" : @{
+            @"totalKb" : @(info.mem.totalKb),
+            @"availableKb" : @(info.mem.availableKb),
+            @"freeKb" : @(info.mem.freeKb),
+            @"buffersKb" : @(info.mem.buffersKb),
+            @"cachedKb" : @(info.mem.cachedKb),
+            @"shmemKb" : @(info.mem.shmemKb),
+            @"sReclaimableKb" : @(info.mem.sReclaimableKb),
+            @"swapTotalKb" : @(info.mem.swapTotalKb),
+            @"swapFreeKb" : @(info.mem.swapFreeKb),
+        },
+        @"disks" : disks,
+        @"diskIo" : diskIo,
+        @"nics" : nics,
+        @"temps" : temps,
+        @"gpus" : gpus,
+        @"gpuProcesses" : gpuProcesses,
+        @"virt" : @{
+            @"detectVirt" : qToNS(info.virt.detectVirt),
+            @"vm" : qToNS(info.virt.vm),
+            @"container" : qToNS(info.virt.container),
+            @"isVm" : @(info.virt.isVm),
+            @"isContainer" : @(info.virt.isContainer),
+            @"cpuHypervisorFlag" : @(info.virt.cpuHypervisorFlag),
+            @"cpuVendor" : qToNS(info.virt.cpuVendor),
+            @"dmiSysVendor" : qToNS(info.virt.dmiSysVendor),
+            @"dmiProductName" : qToNS(info.virt.dmiProductName),
+            @"dmiProductVersion" : qToNS(info.virt.dmiProductVersion),
+            @"dmiBoardVendor" : qToNS(info.virt.dmiBoardVendor),
+            @"dmiBoardName" : qToNS(info.virt.dmiBoardName),
+            @"dmiChassisVendor" : qToNS(info.virt.dmiChassisVendor),
+            @"dmiChassisType" : qToNS(info.virt.dmiChassisType),
+            @"dmiBiosVendor" : qToNS(info.virt.dmiBiosVendor),
+            @"dmiBiosVersion" : qToNS(info.virt.dmiBiosVersion),
+            @"dmiBiosDate" : qToNS(info.virt.dmiBiosDate),
+            @"dockerEnv" : @(info.virt.dockerEnv),
+            @"podmanEnv" : @(info.virt.podmanEnv),
+            @"wsl" : @(info.virt.wsl),
+            @"cgroupInit" : qToNS(info.virt.cgroupInit),
+        },
+    };
+}
+
+ContainerInfo containerFromSeed(NSDictionary *seed)
+{
+    ContainerInfo info;
+    info.runtime = nsToQ(seed[@"runtime"] ?: @"");
+    info.containerId = nsToQ(seed[@"containerId"] ?: @"");
+    info.name = nsToQ(seed[@"name"] ?: @"");
+    info.image = nsToQ(seed[@"image"] ?: @"");
+    info.state = nsToQ(seed[@"state"] ?: @"");
+    info.pid = [seed[@"pid"] longLongValue];
+    info.runtimeNamespace = nsToQ(seed[@"runtimeNamespace"] ?: @"");
+    info.cpuPercent = [seed[@"cpuPercent"] doubleValue];
+    info.memPercent = [seed[@"memPercent"] doubleValue];
+    info.memUsage = nsToQ(seed[@"memUsage"] ?: @"");
+    return info;
+}
+
+ServiceInfo serviceFromSeed(NSDictionary *seed)
+{
+    ServiceInfo info;
+    info.manager = nsToQ(seed[@"manager"] ?: @"");
+    info.unit = nsToQ(seed[@"unit"] ?: @"");
+    info.description = nsToQ(seed[@"description"] ?: @"");
+    info.loadState = nsToQ(seed[@"loadState"] ?: @"");
+    info.activeState = nsToQ(seed[@"activeState"] ?: @"");
+    info.subState = nsToQ(seed[@"subState"] ?: @"");
+    info.unitFileState = nsToQ(seed[@"unitFileState"] ?: @"");
+    info.mainPid = [seed[@"mainPid"] longLongValue];
+    return info;
+}
+
 void dispatchMain(dispatch_block_t block)
 {
     if ([NSThread isMainThread]) {
@@ -92,6 +447,13 @@ void dispatchMain(dispatch_block_t block)
 @interface ESSSessionController ()
 @property (nonatomic, strong, nullable) NSUUID *primaryShellId;
 @property (nonatomic, assign) BOOL connected;
+- (void)handleInspectFinished:(const QString &)requestId
+                   exitStatus:(int)exitStatus
+                       stdout:(const QByteArray &)stdoutBytes
+                       stderr:(const QByteArray &)stderrBytes
+                        error:(const QString &)errorMessage;
+- (void)emitCapability:(NSString *)kind source:(IExplorerSource *)source;
+- (void)wireSourceLifecycle:(IExplorerSource *)source kind:(NSString *)kind;
 @end
 
 @implementation ESSSessionController {
@@ -100,6 +462,16 @@ void dispatchMain(dispatch_block_t block)
     Connection m_connection;
     SessionCredentials m_credentials;
     bool m_shuttingDown;
+    ESSRemoteExecHost *m_remoteExec;
+    ProcessSource *m_processSource;
+    ContainerSource *m_containerSource;
+    ServiceSource *m_serviceSource;
+    SystemInfoSource *m_systemInfoSource;
+    std::optional<SystemInfo> m_lastSystemInfo;
+    QString m_pendingContainerInspectId;
+    ContainerInfo m_pendingContainerSeed;
+    QString m_pendingServiceInspectId;
+    ServiceInfo m_pendingServiceSeed;
 }
 
 - (instancetype)init
@@ -110,6 +482,25 @@ void dispatchMain(dispatch_block_t block)
         m_thread = nullptr;
         m_worker = nullptr;
         m_shuttingDown = false;
+        m_remoteExec = new ESSRemoteExecHost();
+        m_processSource = nullptr;
+        m_containerSource = nullptr;
+        m_serviceSource = nullptr;
+        m_systemInfoSource = nullptr;
+        QObject::connect(m_remoteExec,
+                         &IRemoteExec::commandFinished,
+                         m_remoteExec,
+                         [self](const QString &requestId,
+                                int exitStatus,
+                                const QByteArray &stdoutBytes,
+                                const QByteArray &stderrBytes,
+                                const QString &errorMessage) {
+                             [self handleInspectFinished:requestId
+                                              exitStatus:exitStatus
+                                                   stdout:stdoutBytes
+                                                   stderr:stderrBytes
+                                                    error:errorMessage];
+                         });
         _connected = NO;
     }
     return self;
@@ -117,12 +508,19 @@ void dispatchMain(dispatch_block_t block)
 
 - (void)dealloc
 {
+    [self stopAllExplorers];
     [self shutdownWorker];
+    delete m_remoteExec;
+    m_remoteExec = nullptr;
 }
 
 - (void)shutdownWorker
 {
     m_shuttingDown = true;
+    [self stopAllExplorers];
+    if (m_remoteExec != nullptr) {
+        m_remoteExec->clearWorker();
+    }
     if (m_worker != nullptr) {
         QObject::disconnect(m_worker, nullptr, nullptr, nullptr);
         m_worker->requestCancel();
@@ -154,6 +552,9 @@ void dispatchMain(dispatch_block_t block)
 {
     QObject::connect(m_worker, &SshWorker::connected, m_worker, [self](const QUuid &shellId) {
         NSUUID *nsId = uuidToNS(shellId);
+        if (m_remoteExec != nullptr) {
+            m_remoteExec->setConnected(true);
+        }
         dispatchMain(^{
             self.primaryShellId = nsId;
             self.connected = YES;
@@ -245,7 +646,11 @@ void dispatchMain(dispatch_block_t block)
     });
 
     QObject::connect(m_worker, &SshWorker::disconnected, m_worker, [self]() {
+        if (m_remoteExec != nullptr) {
+            m_remoteExec->setConnected(false);
+        }
         dispatchMain(^{
+            [self stopAllExplorers];
             self.connected = NO;
             self.primaryShellId = nil;
             if (self.onDisconnected) {
@@ -435,6 +840,10 @@ void dispatchMain(dispatch_block_t block)
     m_worker->moveToThread(m_thread);
 
     [self wireWorkerSignals];
+    if (m_remoteExec != nullptr) {
+        m_remoteExec->setWorker(m_worker);
+        m_remoteExec->setConnected(false);
+    }
 
     m_thread->start();
 
@@ -768,6 +1177,336 @@ void dispatchMain(dispatch_block_t block)
     QMetaObject::invokeMethod(
         m_worker, [worker = m_worker, rid, cmd]() { worker->execCommand(rid, cmd); },
         Qt::QueuedConnection);
+}
+
+- (void)emitCapability:(NSString *)kind source:(IExplorerSource *)source
+{
+    if (source == nullptr) {
+        return;
+    }
+    NSString *cap = capabilityToNS(source->capability());
+    NSString *msg = qToNS(source->capabilityMessage());
+    dispatchMain(^{
+        if (self.onExplorerCapability) {
+            self.onExplorerCapability(kind, cap, msg);
+        }
+    });
+}
+
+- (void)wireSourceLifecycle:(IExplorerSource *)source kind:(NSString *)kind
+{
+    if (source == nullptr) {
+        return;
+    }
+    QObject::connect(source, &IExplorerSource::capabilityChanged, source, [self, kind, source](ExplorerCapability) {
+        [self emitCapability:kind source:source];
+    });
+    QObject::connect(source, &IExplorerSource::busyChanged, source, [self, kind](bool busy) {
+        dispatchMain(^{
+            if (self.onExplorerBusy) {
+                self.onExplorerBusy(kind, busy ? YES : NO);
+            }
+        });
+    });
+    QObject::connect(source, &IExplorerSource::failed, source, [self, kind](const QString &error) {
+        NSString *msg = qToNS(error);
+        dispatchMain(^{
+            if (self.onExplorerFailed) {
+                self.onExplorerFailed(kind, msg);
+            }
+        });
+    });
+}
+
+- (void)startExplorer:(NSString *)kind
+{
+    if (m_remoteExec == nullptr || kind.length == 0) {
+        return;
+    }
+    if ([kind isEqualToString:@"process"]) {
+        if (m_processSource == nullptr) {
+            m_processSource = new ProcessSource(m_remoteExec);
+            [self wireSourceLifecycle:m_processSource kind:kind];
+            QObject::connect(m_processSource,
+                             &ProcessSource::snapshotReady,
+                             m_processSource,
+                             [self](const QVector<ProcessInfo> &rows) {
+                                 NSMutableArray *arr =
+                                     [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(rows.size())];
+                                 for (const ProcessInfo &p : rows) {
+                                     [arr addObject:processToDict(p)];
+                                 }
+                                 dispatchMain(^{
+                                     if (self.onProcessSnapshot) {
+                                         self.onProcessSnapshot(arr);
+                                     }
+                                 });
+                             });
+        }
+        m_processSource->start();
+        [self emitCapability:kind source:m_processSource];
+        return;
+    }
+    if ([kind isEqualToString:@"container"]) {
+        if (m_containerSource == nullptr) {
+            m_containerSource = new ContainerSource(m_remoteExec);
+            [self wireSourceLifecycle:m_containerSource kind:kind];
+            QObject::connect(m_containerSource,
+                             &ContainerSource::snapshotReady,
+                             m_containerSource,
+                             [self](const QVector<ContainerInfo> &rows) {
+                                 NSMutableArray *arr =
+                                     [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(rows.size())];
+                                 for (const ContainerInfo &c : rows) {
+                                     [arr addObject:containerToDict(c)];
+                                 }
+                                 dispatchMain(^{
+                                     if (self.onContainerSnapshot) {
+                                         self.onContainerSnapshot(arr);
+                                     }
+                                 });
+                             });
+        }
+        m_containerSource->start();
+        [self emitCapability:kind source:m_containerSource];
+        return;
+    }
+    if ([kind isEqualToString:@"service"]) {
+        if (m_serviceSource == nullptr) {
+            m_serviceSource = new ServiceSource(m_remoteExec);
+            [self wireSourceLifecycle:m_serviceSource kind:kind];
+            QObject::connect(m_serviceSource,
+                             &ServiceSource::snapshotReady,
+                             m_serviceSource,
+                             [self](const QVector<ServiceInfo> &rows) {
+                                 NSMutableArray *arr =
+                                     [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(rows.size())];
+                                 for (const ServiceInfo &s : rows) {
+                                     [arr addObject:serviceToDict(s)];
+                                 }
+                                 dispatchMain(^{
+                                     if (self.onServiceSnapshot) {
+                                         self.onServiceSnapshot(arr);
+                                     }
+                                 });
+                             });
+        }
+        m_serviceSource->start();
+        [self emitCapability:kind source:m_serviceSource];
+        return;
+    }
+    if ([kind isEqualToString:@"systemInfo"]) {
+        if (m_systemInfoSource == nullptr) {
+            m_systemInfoSource = new SystemInfoSource(m_remoteExec);
+            [self wireSourceLifecycle:m_systemInfoSource kind:kind];
+            QObject::connect(m_systemInfoSource,
+                             &SystemInfoSource::snapshotReady,
+                             m_systemInfoSource,
+                             [self](const SystemInfo &info) {
+                                 m_lastSystemInfo = info;
+                                 NSDictionary *dict = systemInfoToDict(info);
+                                 dispatchMain(^{
+                                     if (self.onSystemInfoSnapshot) {
+                                         self.onSystemInfoSnapshot(dict);
+                                     }
+                                 });
+                             });
+        }
+        m_systemInfoSource->start();
+        [self emitCapability:kind source:m_systemInfoSource];
+    }
+}
+
+- (void)stopExplorer:(NSString *)kind
+{
+    if ([kind isEqualToString:@"process"] && m_processSource != nullptr) {
+        m_processSource->stop();
+        delete m_processSource;
+        m_processSource = nullptr;
+    } else if ([kind isEqualToString:@"container"] && m_containerSource != nullptr) {
+        m_containerSource->stop();
+        delete m_containerSource;
+        m_containerSource = nullptr;
+    } else if ([kind isEqualToString:@"service"] && m_serviceSource != nullptr) {
+        m_serviceSource->stop();
+        delete m_serviceSource;
+        m_serviceSource = nullptr;
+    } else if ([kind isEqualToString:@"systemInfo"] && m_systemInfoSource != nullptr) {
+        m_systemInfoSource->stop();
+        delete m_systemInfoSource;
+        m_systemInfoSource = nullptr;
+    }
+}
+
+- (void)refreshExplorer:(NSString *)kind
+{
+    if ([kind isEqualToString:@"process"] && m_processSource != nullptr) {
+        m_processSource->refresh();
+    } else if ([kind isEqualToString:@"container"] && m_containerSource != nullptr) {
+        m_containerSource->refresh();
+    } else if ([kind isEqualToString:@"service"] && m_serviceSource != nullptr) {
+        m_serviceSource->refresh();
+    } else if ([kind isEqualToString:@"systemInfo"] && m_systemInfoSource != nullptr) {
+        m_systemInfoSource->refresh();
+    } else {
+        [self startExplorer:kind];
+    }
+}
+
+- (void)stopAllExplorers
+{
+    [self stopExplorer:@"process"];
+    [self stopExplorer:@"container"];
+    [self stopExplorer:@"service"];
+    [self stopExplorer:@"systemInfo"];
+    m_pendingContainerInspectId.clear();
+    m_pendingServiceInspectId.clear();
+    m_lastSystemInfo.reset();
+}
+
+- (void)inspectContainer:(NSDictionary *)seed
+{
+    if (m_remoteExec == nullptr || seed == nil) {
+        dispatchMain(^{
+            if (self.onContainerInspect) {
+                self.onContainerInspect(@{}, @"No session");
+            }
+        });
+        return;
+    }
+    m_pendingContainerSeed = containerFromSeed(seed);
+    const QString cmd = ContainerParser::inspectCommand(m_pendingContainerSeed);
+    if (cmd.isEmpty()) {
+        dispatchMain(^{
+            if (self.onContainerInspect) {
+                self.onContainerInspect(@{}, @"Inspect not supported for this runtime");
+            }
+        });
+        return;
+    }
+    m_pendingContainerInspectId =
+        QStringLiteral("inspect-container-%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    m_remoteExec->execCommand(m_pendingContainerInspectId, cmd);
+}
+
+- (void)inspectService:(NSDictionary *)seed
+{
+    if (m_remoteExec == nullptr || seed == nil) {
+        dispatchMain(^{
+            if (self.onServiceInspect) {
+                self.onServiceInspect(@{}, @"No session");
+            }
+        });
+        return;
+    }
+    m_pendingServiceSeed = serviceFromSeed(seed);
+    const QString cmd = ServiceParser::inspectCommand(m_pendingServiceSeed);
+    if (cmd.isEmpty()) {
+        dispatchMain(^{
+            if (self.onServiceInspect) {
+                self.onServiceInspect(@{}, @"Inspect not supported");
+            }
+        });
+        return;
+    }
+    m_pendingServiceInspectId =
+        QStringLiteral("inspect-service-%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    m_remoteExec->execCommand(m_pendingServiceInspectId, cmd);
+}
+
+- (void)handleInspectFinished:(const QString &)requestId
+                   exitStatus:(int)exitStatus
+                       stdout:(const QByteArray &)stdoutBytes
+                       stderr:(const QByteArray &)stderrBytes
+                        error:(const QString &)errorMessage
+{
+    Q_UNUSED(stderrBytes);
+    if (!m_pendingContainerInspectId.isEmpty() && requestId == m_pendingContainerInspectId) {
+        m_pendingContainerInspectId.clear();
+        if (!errorMessage.isEmpty() && exitStatus < 0) {
+            NSString *err = qToNS(errorMessage);
+            dispatchMain(^{
+                if (self.onContainerInspect) {
+                    self.onContainerInspect(@{}, err);
+                }
+            });
+            return;
+        }
+        ContainerInspectInfo info;
+        QString parseError;
+        if (exitStatus != 0 ||
+            !ContainerParser::parseInspect(stdoutBytes, m_pendingContainerSeed, &info, &parseError)) {
+            NSString *err = qToNS(parseError.isEmpty() ? QStringLiteral("Inspect failed") : parseError);
+            dispatchMain(^{
+                if (self.onContainerInspect) {
+                    self.onContainerInspect(@{}, err);
+                }
+            });
+            return;
+        }
+        NSDictionary *dict = containerInspectToDict(info);
+        dispatchMain(^{
+            if (self.onContainerInspect) {
+                self.onContainerInspect(dict, nil);
+            }
+        });
+        return;
+    }
+    if (!m_pendingServiceInspectId.isEmpty() && requestId == m_pendingServiceInspectId) {
+        m_pendingServiceInspectId.clear();
+        if (!errorMessage.isEmpty() && exitStatus < 0) {
+            NSString *err = qToNS(errorMessage);
+            dispatchMain(^{
+                if (self.onServiceInspect) {
+                    self.onServiceInspect(@{}, err);
+                }
+            });
+            return;
+        }
+        ServiceInspectInfo info;
+        QString parseError;
+        if (exitStatus != 0 ||
+            !ServiceParser::parseInspect(stdoutBytes, m_pendingServiceSeed, &info, &parseError)) {
+            NSString *err = qToNS(parseError.isEmpty() ? QStringLiteral("Inspect failed") : parseError);
+            dispatchMain(^{
+                if (self.onServiceInspect) {
+                    self.onServiceInspect(@{}, err);
+                }
+            });
+            return;
+        }
+        NSDictionary *dict = serviceInspectToDict(info);
+        dispatchMain(^{
+            if (self.onServiceInspect) {
+                self.onServiceInspect(dict, nil);
+            }
+        });
+    }
+}
+
+- (NSString *)systemInfoText
+{
+    if (!m_lastSystemInfo.has_value()) {
+        return @"";
+    }
+    return qToNS(SystemInfoParser::formatSnapshotText(*m_lastSystemInfo));
+}
+
+- (NSString *)systemInfoJson
+{
+    if (!m_lastSystemInfo.has_value()) {
+        return @"";
+    }
+    return qToNS(SystemInfoParser::formatSnapshotJson(*m_lastSystemInfo));
+}
+
+- (NSString *)serviceFollowLogsCommand:(NSDictionary *)seed lines:(NSInteger)lines
+{
+    if (seed == nil) {
+        return @"";
+    }
+    const int useLines = lines > 0 ? static_cast<int>(lines) : 100;
+    return qToNS(ServiceParser::followLogsCommand(serviceFromSeed(seed), useLines));
 }
 
 @end

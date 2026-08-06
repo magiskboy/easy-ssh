@@ -58,8 +58,12 @@ final class SessionViewModel: ObservableObject, Identifiable {
     @Published var appearanceEpoch: UInt64 = 0
 
     @Published var files: SessionFilesModel?
+    @Published var explorers: SessionExplorersModel?
     /// Future: attach when Tunnels UI is implemented.
     @Published var tunnels: SessionTunnelsModel?
+
+    /// Injected once after the next shell opens (service logs).
+    private var pendingExplorerLogs: (shellId: UUID, command: String, title: String)?
 
     /// App shell status sink (ErrorNotifier-style).
     var onStatus: ((String, StatusLevel) -> Void)?
@@ -116,6 +120,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.resetShells()
                 self.addShell(id: shellId as UUID, focusAndLayout: true)
                 self.files?.onSessionConnected()
+                self.explorers?.onSessionConnected()
                 if !self.didRecordRecent {
                     self.didRecordRecent = true
                     self.onConnectedOnce?(self.connection.connectionId as UUID)
@@ -126,8 +131,12 @@ final class SessionViewModel: ObservableObject, Identifiable {
             Task { @MainActor in
                 guard let self else { return }
                 let id = shellId as UUID
-                if self.shells.contains(where: { $0.id == id }) { return }
+                if self.shells.contains(where: { $0.id == id }) {
+                    self.finishExplorerLogsIfNeeded(shellId: id)
+                    return
+                }
                 self.addShell(id: id, focusAndLayout: true)
+                self.finishExplorerLogsIfNeeded(shellId: id)
             }
         }
         controller.onData = { [weak self] shellId, data in
@@ -176,6 +185,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.onStatus?("Failed: \(self.title)", .error)
                 self.resetShells()
                 self.files?.onSessionDisconnected()
+                self.explorers?.onSessionDisconnected()
             }
         }
         controller.onDisconnected = { [weak self] in
@@ -189,6 +199,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.onStatus?("Disconnected: \(self.title)", .warning)
                 self.resetShells()
                 self.files?.onSessionDisconnected()
+                self.explorers?.onSessionDisconnected()
             }
         }
         controller.onAgentForwardingWarning = { [weak self] message in
@@ -259,6 +270,34 @@ final class SessionViewModel: ObservableObject, Identifiable {
         // Optimistic local entry; bridge also emits onShellOpened.
         addShell(id: shellId, focusAndLayout: true)
         controller.openShell(shellId, cols: cols, rows: rows)
+    }
+
+    /// Opens a new shell and injects a follow-logs command (service explorer).
+    func openShellForExplorerLogs(title: String, command: String) {
+        guard canOpenShell else {
+            onStatus?("Cannot open logs shell (session busy or at shell limit).", .warning)
+            return
+        }
+        let shellId = UUID()
+        let cols = focusedShell?.cols ?? 80
+        let rows = focusedShell?.rows ?? 24
+        pendingExplorerLogs = (shellId, command, title)
+        addShell(id: shellId, focusAndLayout: true)
+        shells.first { $0.id == shellId }?.rename(title)
+        controller.openShell(shellId, cols: cols, rows: rows)
+    }
+
+    private func finishExplorerLogsIfNeeded(shellId: UUID) {
+        guard let pending = pendingExplorerLogs, pending.shellId == shellId else { return }
+        pendingExplorerLogs = nil
+        shells.first { $0.id == shellId }?.rename(pending.title)
+        if let data = pending.command.data(using: .utf8) {
+            // Slight delay so the remote PTY is ready.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                self.sendTerminalData(data, shellId: shellId)
+            }
+        }
     }
 
     func closeShell(_ shellId: UUID) {
@@ -446,6 +485,16 @@ final class SessionViewModel: ObservableObject, Identifiable {
             model.attach(to: self)
         } else {
             files?.attach(to: self)
+        }
+    }
+
+    func ensureExplorersModel() {
+        if explorers == nil {
+            let model = SessionExplorersModel()
+            explorers = model
+            model.attach(to: self)
+        } else {
+            explorers?.attach(to: self)
         }
     }
 

@@ -6,6 +6,7 @@
 
 #include "core/explorer/process/ProcessInfo.h"
 #include "core/explorer/process/ProcessSource.h"
+#include "core/session/SessionRemoteExec.h"
 #include "gui/explorer/process/ProcessDetailFactory.h"
 #include "gui/explorer/process/ProcessTableModel.h"
 #include "gui/widgets/ExplorerFilterProxy.h"
@@ -56,7 +57,8 @@ ExplorerTableModel *ProcessExplorerModule::createModel(QObject *parent)
 
 IExplorerSource *ProcessExplorerModule::createSource(Session *session, QObject *parent)
 {
-    return new ProcessSource(session, parent);
+    auto *exec = new SessionRemoteExec(session, parent);
+    return new ProcessSource(exec, parent);
 }
 
 QWidget *ProcessExplorerModule::createFilterBar(ExplorerFilterProxy * /*proxy*/,

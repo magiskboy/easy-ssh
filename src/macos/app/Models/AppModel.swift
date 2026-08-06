@@ -33,7 +33,7 @@ enum SidebarMode: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    var isImplemented: Bool { self == .sessions || self == .files }
+    var isImplemented: Bool { self == .sessions || self == .files || self == .explorers }
 
     var comingSoonMessage: String {
         switch self {
@@ -44,7 +44,7 @@ enum SidebarMode: String, CaseIterable, Identifiable, Hashable {
         case .tunnels:
             return "Tunnel management comes in Phase 10."
         case .explorers:
-            return "Remote explorers (process/container/service/system) come in Phase 6."
+            return "Connect to a session to browse processes, containers, services, and system info."
         }
     }
 }

@@ -7,6 +7,7 @@
 #include "core/explorer/systeminfo/SystemInfoParser.h"
 #include "core/explorer/systeminfo/SystemInfoSource.h"
 #include "core/session/Session.h"
+#include "core/session/SessionRemoteExec.h"
 #include "gui/widgets/UiMetrics.h"
 
 #include <QAbstractItemView>
@@ -98,7 +99,7 @@ SystemInfoWidget::SystemInfoWidget(Session *session, QWidget *parent)
         return;
     }
 
-    m_source = new SystemInfoSource(m_session, this);
+    m_source = new SystemInfoSource(new SessionRemoteExec(m_session, this), this);
     connect(m_source, &SystemInfoSource::snapshotReady, this, &SystemInfoWidget::onSnapshotReady);
     connect(m_source,
             &SystemInfoSource::capabilityChanged,

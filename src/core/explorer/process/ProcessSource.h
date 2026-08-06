@@ -7,6 +7,7 @@
 #pragma once
 
 #include "core/explorer/IExplorerSource.h"
+#include "core/explorer/IRemoteExec.h"
 #include "core/explorer/process/ProcessInfo.h"
 
 #include <QByteArray>
@@ -15,9 +16,8 @@
 #include <QVector>
 
 class QTimer;
-class Session;
 
-/// Polls remote `ps` via Session::execCommand and emits typed snapshots.
+/// Polls remote `ps` via IRemoteExec and emits typed snapshots.
 class ProcessSource final : public IExplorerSource
 {
     Q_OBJECT
@@ -25,7 +25,7 @@ class ProcessSource final : public IExplorerSource
 public:
     static constexpr int kDefaultPollIntervalMs = 2000;
 
-    explicit ProcessSource(Session *session, QObject *parent = nullptr);
+    explicit ProcessSource(IRemoteExec *exec, QObject *parent = nullptr);
     ~ProcessSource() override;
 
     void start() override;
@@ -61,7 +61,7 @@ private:
     void requestList();
     QString makeRequestId();
 
-    QPointer<Session> m_session;
+    QPointer<IRemoteExec> m_exec;
     QTimer *m_timer = nullptr;
     ExplorerCapability m_capability = ExplorerCapability::Checking;
     QString m_capabilityMessage;
