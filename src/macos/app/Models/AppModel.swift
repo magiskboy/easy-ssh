@@ -106,6 +106,8 @@ final class AppModel: ObservableObject {
     @Published var pendingSettingsTab: SettingsTab?
     /// Pre-filled create query when opening Connection Manager from palette.
     @Published var connectionManagerCreateQuery: String?
+    /// Select this connection when Connection Manager opens (sidebar Edit).
+    @Published var connectionManagerFocusId: UUID?
     /// Command palette presentation (separate from `activeModal` to avoid stacking issues).
     @Published var paletteMode: PaletteMode?
 
@@ -191,9 +193,71 @@ final class AppModel: ObservableObject {
         activeModal = .connectionManager
     }
 
+    func editConnection(_ connectionId: UUID) {
+        connectionManagerFocusId = connectionId
+        openConnectionManager()
+    }
+
     func selectConnection(_ connectionId: UUID) {
         selectedConnectionId = connectionId
         openOrSelectSession(for: connectionId)
+    }
+
+    /// Connect a saved host, or reconnect an existing idle/disconnected/failed session.
+    func connectOrReconnect(connectionId: UUID) {
+        if let session = session(forConnectionId: connectionId) {
+            selectedConnectionId = connectionId
+            selectedSessionId = session.id
+            switch session.state {
+            case .connected, .connecting:
+                return
+            case .idle, .disconnected, .failed:
+                status.post("Connecting: \(session.title)…", level: .status)
+                session.reconnect()
+                return
+            }
+        }
+        connect(withId: connectionId)
+    }
+
+    func disconnectConnection(_ connectionId: UUID) {
+        guard let session = session(forConnectionId: connectionId) else { return }
+        selectedConnectionId = connectionId
+        selectedSessionId = session.id
+        session.disconnect()
+        status.post("Disconnected: \(session.title)", level: .warning)
+        workspace.scheduleSave()
+    }
+
+    @discardableResult
+    func duplicateConnection(_ connectionId: UUID) -> ESSConnectionInfo? {
+        guard let copy = library.duplicate(id: connectionId) else {
+            status.notify(
+                title: "Duplicate",
+                message: "Only Easy SSH connections can be duplicated.",
+                level: .warning
+            )
+            return nil
+        }
+        status.post("Duplicated connection: \(copy.name.isEmpty ? copy.displayText : copy.name)", level: .status)
+        return copy
+    }
+
+    @discardableResult
+    func deleteConnection(_ connectionId: UUID) -> Bool {
+        guard library.delete(id: connectionId) else {
+            status.notify(
+                title: "Delete",
+                message: "Only Easy SSH connections can be deleted.",
+                level: .warning
+            )
+            return false
+        }
+        if selectedConnectionId == connectionId {
+            selectedConnectionId = nil
+        }
+        status.post("Deleted connection", level: .warning)
+        return true
     }
 
     /// Close Connection Manager, then connect on the next turn so a password sheet can present
@@ -450,6 +514,7 @@ final class AppModel: ObservableObject {
         guard let session = selectedSession else { return }
         session.disconnect()
         status.post("Disconnected: \(session.title)", level: .warning)
+        workspace.scheduleSave()
     }
 
     func reconnectSelectedSession() {
@@ -578,8 +643,13 @@ final class AppModel: ObservableObject {
                 self?.tray?.maybeNotify(title: title, message: message)
             }
         }
-        session.onConnectedOnce = { connectionId in
+        session.onConnectedOnce = { [weak self] connectionId in
             ESSAppSettings.shared().recordRecentConnection(connectionId)
+            self?.workspace.scheduleSave()
+        }
+        session.onTransportEnded = { [weak self] in
+            self?.workspace.scheduleSave()
+            self?.tray?.refresh()
         }
         session.onHostKeyPromptUI = { [weak self, weak session] _ in
             guard let self, let session else { return }

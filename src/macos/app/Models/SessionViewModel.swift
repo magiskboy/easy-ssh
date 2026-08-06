@@ -110,6 +110,17 @@ final class SessionViewModel: ObservableObject, Identifiable {
         state == .connected && shells.count < Self.maxShells
     }
 
+    /// Workspace restore should only reopen live / in-flight sessions.
+    var shouldPersistInWorkspace: Bool {
+        switch state {
+        case .connected, .connecting: return true
+        case .idle, .disconnected, .failed: return false
+        }
+    }
+
+    /// Fired when transport ends (disconnect / failure) so AppModel can persist workspace.
+    var onTransportEnded: (() -> Void)?
+
     private func wireController() {
         controller.onConnected = { [weak self] shellId in
             Task { @MainActor in
@@ -201,6 +212,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                     self.pendingWorkspaceRestore = nil
                     self.onWorkspaceRestoreFinished?()
                 }
+                self.onTransportEnded?()
             }
         }
         controller.onDisconnected = { [weak self] in
@@ -216,6 +228,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.files?.onSessionDisconnected()
                 self.explorers?.onSessionDisconnected()
                 self.tunnels?.onSessionDisconnected()
+                self.onTransportEnded?()
             }
         }
         controller.onAgentForwardingWarning = { [weak self] message in
@@ -244,6 +257,15 @@ final class SessionViewModel: ObservableObject, Identifiable {
     }
 
     func disconnect() {
+        // Mark ended before the async worker callback so workspace save/quit
+        // cannot race and persist this session again.
+        if state == .connected || state == .connecting {
+            state = .disconnected
+            connectedAt = nil
+            overlayMessage = "Disconnected from \(title)."
+            showReconnect = true
+            statusMessage = "Disconnected"
+        }
         controller.disconnect()
     }
 

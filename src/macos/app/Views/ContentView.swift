@@ -130,6 +130,8 @@ struct ContentView: View {
 
 private struct ConnectionSidebarView: View {
     @EnvironmentObject private var appModel: AppModel
+    @State private var pendingDeleteId: UUID?
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         List(selection: sidebarSelection) {
@@ -139,6 +141,9 @@ private struct ConnectionSidebarView: View {
                 ForEach(appModel.library.allConnections, id: \.connectionId) { info in
                     ConnectionSidebarRow(info: info)
                         .tag(info.connectionId as UUID)
+                        .contextMenu {
+                            connectionContextMenu(for: info)
+                        }
                 }
             }
         }
@@ -163,6 +168,60 @@ private struct ConnectionSidebarView: View {
                 .buttonStyle(.borderless)
             }
             .padding(12)
+        }
+        .alert("Delete Connection?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {
+                pendingDeleteId = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let id = pendingDeleteId {
+                    _ = appModel.deleteConnection(id)
+                    pendingDeleteId = nil
+                }
+            }
+        } message: {
+            Text("This removes the saved connection and its Keychain secrets. Open sessions are not closed.")
+        }
+    }
+
+    @ViewBuilder
+    private func connectionContextMenu(for info: ESSConnectionInfo) -> some View {
+        let connectionId = info.connectionId as UUID
+        let session = appModel.session(forConnectionId: connectionId)
+        let isActive = session?.state == .connected || session?.state == .connecting
+
+        if isActive {
+            Button("Disconnect") {
+                appModel.disconnectConnection(connectionId)
+            }
+        } else {
+            Button("Connect") {
+                appModel.connectOrReconnect(connectionId: connectionId)
+            }
+        }
+
+        Button("Edit") {
+            appModel.editConnection(connectionId)
+        }
+
+        if info.source == .app {
+            Button("Duplicate") {
+                _ = appModel.duplicateConnection(connectionId)
+            }
+            Divider()
+            Button("Delete", role: .destructive) {
+                pendingDeleteId = connectionId
+                showDeleteConfirm = true
+            }
+        } else {
+            Button("Import to Easy SSH…") {
+                if let imported = appModel.library.importFromSshConfig(id: connectionId) {
+                    appModel.status.post(
+                        "Imported: \(imported.name.isEmpty ? imported.displayText : imported.name)",
+                        level: .status
+                    )
+                }
+            }
         }
     }
 

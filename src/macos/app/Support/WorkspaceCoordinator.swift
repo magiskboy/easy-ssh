@@ -52,19 +52,21 @@ final class WorkspaceCoordinator {
         guard let appModel else { return }
         guard !isRestoring else { return }
 
+        // Only persist sessions the user still intends to reopen. Disconnect /
+        // failed / idle tabs stay in the UI for reconnect, but must not survive quit.
+        let persistable = appModel.sessions.filter(\.shouldPersistInWorkspace)
+
         let state = ESSWorkspaceState()
         state.version = 1
-        if let selected = appModel.selectedSession {
+        if let selected = appModel.selectedSession,
+           selected.shouldPersistInWorkspace
+        {
             state.activeConnectionId = selected.connection.connectionId as UUID
-        } else if let last = appModel.sessions.last {
+        } else if let last = persistable.last {
             state.activeConnectionId = last.connection.connectionId as UUID
         }
 
-        var entries: [ESSWorkspaceSessionEntry] = []
-        for session in appModel.sessions {
-            entries.append(session.captureWorkspaceEntry())
-        }
-        state.sessions = entries
+        state.sessions = persistable.map { $0.captureWorkspaceEntry() }
 
         do {
             try ESSWorkspaceStore.save(state)

@@ -56,7 +56,15 @@ struct ConnectionManagerView: View {
             library.reload()
             if let query = appModel.connectionManagerCreateQuery {
                 appModel.connectionManagerCreateQuery = nil
+                appModel.connectionManagerFocusId = nil
                 beginCreate(prefill: ConnectionDraft.draftFromQuery(query))
+            } else if let focusId = appModel.connectionManagerFocusId {
+                appModel.connectionManagerFocusId = nil
+                if let info = library.connection(id: focusId) {
+                    select(info)
+                } else if let first = filtered.first {
+                    select(first)
+                }
             } else if let first = filtered.first {
                 select(first)
             }
