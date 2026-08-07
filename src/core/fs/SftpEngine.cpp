@@ -259,22 +259,59 @@ QString SftpEngine::directoryOpenPath(const QString &path)
     return path;
 }
 
-bool SftpEngine::listDirectoryEntries(const QString &path,
-                                      QVector<RemoteEntry> *outEntries,
-                                      QString *error)
+SftpEngine::DirListSession::~DirListSession()
 {
-    const QString openPath = directoryOpenPath(path);
-    const QByteArray remote = openPath.toUtf8();
-    sftp_dir dir = sftp_opendir(m_sftp, remote.constData());
-    if (dir == nullptr) {
+    close();
+}
+
+bool SftpEngine::DirListSession::open(SftpEngine *engine, const QString &path, QString *error)
+{
+    close();
+    if (engine == nullptr || !engine->isOpen()) {
         if (error) {
-            *error = trSftp("Cannot open directory: %1").arg(sftpErrorMessage());
+            *error = trSftp("SFTP is not available");
         }
         return false;
     }
+    m_engine = engine;
+    m_path = path;
+    const QString openPath = engine->directoryOpenPath(path);
+    const QByteArray remote = openPath.toUtf8();
+    m_dir = sftp_opendir(engine->m_sftp, remote.constData());
+    if (m_dir == nullptr) {
+        if (error) {
+            *error = trSftp("Cannot open directory: %1").arg(engine->sftpErrorMessage());
+        }
+        m_engine = nullptr;
+        return false;
+    }
+    return true;
+}
 
-    QVector<RemoteEntry> entries;
-    while (sftp_attributes attributes = sftp_readdir(m_sftp, dir)) {
+bool SftpEngine::DirListSession::readBatch(int maxEntries,
+                                           QVector<RemoteEntry> *outEntries,
+                                           bool *eof,
+                                           QString *error)
+{
+    if (eof) {
+        *eof = false;
+    }
+    if (m_engine == nullptr || m_dir == nullptr) {
+        if (error) {
+            *error = trSftp("Directory listing is not open");
+        }
+        return false;
+    }
+    if (maxEntries <= 0) {
+        return true;
+    }
+
+    int added = 0;
+    while (added < maxEntries) {
+        sftp_attributes attributes = sftp_readdir(m_engine->m_sftp, m_dir);
+        if (attributes == nullptr) {
+            break;
+        }
         const QString name = QString::fromUtf8(attributes->name);
         if (name == QLatin1String(".") || name == QLatin1String("..")) {
             sftp_attributes_free(attributes);
@@ -282,33 +319,69 @@ bool SftpEngine::listDirectoryEntries(const QString &path,
         }
 
         RemoteEntry entry;
-        fillEntryFromAttributes(&entry, attributes, joinRemotePath(path, name), name);
+        SftpEngine::fillEntryFromAttributes(
+            &entry, attributes, SftpEngine::joinRemotePath(m_path, name), name);
         if (entry.isSymlink) {
-            entry.linkTarget = readlinkAt(entry.path);
+            entry.linkTarget = m_engine->readlinkAt(entry.path);
             const QByteArray entryRemote = entry.path.toUtf8();
-            if (sftp_attributes followed = sftp_stat(m_sftp, entryRemote.constData())) {
+            if (sftp_attributes followed = sftp_stat(m_engine->m_sftp, entryRemote.constData())) {
                 entry.linkIsDir = followed->type == SSH_FILEXFER_TYPE_DIRECTORY;
                 sftp_attributes_free(followed);
             }
         }
-        entries.append(entry);
+        if (outEntries) {
+            outEntries->append(entry);
+        }
         sftp_attributes_free(attributes);
+        ++added;
     }
 
-    if (!sftp_dir_eof(dir)) {
-        if (error) {
-            *error = trSftp("Cannot list directory: %1").arg(sftpErrorMessage());
+    if (sftp_dir_eof(m_dir)) {
+        if (eof) {
+            *eof = true;
         }
-        sftp_closedir(dir);
+        return true;
+    }
+    if (added == 0) {
+        if (error) {
+            *error = trSftp("Cannot list directory: %1").arg(m_engine->sftpErrorMessage());
+        }
+        return false;
+    }
+    return true;
+}
+
+void SftpEngine::DirListSession::close()
+{
+    if (m_dir != nullptr) {
+        sftp_closedir(m_dir);
+        m_dir = nullptr;
+    }
+    m_engine = nullptr;
+    m_path.clear();
+}
+
+bool SftpEngine::listDirectoryEntries(const QString &path,
+                                      QVector<RemoteEntry> *outEntries,
+                                      QString *error)
+{
+    DirListSession session;
+    if (!session.open(this, path, error)) {
         return false;
     }
 
-    if (sftp_closedir(dir) != SSH_OK) {
-        if (error) {
-            *error = trSftp("Cannot close directory: %1").arg(sftpErrorMessage());
+    QVector<RemoteEntry> entries;
+    for (;;) {
+        bool eof = false;
+        if (!session.readBatch(256, &entries, &eof, error)) {
+            session.close();
+            return false;
         }
-        return false;
+        if (eof) {
+            break;
+        }
     }
+    session.close();
 
     std::sort(entries.begin(), entries.end(), [](const RemoteEntry &a, const RemoteEntry &b) {
         const bool aDir = Symlink::isDirectoryLike(a);

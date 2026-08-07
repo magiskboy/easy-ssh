@@ -4,20 +4,25 @@
 
 #include "SshWorker.h"
 
-#include "core/fs/ShellExecRunner.h"
+#include "core/fs/ScpMetaIoHandler.h"
+#include "core/fs/SftpMetaIoHandler.h"
+#include "core/fs/SftpTransferIoHandler.h"
 #include "core/fs/TransferJobStore.h"
 #include "core/settings/AppSettings.h"
 #include "core/ssh/AgentForwardHost.h"
+#include "core/ssh/ExecIoHandler.h"
 #include "core/tunnel/RemoteTunnelSession.h"
+#include "core/tunnel/TunnelHostIoHandler.h"
 #include "core/util/Logging.h"
 
-#include <QCoreApplication>
-#include <QEventLoop>
 #include <QFileInfo>
-#include <QTimer>
+#include <QMetaObject>
+#include <QScopeGuard>
 
 #include <algorithm>
 #include <libssh/libssh.h>
+#include <memory>
+#include <utility>
 
 namespace
 {
@@ -45,6 +50,9 @@ SshWorker::SshWorker(QObject *parent) : QObject(parent)
         return verifyKnownHostForSession(session, contextLabel);
     });
     m_session.setCancelChecker([this]() { return m_cancelRequested.load(); });
+
+    connect(&m_ioLoop, &SshIoLoop::fault, this, &SshWorker::onIoLoopFault);
+    connect(&m_ioLoop, &SshIoLoop::sessionEof, this, &SshWorker::onIoLoopSessionEof);
 }
 
 SshWorker::~SshWorker()
@@ -89,6 +97,14 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
+    QString attachError;
+    if (!m_ioLoop.attachSession(m_session.handle(), &attachError)) {
+        emit errorOccurred(attachError.isEmpty() ? tr("Failed to attach SSH I/O loop")
+                                                 : attachError);
+        m_session.cleanup();
+        return;
+    }
+
     if (!openShellLocked(initialShellId, cols, rows, &error)) {
         if (m_cancelRequested.load()) {
             cleanup();
@@ -97,6 +113,7 @@ void SshWorker::connectToHost(const Connection &connection,
         if (!error.isEmpty()) {
             emit errorOccurred(error);
         }
+        m_ioLoop.detachSession();
         m_session.cleanup();
         return;
     }
@@ -110,7 +127,8 @@ void SshWorker::connectToHost(const Connection &connection,
     m_fs.setConnectionId(connection.id);
     m_fs.setStallTimeoutSec(AppSettings::instance().transferStallTimeoutSec());
     m_fs.setShellCommands(connection.shellCommands);
-    const bool fsReady = m_fs.open(m_session.handle(), &sftpFailure);
+    const bool fsReady =
+        withBlockingSession([&]() { return m_fs.open(m_session.handle(), &sftpFailure); });
 
     if (m_cancelRequested.load()) {
         cleanup();
@@ -131,12 +149,11 @@ void SshWorker::connectToHost(const Connection &connection,
         emit sftpUnavailable(sftpFailure);
     }
 
-    if (m_ioTimer == nullptr) {
-        m_ioTimer = new QTimer(this);
-        connect(m_ioTimer, &QTimer::timeout, this, &SshWorker::pollChannel);
-    }
     m_session.resetKeepAliveClock();
-    m_ioTimer->start(20);
+    ensureTunnelHostHandler();
+
+    // Blocks until disconnectSession / fault / EOF stops the loop.
+    m_ioLoop.run();
 }
 
 void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
@@ -149,11 +166,11 @@ void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
         emit shellOpenFailed(shellId, tr("Invalid shell id"));
         return;
     }
-    if (m_shells.contains(shellId)) {
+    if (m_shellHandlers.contains(shellId)) {
         emit shellOpenFailed(shellId, tr("Shell already open"));
         return;
     }
-    if (m_shells.size() >= kMaxShells) {
+    if (m_shellHandlers.size() >= kMaxShells) {
         emit shellOpenFailed(shellId, tr("Maximum of %1 shells per session").arg(kMaxShells));
         return;
     }
@@ -165,28 +182,60 @@ void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
     }
 
     emit shellOpened(shellId);
+    m_ioLoop.wake();
+}
+
+ShellIoHandler::Hooks SshWorker::makeShellHooks()
+{
+    ShellIoHandler::Hooks hooks;
+    hooks.dataReady = [this](const QUuid &id, const QByteArray &data) {
+        if (!data.isEmpty()) {
+            m_session.resetKeepAliveClock();
+            emit dataReceived(id, data);
+        }
+    };
+    hooks.closed = [this](const QUuid &id) {
+        // Defer so we do not destroy the handler during its own onIdle.
+        QMetaObject::invokeMethod(
+            this, [this, id]() { retireShell(id, true); }, Qt::QueuedConnection);
+    };
+    hooks.failed = [this](const QUuid &id, const QString &message) {
+        emit shellFailed(id, message);
+    };
+    hooks.againPump = [this]() {
+        if (m_cancelRequested.load()) {
+            return false;
+        }
+        return m_ioLoop.pollOnce(50);
+    };
+    return hooks;
 }
 
 bool SshWorker::openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut)
 {
-    auto *shell = new SshShell();
-    if (!shell->open(m_session.handle(), cols, rows, errorOut)) {
-        delete shell;
-        return false;
-    }
-    m_shells.insert(shellId, shell);
-    tryRequestAgentForwarding(shell);
-    return true;
+    // PTY/shell request_exec-style opens are simpler in blocking mode; IoLoop
+    // keeps the session non-blocking afterward for channel callbacks.
+    return withBlockingSession([&]() -> bool {
+        auto handler = std::make_unique<ShellIoHandler>(
+            shellId, m_session.handle(), cols, rows, makeShellHooks());
+        ShellIoHandler *raw = handler.get();
+        if (!m_ioLoop.addHandler(std::move(handler), errorOut)) {
+            return false;
+        }
+        m_shellHandlers.insert(shellId, raw);
+        tryRequestAgentForwarding(raw->channel());
+        return true;
+    });
 }
 
-void SshWorker::tryRequestAgentForwarding(SshShell *shell)
+void SshWorker::tryRequestAgentForwarding(ssh_channel firstShellChannel)
 {
     if (m_agentForwardRequested) {
         return;
     }
     m_agentForwardRequested = true;
 
-    if (!m_agentForwarding || shell == nullptr || shell->channel() == nullptr) {
+    if (!m_agentForwarding || firstShellChannel == nullptr) {
         return;
     }
 
@@ -198,8 +247,9 @@ void SshWorker::tryRequestAgentForwarding(SshShell *shell)
     }
 
     auto *host = new AgentForwardHost(this);
+    host->setIoLoop(&m_ioLoop);
     QString error;
-    if (!host->start(m_session.handle(), shell->channel(), &error)) {
+    if (!host->start(m_session.handle(), firstShellChannel, &error)) {
         emit agentForwardingWarning(error.isEmpty() ? tr("Failed to enable agent forwarding")
                                                     : error);
         delete host;
@@ -215,12 +265,11 @@ void SshWorker::closeShell(const QUuid &shellId)
 
 void SshWorker::retireShell(const QUuid &shellId, bool emitClosed)
 {
-    SshShell *shell = m_shells.take(shellId);
-    if (shell == nullptr) {
+    if (!m_shellHandlers.contains(shellId)) {
         return;
     }
-    shell->cleanup();
-    delete shell;
+    m_shellHandlers.remove(shellId);
+    m_ioLoop.removeHandler(shellId.toString(QUuid::WithoutBraces));
     if (emitClosed) {
         emit shellClosed(shellId);
     }
@@ -232,26 +281,11 @@ void SshWorker::writeToChannel(const QUuid &shellId, const QByteArray &data)
         return;
     }
 
-    SshShell *shell = m_shells.value(shellId, nullptr);
-    if (shell == nullptr) {
+    ShellIoHandler *handler = m_shellHandlers.value(shellId, nullptr);
+    if (handler == nullptr) {
         return;
     }
-
-    QString error;
-    if (!shell->write(data, &error)) {
-        if (!m_session.isConnected() ||
-            (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
-            if (!error.isEmpty()) {
-                emit errorOccurred(error);
-            }
-            disconnectSession();
-            return;
-        }
-        if (!error.isEmpty()) {
-            emit shellFailed(shellId, error);
-        }
-        retireShell(shellId, true);
-    }
+    handler->enqueueWrite(data);
 }
 
 void SshWorker::changePtySize(const QUuid &shellId, int cols, int rows)
@@ -259,11 +293,11 @@ void SshWorker::changePtySize(const QUuid &shellId, int cols, int rows)
     if (!m_running) {
         return;
     }
-    SshShell *shell = m_shells.value(shellId, nullptr);
-    if (shell == nullptr) {
+    ShellIoHandler *handler = m_shellHandlers.value(shellId, nullptr);
+    if (handler == nullptr) {
         return;
     }
-    shell->changePtySize(cols, rows);
+    handler->changePtySize(cols, rows);
 }
 
 void SshWorker::disconnectSession()
@@ -271,9 +305,7 @@ void SshWorker::disconnectSession()
     m_cancelRequested.store(true);
     respondHostKeyTrust(false);
 
-    if (m_ioTimer) {
-        m_ioTimer->stop();
-    }
+    m_ioLoop.stop();
 
     if (m_running && m_fs.isOpen()) {
         m_fs.requestInterrupt(TransferEndReason::Interrupted, tr("Connection lost"));
@@ -286,6 +318,19 @@ void SshWorker::disconnectSession()
         qCWarning(lcSsh) << "Session disconnected";
         emit disconnected();
     }
+}
+
+void SshWorker::onIoLoopFault(const QString &message)
+{
+    if (!message.isEmpty()) {
+        emit errorOccurred(message);
+    }
+    disconnectSession();
+}
+
+void SshWorker::onIoLoopSessionEof()
+{
+    disconnectSession();
 }
 
 void SshWorker::requestCancel()
@@ -309,15 +354,22 @@ void SshWorker::listDirectory(const QString &path)
         return;
     }
 
-    QVector<RemoteEntry> entries;
-    QString error;
-    if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QVector<RemoteEntry> entries;
+        QString error;
+        if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        filterTransferPartials(&entries);
+        emit directoryListed(path, entries);
         return;
     }
 
-    filterTransferPartials(&entries);
-    emit directoryListed(path, entries);
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::ListDirectory;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::emitTransferFailure(const QString &error)
@@ -346,6 +398,134 @@ void SshWorker::emitTransferFailure(const QString &error)
     emit transferResumableChanged(m_fs.lastInterruptedJob().has_value());
 }
 
+bool SshWorker::useAsyncFs() const
+{
+    return m_fs.backend() == FsBackend::Sftp || m_fs.backend() == FsBackend::Scp;
+}
+
+void SshWorker::enqueueFsOp(std::function<void()> op)
+{
+    if (m_fsBusy) {
+        m_pendingFsOps.push_back(std::move(op));
+        return;
+    }
+    m_fsBusy = true;
+    op();
+}
+
+void SshWorker::onFsHandlerFinished(const QString &handlerId)
+{
+    QMetaObject::invokeMethod(
+        this,
+        [this, handlerId]() {
+            m_ioLoop.removeHandler(handlerId);
+            m_fsBusy = false;
+            if (m_pendingFsOps.isEmpty()) {
+                return;
+            }
+            auto next = std::move(m_pendingFsOps.front());
+            m_pendingFsOps.erase(m_pendingFsOps.begin());
+            m_fsBusy = true;
+            next();
+        },
+        Qt::QueuedConnection);
+}
+
+void SshWorker::startMetaHandler(SftpMetaIoHandler::Request request)
+{
+    auto listed = [this](const QString &path, const QVector<RemoteEntry> &entries) {
+        QVector<RemoteEntry> filtered = entries;
+        filterTransferPartials(&filtered);
+        emit directoryListed(path, filtered);
+    };
+    auto resolved = [this](const QString &path, bool isDir, bool ok, const QString &error) {
+        emit entryResolved(path, isDir, ok, error);
+    };
+    auto canonicalized = [this](const QString &requested, const QString &canonical) {
+        emit pathCanonicalized(requested, canonical);
+    };
+    auto finished = [this](const QString &message) { emit sftpFinished(message); };
+    auto failed = [this](const QString &message) {
+        if (!message.isEmpty()) {
+            emit sftpError(message);
+        }
+    };
+
+    if (m_fs.backend() == FsBackend::Scp) {
+        ScpMetaIoHandler::Request scpReq;
+        scpReq.op = static_cast<ScpMetaIoHandler::Op>(static_cast<uint8_t>(request.op));
+        scpReq.path = request.path;
+        scpReq.from = request.from;
+        scpReq.to = request.to;
+        scpReq.target = request.target;
+        scpReq.linkPath = request.linkPath;
+        scpReq.recursive = request.recursive;
+
+        ScpMetaIoHandler::Hooks hooks;
+        hooks.listed = listed;
+        hooks.resolved = resolved;
+        hooks.canonicalized = canonicalized;
+        hooks.finished = finished;
+        hooks.failed = failed;
+
+        auto handler =
+            std::make_unique<ScpMetaIoHandler>(&m_fs, std::move(scpReq), std::move(hooks));
+        const QString id = handler->id();
+        handler->setCompletedHook([this, id]() { onFsHandlerFinished(id); });
+
+        QString error;
+        if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+            m_fsBusy = false;
+            emit sftpError(error.isEmpty() ? tr("Failed to start remote FS operation") : error);
+            return;
+        }
+        m_ioLoop.wake();
+        return;
+    }
+
+    SftpMetaIoHandler::Hooks hooks;
+    hooks.listed = listed;
+    hooks.resolved = resolved;
+    hooks.canonicalized = canonicalized;
+    hooks.finished = finished;
+    hooks.failed = failed;
+
+    auto handler = std::make_unique<SftpMetaIoHandler>(&m_fs, std::move(request), std::move(hooks));
+    const QString id = handler->id();
+    handler->setCompletedHook([this, id]() { onFsHandlerFinished(id); });
+
+    QString error;
+    if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+        m_fsBusy = false;
+        emit sftpError(error.isEmpty() ? tr("Failed to start SFTP operation") : error);
+        return;
+    }
+    m_ioLoop.wake();
+}
+
+void SshWorker::startTransferHandler(SftpTransferIoHandler::Request request)
+{
+    SftpTransferIoHandler::Hooks hooks;
+    hooks.finished = [this](const QString &message) {
+        emit sftpFinished(message);
+        emit transferResumableChanged(false);
+    };
+    hooks.failed = [this](const QString &error) { emitTransferFailure(error); };
+
+    auto handler =
+        std::make_unique<SftpTransferIoHandler>(&m_fs, std::move(request), std::move(hooks));
+    const QString id = handler->id();
+    handler->setCompletedHook([this, id]() { onFsHandlerFinished(id); });
+
+    QString error;
+    if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+        m_fsBusy = false;
+        emit sftpError(error.isEmpty() ? tr("Failed to start transfer") : error);
+        return;
+    }
+    m_ioLoop.wake();
+}
+
 void SshWorker::createDirectory(const QString &path)
 {
     if (!m_running || !m_fs.isOpen()) {
@@ -353,13 +533,20 @@ void SshWorker::createDirectory(const QString &path)
         return;
     }
 
-    QString error;
-    if (!m_fs.createDirectory(path, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.createDirectory(path, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Created folder: %1").arg(path));
         return;
     }
 
-    emit sftpFinished(tr("Created folder: %1").arg(path));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::CreateDirectory;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::createSymlink(const QString &target, const QString &linkPath)
@@ -369,13 +556,21 @@ void SshWorker::createSymlink(const QString &target, const QString &linkPath)
         return;
     }
 
-    QString error;
-    if (!m_fs.createSymlink(target, linkPath, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.createSymlink(target, linkPath, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Created symlink: %1").arg(linkPath));
         return;
     }
 
-    emit sftpFinished(tr("Created symlink: %1").arg(linkPath));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::CreateSymlink;
+    req.target = target;
+    req.linkPath = linkPath;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::resolveEntry(const QString &path)
@@ -385,24 +580,28 @@ void SshWorker::resolveEntry(const QString &path)
         return;
     }
 
-    bool isDir = false;
-    QString error;
-    if (!m_fs.resolveEntry(path, &isDir, &error)) {
-        emit entryResolved(path, false, false, error);
+    if (!useAsyncFs()) {
+        bool isDir = false;
+        QString error;
+        if (!m_fs.resolveEntry(path, &isDir, &error)) {
+            emit entryResolved(path, false, false, error);
+            return;
+        }
+        if (isDir) {
+            QVector<RemoteEntry> entries;
+            if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
+                emit entryResolved(path, true, false, error);
+                return;
+            }
+        }
+        emit entryResolved(path, isDir, true, {});
         return;
     }
 
-    // Symlink-to-dir (and any dir resolve): verify the directory is listable before the
-    // UI navigates — otherwise we land on an empty explorer (e.g. Permission denied).
-    if (isDir) {
-        QVector<RemoteEntry> entries;
-        if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
-            emit entryResolved(path, true, false, error);
-            return;
-        }
-    }
-
-    emit entryResolved(path, isDir, true, {});
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::ResolveEntry;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::renamePath(const QString &from, const QString &to)
@@ -412,13 +611,21 @@ void SshWorker::renamePath(const QString &from, const QString &to)
         return;
     }
 
-    QString error;
-    if (!m_fs.renamePath(from, to, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.renamePath(from, to, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Renamed to %1").arg(QFileInfo(to).fileName()));
         return;
     }
 
-    emit sftpFinished(tr("Renamed to %1").arg(QFileInfo(to).fileName()));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::RenamePath;
+    req.from = from;
+    req.to = to;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::removePath(const QString &path, bool recursive)
@@ -428,13 +635,21 @@ void SshWorker::removePath(const QString &path, bool recursive)
         return;
     }
 
-    QString error;
-    if (!m_fs.removePath(path, recursive, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.removePath(path, recursive, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Deleted: %1").arg(path));
         return;
     }
 
-    emit sftpFinished(tr("Deleted: %1").arg(path));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::RemovePath;
+    req.path = path;
+    req.recursive = recursive;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::uploadFiles(const QStringList &localPaths, const QString &remoteDir)
@@ -444,14 +659,23 @@ void SshWorker::uploadFiles(const QStringList &localPaths, const QString &remote
         return;
     }
 
-    QString error;
-    if (!m_fs.uploadFiles(localPaths, remoteDir, &error)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.uploadFiles(localPaths, remoteDir, &error)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Upload finished (%1 item(s))").arg(localPaths.size()));
+        emit transferResumableChanged(false);
         return;
     }
 
-    emit sftpFinished(tr("Upload finished (%1 item(s))").arg(localPaths.size()));
-    emit transferResumableChanged(false);
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::UploadFiles;
+    req.localPaths = localPaths;
+    req.remoteDir = remoteDir;
+    req.finishedMessage = tr("Upload finished (%1 item(s))").arg(localPaths.size());
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath)
@@ -461,13 +685,22 @@ void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath
         return;
     }
 
-    QString error;
-    if (!m_fs.uploadFileTo(localPath, remotePath, &error)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.uploadFileTo(localPath, remotePath, &error)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Synced: %1").arg(QFileInfo(remotePath).fileName()));
         return;
     }
 
-    emit sftpFinished(tr("Synced: %1").arg(QFileInfo(remotePath).fileName()));
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::UploadFileTo;
+    req.localPath = localPath;
+    req.remotePath = remotePath;
+    req.finishedMessage = tr("Synced: %1").arg(QFileInfo(remotePath).fileName());
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::downloadPaths(const QStringList &remotePaths, const QString &localDir)
@@ -484,14 +717,24 @@ void SshWorker::downloadPaths(const QStringList &remotePaths,
         return;
     }
 
-    QString error;
-    if (!m_fs.downloadPaths(remotePaths, localDir, &error, followSymlinks)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.downloadPaths(remotePaths, localDir, &error, followSymlinks)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Download finished (%1 item(s))").arg(remotePaths.size()));
+        emit transferResumableChanged(false);
         return;
     }
 
-    emit sftpFinished(tr("Download finished (%1 item(s))").arg(remotePaths.size()));
-    emit transferResumableChanged(false);
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::DownloadPaths;
+    req.remotePaths = remotePaths;
+    req.localDir = localDir;
+    req.followSymlinks = followSymlinks;
+    req.finishedMessage = tr("Download finished (%1 item(s))").arg(remotePaths.size());
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::cancelTransfer()
@@ -511,14 +754,21 @@ void SshWorker::resumeInterruptedTransfer()
         return;
     }
 
-    QString error;
-    if (!m_fs.resumeInterruptedTransfer(&error)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.resumeInterruptedTransfer(&error)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Resumed transfer finished"));
+        emit transferResumableChanged(false);
         return;
     }
 
-    emit sftpFinished(tr("Resumed transfer finished"));
-    emit transferResumableChanged(false);
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::ResumeInterrupted;
+    req.finishedMessage = tr("Resumed transfer finished");
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::discardInterruptedTransfer()
@@ -539,85 +789,60 @@ void SshWorker::canonicalizePath(const QString &path)
         return;
     }
 
-    const QString requested = path.isEmpty() ? QStringLiteral(".") : path;
-    QString canonical;
-    QString error;
-    if (!m_fs.canonicalizePath(requested, canonical, &error)) {
-        emit sftpError(error);
-        return;
-    }
-
-    emit pathCanonicalized(requested, canonical);
-}
-
-void SshWorker::pollChannel()
-{
-    if (!m_running) {
-        return;
-    }
-
-    if (!m_session.isConnected()) {
-        disconnectSession();
-        return;
-    }
-
-    pollTunnels();
-    if (m_agentForwardHost) {
-        m_agentForwardHost->poll();
-    }
-
-    bool hadActivity = false;
-    const QList<QUuid> shellIds = m_shells.keys();
-    for (const QUuid &shellId : shellIds) {
-        SshShell *shell = m_shells.value(shellId, nullptr);
-        if (shell == nullptr) {
-            continue;
-        }
-
-        QByteArray data;
+    if (!useAsyncFs()) {
+        const QString requested = path.isEmpty() ? QStringLiteral(".") : path;
+        QString canonical;
         QString error;
-        const SshShell::PollStatus status = shell->poll(&data, &error);
-        switch (status) {
-        case SshShell::PollStatus::Data:
-            if (!data.isEmpty()) {
-                emit dataReceived(shellId, data);
-            }
-            hadActivity = true;
-            break;
-        case SshShell::PollStatus::Idle:
-            break;
-        case SshShell::PollStatus::ChannelClosed:
-            retireShell(shellId, true);
-            break;
-        case SshShell::PollStatus::Error:
-            if (!m_session.isConnected() ||
-                (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
-                if (!error.isEmpty()) {
-                    emit errorOccurred(error);
-                }
-                disconnectSession();
-                return;
-            }
-            emit shellFailed(shellId, error.isEmpty() ? tr("Shell read error") : error);
-            retireShell(shellId, true);
-            break;
+        if (!m_fs.canonicalizePath(requested, canonical, &error)) {
+            emit sftpError(error);
+            return;
         }
-    }
-
-    if (!m_session.isConnected()) {
-        disconnectSession();
+        emit pathCanonicalized(requested, canonical);
         return;
     }
 
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::CanonicalizePath;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
+}
+
+void SshWorker::ensureTunnelHostHandler()
+{
+    if (m_ioLoop.handler(TunnelHostIoHandler::handlerId()) != nullptr) {
+        return;
+    }
+
+    TunnelHostIoHandler::Hooks hooks;
+    hooks.acceptRemoteForwards = [this]() { acceptPendingRemoteForwards(); };
+    hooks.pollKeepAlive = [this](QString *error) {
+        if (!m_running || !m_session.isConnected()) {
+            return true;
+        }
+        return m_session.pollKeepAlive(false, error);
+    };
+    hooks.keepaliveFailed = [this](const QString &error) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, error]() {
+                emit errorOccurred(error);
+                disconnectSession();
+            },
+            Qt::QueuedConnection);
+    };
+
     QString error;
-    if (!m_session.pollKeepAlive(hadActivity, &error)) {
-        emit errorOccurred(error);
-        disconnectSession();
+    if (!m_ioLoop.addHandler(std::make_unique<TunnelHostIoHandler>(std::move(hooks)), &error)) {
+        qCWarning(lcSsh) << "Failed to add TunnelHostIoHandler:" << error;
     }
 }
 
-void SshWorker::pollTunnels()
+void SshWorker::acceptPendingRemoteForwards()
 {
+    if (!m_running || !m_session.isConnected()) {
+        return;
+    }
+
     QList<RemoteTunnelSession *> remotes;
     for (ITunnelSession *session : m_tunnelSessions) {
         if (auto *remote = qobject_cast<RemoteTunnelSession *>(session)) {
@@ -625,12 +850,6 @@ void SshWorker::pollTunnels()
         }
     }
     acceptRemoteForwards(m_session.handle(), remotes);
-
-    for (ITunnelSession *session : m_tunnelSessions) {
-        if (session) {
-            session->poll();
-        }
-    }
 }
 
 void SshWorker::wireTunnelSession(ITunnelSession *session)
@@ -687,9 +906,7 @@ void SshWorker::cleanup()
 {
     m_running = false;
 
-    if (m_ioTimer) {
-        m_ioTimer->stop();
-    }
+    m_ioLoop.stop();
 
     stopAllTunnels();
 
@@ -702,18 +919,100 @@ void SshWorker::cleanup()
     m_agentForwarding = false;
 
     m_fs.close();
-    const QList<QUuid> shellIds = m_shells.keys();
+
+    failPendingExecCommands(tr("SSH session is not connected"));
+    m_execInFlight = 0;
+
+    const QList<QUuid> shellIds = m_shellHandlers.keys();
     for (const QUuid &id : shellIds) {
-        SshShell *shell = m_shells.take(id);
-        if (shell) {
-            shell->cleanup();
-            delete shell;
-        }
+        m_shellHandlers.remove(id);
+        m_ioLoop.removeHandler(id.toString(QUuid::WithoutBraces));
     }
+    m_ioLoop.removeHandler(TunnelHostIoHandler::handlerId());
+    m_ioLoop.detachSession();
     m_session.cleanup();
 
     delete m_agentForwardHost;
     m_agentForwardHost = nullptr;
+}
+
+void SshWorker::failPendingExecCommands(const QString &error)
+{
+    if (m_pendingExecCommands.isEmpty()) {
+        return;
+    }
+    const QVector<PendingExecCommand> dropped = std::move(m_pendingExecCommands);
+    m_pendingExecCommands.clear();
+    for (const PendingExecCommand &pending : dropped) {
+        emit commandFinished(pending.requestId, -1, {}, {}, error);
+    }
+}
+
+void SshWorker::execCommand(QStringView requestId, const QString &command)
+{
+    const QString id(requestId);
+    if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
+        emit commandFinished(id, -1, {}, {}, tr("SSH session is not connected"));
+        return;
+    }
+    if (command.trimmed().isEmpty()) {
+        emit commandFinished(id, -1, {}, {}, tr("Empty remote command"));
+        return;
+    }
+
+    if (m_execInFlight >= kMaxConcurrentExec) {
+        m_pendingExecCommands.push_back(PendingExecCommand{id, command});
+        return;
+    }
+
+    startExecHandler(id, command);
+}
+
+void SshWorker::startExecHandler(const QString &requestId, const QString &command)
+{
+    ExecIoHandler::Hooks hooks;
+    hooks.finished = [this](const QString &id,
+                            int exitStatus,
+                            const QByteArray &stdoutBytes,
+                            const QByteArray &stderrBytes,
+                            const QString &errorMessage) {
+        emit commandFinished(id, exitStatus, stdoutBytes, stderrBytes, errorMessage);
+    };
+
+    auto handler =
+        std::make_unique<ExecIoHandler>(m_session.handle(), requestId, command, std::move(hooks));
+    const QString handlerId = handler->id();
+    handler->setCompletedHook([this, handlerId]() { onExecHandlerFinished(handlerId); });
+
+    QString error;
+    if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+        emit commandFinished(
+            requestId, -1, {}, {}, error.isEmpty() ? tr("Failed to start remote command") : error);
+        return;
+    }
+    ++m_execInFlight;
+    m_ioLoop.wake();
+}
+
+void SshWorker::onExecHandlerFinished(const QString &handlerId)
+{
+    QMetaObject::invokeMethod(
+        this,
+        [this, handlerId]() {
+            m_ioLoop.removeHandler(handlerId);
+            if (m_execInFlight > 0) {
+                --m_execInFlight;
+            }
+            while (m_execInFlight < kMaxConcurrentExec && !m_pendingExecCommands.isEmpty()) {
+                if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
+                    failPendingExecCommands(tr("SSH session is not connected"));
+                    return;
+                }
+                const PendingExecCommand pending = m_pendingExecCommands.takeFirst();
+                startExecHandler(pending.requestId, pending.command);
+            }
+        },
+        Qt::QueuedConnection);
 }
 
 void SshWorker::startTunnel(const TunnelDefinition &def)
@@ -739,7 +1038,7 @@ void SshWorker::startTunnel(const TunnelDefinition &def)
 
     emit tunnelStatusChanged(def.id, QStringLiteral("Starting"), QString());
 
-    ITunnelSession *session = createTunnelSession(def, m_session.handle(), this);
+    ITunnelSession *session = createTunnelSession(def, m_session.handle(), &m_ioLoop, this);
     if (session == nullptr) {
         const QString message = tr("Unsupported tunnel type");
         emit tunnelError(def.id, message);
@@ -779,114 +1078,4 @@ void SshWorker::stopAllTunnels()
             session->deleteLater();
         }
     }
-}
-
-void SshWorker::pumpIoDuringBlockingOp()
-{
-    if (!m_running || !m_session.isConnected()) {
-        return;
-    }
-
-    // Keep interactive shell / tunnels responsive while a one-shot exec blocks.
-    pollTunnels();
-    if (m_agentForwardHost) {
-        m_agentForwardHost->poll();
-    }
-
-    const QList<QUuid> shellIds = m_shells.keys();
-    for (const QUuid &shellId : shellIds) {
-        SshShell *shell = m_shells.value(shellId, nullptr);
-        if (shell == nullptr) {
-            continue;
-        }
-
-        QByteArray data;
-        QString error;
-        const SshShell::PollStatus status = shell->poll(&data, &error);
-        switch (status) {
-        case SshShell::PollStatus::Data:
-            if (!data.isEmpty()) {
-                emit dataReceived(shellId, data);
-            }
-            break;
-        case SshShell::PollStatus::Idle:
-            break;
-        case SshShell::PollStatus::ChannelClosed:
-            retireShell(shellId, true);
-            break;
-        case SshShell::PollStatus::Error:
-            if (!m_session.isConnected() ||
-                (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
-                if (!error.isEmpty()) {
-                    emit errorOccurred(error);
-                }
-                disconnectSession();
-                return;
-            }
-            emit shellFailed(shellId, error.isEmpty() ? tr("Shell read error") : error);
-            retireShell(shellId, true);
-            break;
-        }
-    }
-
-    // Drain queued writes / other worker slots without starting nested user input.
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-}
-
-void SshWorker::execCommand(QStringView requestId, const QString &command)
-{
-    const QString id(requestId);
-    if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
-        emit commandFinished(id, -1, {}, {}, tr("SSH session is not connected"));
-        return;
-    }
-    if (command.trimmed().isEmpty()) {
-        emit commandFinished(id, -1, {}, {}, tr("Empty remote command"));
-        return;
-    }
-
-    if (m_execBusy) {
-        m_pendingExecCommands.push_back(PendingExecCommand{id, command});
-        return;
-    }
-
-    runExecCommand(id, command);
-
-    while (!m_pendingExecCommands.isEmpty()) {
-        if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
-            const QVector<PendingExecCommand> dropped = std::move(m_pendingExecCommands);
-            m_pendingExecCommands.clear();
-            for (const PendingExecCommand &pending : dropped) {
-                emit commandFinished(
-                    pending.requestId, -1, {}, {}, tr("SSH session is not connected"));
-            }
-            return;
-        }
-        const PendingExecCommand pending = m_pendingExecCommands.takeFirst();
-        runExecCommand(pending.requestId, pending.command);
-    }
-}
-
-void SshWorker::runExecCommand(const QString &id, const QString &command)
-{
-    m_execBusy = true;
-
-    ShellExecRunner runner(m_session.handle());
-    runner.setPump([this]() { pumpIoDuringBlockingOp(); });
-    ShellExecRunner::Result result;
-    QString error;
-    const bool ok = runner.run(command, &result, &error);
-
-    m_execBusy = false;
-
-    if (!ok) {
-        emit commandFinished(id,
-                             result.exitStatus,
-                             result.stdoutBytes,
-                             result.stderrBytes,
-                             error.isEmpty() ? result.errorMessage : error);
-        return;
-    }
-
-    emit commandFinished(id, result.exitStatus, result.stdoutBytes, result.stderrBytes, QString());
 }

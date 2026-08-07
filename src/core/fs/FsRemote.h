@@ -7,6 +7,8 @@
 #pragma once
 
 #include "FsEngine.h"
+#include "ScpChunkTransfer.h"
+#include "SftpAioTransfer.h"
 #include "SftpTypes.h"
 #include "TransferTypes.h"
 #include "core/connection/Connection.h"
@@ -18,11 +20,16 @@
 #include <QVector>
 
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
 
+#include <QScopeGuard>
+
 #include <libssh/libssh.h>
+
+class SftpEngine;
 
 /**
  * High-level remote FS entity: recursive transfer, progress, cancel, resume jobs.
@@ -34,6 +41,14 @@ public:
     using ProgressCallback =
         std::function<void(qint64 bytesDone, qint64 bytesTotal, const QString &currentName)>;
 
+    enum class TickResult : uint8_t
+    {
+        Idle = 0,
+        Running = 1,
+        Done = 2,
+        Failed = 3,
+    };
+
     FsRemote() = default;
     ~FsRemote();
 
@@ -42,6 +57,9 @@ public:
 
     void setEngine(std::unique_ptr<FsEngine> engine);
     FsEngine *engine() const { return m_engine.get(); }
+    SftpEngine *sftpEngine() const;
+    class ScpEngine *scpEngine() const;
+    ssh_session sshSession() const { return m_sshSession; }
 
     void setShellCommands(const ShellCommandSetConfig &config);
     ShellCommandSetConfig shellCommands() const { return m_shellCommands; }
@@ -92,7 +110,61 @@ public:
     bool resumeInterruptedTransfer(QString *error);
     bool discardInterruptedTransfer(QString *error);
 
+    /// Phase 3/5: non-blocking transfer driven from SshIoLoop::onIdle (SFTP AIO or SCP chunks).
+    /// Returns false if start fails (error set).
+    bool
+    beginAsyncUploadFiles(const QStringList &localPaths, const QString &remoteDir, QString *error);
+    bool
+    beginAsyncUploadFileTo(const QString &localPath, const QString &remotePath, QString *error);
+    bool beginAsyncDownloadPaths(const QStringList &remotePaths,
+                                 const QString &localDir,
+                                 QString *error,
+                                 bool followSymlinks = false);
+    bool beginAsyncResumeInterrupted(QString *error);
+    TickResult tickAsync(QString *error);
+    bool hasAsyncTransfer() const { return m_asyncActive; }
+    void abortAsyncTransfer();
+
+    /// Brief blocking helpers for meta IoHandler (caller owns session blocking policy).
+    template <typename Fn>
+    auto withBlockingSession(Fn &&fn) -> decltype(fn())
+    {
+        if (m_sshSession == nullptr) {
+            return fn();
+        }
+        const int wasBlocking = ssh_is_blocking(m_sshSession);
+        ssh_set_blocking(m_sshSession, 1);
+        auto restore = qScopeGuard([this, wasBlocking]() {
+            if (m_sshSession != nullptr) {
+                ssh_set_blocking(m_sshSession, wasBlocking);
+            }
+        });
+        return fn();
+    }
+
 private:
+    struct AsyncWorkItem
+    {
+        enum class Type : uint8_t
+        {
+            UploadFile,
+            DownloadFile,
+            UploadDir,
+            DownloadDir,
+            RemoteMkdir,
+            LocalMkdir,
+            RemoteSymlink,
+            LocalSymlink,
+        };
+        Type type = Type::UploadFile;
+        QString localPath;
+        QString remotePath;
+        QString symlinkTarget;
+        TransferWriteMode mode = TransferWriteMode::FreshFilepart;
+        bool followSymlinks = false;
+        bool linkIsDir = false;
+    };
+
     void beginTransfer(qint64 bytesTotal);
     void endTransfer();
     bool transferShouldStop(QString *error) const;
@@ -130,6 +202,27 @@ private:
 
     static QString joinRemotePath(const QString &dir, const QString &name);
 
+    bool startAsyncCommon(qint64 bytesTotal, QString *error);
+    void
+    enqueueUploadPath(const QString &localPath, const QString &remotePath, TransferWriteMode mode);
+    bool enqueueDownloadEntry(const RemoteEntry &entry,
+                              const QString &localPath,
+                              TransferWriteMode mode,
+                              bool followSymlinks,
+                              QString *error);
+    TickResult tickAsyncWorkItem(QString *error);
+    TickResult tickAsyncAio(QString *error);
+    bool finishAsyncFileFailure(QString *error);
+    bool prepareAsyncUploadJob(const QString &localPath,
+                               const QString &remoteFinalPath,
+                               TransferWriteMode mode,
+                               QString *error);
+    bool prepareAsyncDownloadJob(const QString &remoteFinalPath,
+                                 const QString &localFinalPath,
+                                 TransferWriteMode mode,
+                                 QString *error);
+
+    ssh_session m_sshSession = nullptr;
     std::unique_ptr<FsEngine> m_engine;
     ShellCommandSetConfig m_shellCommands;
     FsBackend m_backend = FsBackend::None;
@@ -149,4 +242,10 @@ private:
     qint64 m_progressLastEmitMs = 0;
     qint64 m_progressLastActivityMs = 0;
     int m_stallTimeoutSec = 60;
+
+    bool m_asyncActive = false;
+    std::deque<AsyncWorkItem> m_asyncWork;
+    std::unique_ptr<SftpAioTransfer> m_aio;
+    std::unique_ptr<ScpChunkTransfer> m_scpChunk;
+    TransferWriteMode m_asyncFileMode = TransferWriteMode::FreshFilepart;
 };

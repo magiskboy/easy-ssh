@@ -76,19 +76,6 @@ bool AgentForwardHost::start(ssh_session session, ssh_channel firstShellChannel,
     return true;
 }
 
-void AgentForwardHost::poll()
-{
-    QList<TunnelBridge *> toClose;
-    for (TunnelBridge *bridge : m_bridges) {
-        if (TunnelBridgeIo::pollChannelToSocket(bridge)) {
-            toClose.append(bridge);
-        }
-    }
-    for (TunnelBridge *bridge : toClose) {
-        closeBridge(bridge);
-    }
-}
-
 void AgentForwardHost::stop()
 {
     const QList<TunnelBridge *> bridges = m_bridges;
@@ -148,6 +135,17 @@ bool AgentForwardHost::openBridge(ssh_channel channel)
     auto *bridge = new TunnelBridge;
     bridge->channel = channel;
     bridge->socket = local;
+    bridge->owner = this;
+    bridge->requestClose = [this, bridge]() { closeBridge(bridge); };
+    if (m_loop != nullptr) {
+        QString attachError;
+        if (!TunnelBridgeIo::attachToLoop(bridge, m_loop, &attachError)) {
+            qCWarning(lcSsh) << "auth-agent attach failed:" << attachError;
+            delete bridge;
+            local->deleteLater();
+            return false;
+        }
+    }
     m_bridges.append(bridge);
     wireBridgeSocket(local);
     return true;

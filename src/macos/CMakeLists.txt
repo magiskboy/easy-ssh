@@ -332,12 +332,15 @@ add_custom_command(
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ESSAppSettings.h"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ESSWorkspaceStore.h"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ESSSshConfigParser.h"
+    # -disable-bridging-pch: Swift 6 / SPM may re-parse the generated binary .pch
+    # as text ("source file is not valid UTF-8") when using -import-objc-header.
     COMMAND ${EASY_SSH_SWIFT} build
         --package-path "${EASY_SSH_NATIVE_PACKAGE_DIR}"
         --configuration ${_easy_ssh_swift_config}
         --scratch-path "${EASY_SSH_NATIVE_SWIFT_BUILD_DIR}"
         -Xswiftc -import-objc-header
         -Xswiftc "${CMAKE_CURRENT_SOURCE_DIR}/bridge/EasySsh-Bridging-Header.h"
+        -Xswiftc -disable-bridging-pch
         -Xlinker -L${_bridge_lib_dir}
         -Xlinker -lEasySshBridge
         -Xlinker -rpath
@@ -393,6 +396,21 @@ if(TARGET ssh)
     )
 endif()
 
+if(TARGET qt6keychain)
+    add_custom_command(TARGET easy-ssh-native POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:qt6keychain>"
+            "${EASY_SSH_NATIVE_FW_DIR}/"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "$<TARGET_FILE_NAME:qt6keychain>"
+            "${EASY_SSH_NATIVE_FW_DIR}/$<TARGET_SONAME_FILE_NAME:qt6keychain>"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "$<TARGET_FILE_NAME:qt6keychain>"
+            "${EASY_SSH_NATIVE_FW_DIR}/libqt6keychain.dylib"
+        VERBATIM
+    )
+endif()
+
 if(DEFINED EASY_SSH_QT_PREFIX)
     set(_qt_lib "${EASY_SSH_QT_PREFIX}/lib")
     foreach(_fwname QtCore QtGui QtNetwork QtDBus)
@@ -407,14 +425,32 @@ if(DEFINED EASY_SSH_QT_PREFIX)
     endforeach()
 endif()
 
-add_custom_command(TARGET easy-ssh-native POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/bin/libqt6keychain.1.dylib"
-        "${EASY_SSH_NATIVE_FW_DIR}/libqt6keychain.1.dylib"
-    # Sign nested frameworks first; --deep on the .app fails with Qt framework layout.
-    COMMAND /bin/bash -c "for f in '${EASY_SSH_NATIVE_FW_DIR}'/*.framework '${EASY_SSH_NATIVE_FW_DIR}'/*.dylib; do [ -e \"$$f\" ] && codesign --force --sign - \"$$f\" || true; done"
+# Sign nested code inside-out (TN2206). Sign only our built dylibs — do not
+# re-sign Qt frameworks: codesign rejects their layout with "bundle format is
+# ambiguous", and the SDK copies already carry valid signatures. Avoid bash
+# `$` loops under CMake VERBATIM+Ninja. Do not use --deep on the .app.
+set(_easy_ssh_native_codesign_cmds
+    COMMAND codesign --force --sign -
+        "${EASY_SSH_NATIVE_FW_DIR}/$<TARGET_FILE_NAME:easy-ssh-bridge>"
+)
+if(TARGET ssh)
+    list(APPEND _easy_ssh_native_codesign_cmds
+        COMMAND codesign --force --sign -
+            "${EASY_SSH_NATIVE_FW_DIR}/$<TARGET_FILE_NAME:ssh>"
+    )
+endif()
+if(TARGET qt6keychain)
+    list(APPEND _easy_ssh_native_codesign_cmds
+        COMMAND codesign --force --sign -
+            "${EASY_SSH_NATIVE_FW_DIR}/$<TARGET_FILE_NAME:qt6keychain>"
+    )
+endif()
+list(APPEND _easy_ssh_native_codesign_cmds
     COMMAND codesign --force --sign - "${EASY_SSH_NATIVE_EXE}"
     COMMAND codesign --force --sign - "${EASY_SSH_NATIVE_APP_DIR}"
+)
+add_custom_command(TARGET easy-ssh-native POST_BUILD
+    ${_easy_ssh_native_codesign_cmds}
     COMMENT "Bundle deps + codesign easy-ssh-native.app"
     VERBATIM
 )

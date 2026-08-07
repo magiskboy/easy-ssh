@@ -8,16 +8,18 @@
 #include "LocalTunnelSession.h"
 #include "RemoteTunnelSession.h"
 
-ITunnelSession *
-createTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *parent)
+ITunnelSession *createTunnelSession(const TunnelDefinition &def,
+                                    ssh_session session,
+                                    SshIoLoop *loop,
+                                    QObject *parent)
 {
     switch (def.type) {
     case TunnelType::Local:
-        return new LocalTunnelSession(def, session, parent);
+        return new LocalTunnelSession(def, session, loop, parent);
     case TunnelType::Remote:
-        return new RemoteTunnelSession(def, session, parent);
+        return new RemoteTunnelSession(def, session, loop, parent);
     case TunnelType::Dynamic:
-        return new DynamicTunnelSession(def, session, parent);
+        return new DynamicTunnelSession(def, session, loop, parent);
     }
-    return new DynamicTunnelSession(def, session, parent);
+    return new DynamicTunnelSession(def, session, loop, parent);
 }

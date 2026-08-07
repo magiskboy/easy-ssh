@@ -4,7 +4,9 @@
 
 #include "FsRemote.h"
 
+#include "ScpChunkTransfer.h"
 #include "ScpEngine.h"
+#include "SftpAioTransfer.h"
 #include "SftpEngine.h"
 #include "Symlink.h"
 #include "TransferJobStore.h"
@@ -12,11 +14,12 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
-#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
+#include <QScopeGuard>
 
 #include <cerrno>
+#include <iterator>
 #include <sys/stat.h>
 
 #ifndef S_IRWXU
@@ -57,49 +60,71 @@ void FsRemote::setShellCommands(const ShellCommandSetConfig &config)
 bool FsRemote::open(ssh_session session, QString *failureMessage)
 {
     close();
+    m_sshSession = session;
 
-    auto sftp = std::make_unique<SftpEngine>();
-    QString sftpError;
-    if (sftp->open(session, &sftpError)) {
-        m_engine = std::move(sftp);
-        m_backend = FsBackend::Sftp;
-        return true;
-    }
+    return withBlockingSession([&]() -> bool {
+        auto sftp = std::make_unique<SftpEngine>();
+        QString sftpError;
+        if (sftp->open(session, &sftpError)) {
+            m_engine = std::move(sftp);
+            m_backend = FsBackend::Sftp;
+            return true;
+        }
 
-    if (!m_shellCommands.allowScpFallback) {
+        if (!m_shellCommands.allowScpFallback) {
+            if (failureMessage) {
+                *failureMessage = sftpError;
+            }
+            return false;
+        }
+
+        auto scp = std::make_unique<ScpEngine>(m_shellCommands);
+        QString scpError;
+        if (scp->open(session, &scpError)) {
+            m_engine = std::move(scp);
+            m_backend = FsBackend::Scp;
+            return true;
+        }
+
         if (failureMessage) {
-            *failureMessage = sftpError;
+            *failureMessage =
+                trFs("SFTP unavailable (%1); SCP fallback failed (%2)").arg(sftpError, scpError);
         }
         return false;
-    }
-
-    auto scp = std::make_unique<ScpEngine>(m_shellCommands);
-    QString scpError;
-    if (scp->open(session, &scpError)) {
-        m_engine = std::move(scp);
-        m_backend = FsBackend::Scp;
-        return true;
-    }
-
-    if (failureMessage) {
-        *failureMessage =
-            trFs("SFTP unavailable (%1); SCP fallback failed (%2)").arg(sftpError, scpError);
-    }
-    return false;
+    });
 }
 
 void FsRemote::close()
 {
+    abortAsyncTransfer();
     if (m_engine) {
         m_engine->close();
     }
+    m_engine.reset();
     m_backend = FsBackend::None;
+    m_sshSession = nullptr;
     endTransfer();
 }
 
 bool FsRemote::isOpen() const
 {
     return m_engine && m_engine->isOpen();
+}
+
+SftpEngine *FsRemote::sftpEngine() const
+{
+    if (m_backend != FsBackend::Sftp) {
+        return nullptr;
+    }
+    return static_cast<SftpEngine *>(m_engine.get());
+}
+
+ScpEngine *FsRemote::scpEngine() const
+{
+    if (m_backend != FsBackend::Scp) {
+        return nullptr;
+    }
+    return static_cast<ScpEngine *>(m_engine.get());
 }
 
 void FsRemote::setProgressCallback(ProgressCallback callback)
@@ -213,7 +238,6 @@ void FsRemote::noteTransferProgress(qint64 bytesDelta, const QString &currentNam
         (m_progressBytesDone - m_progressLastEmitBytes) >= kProgressEmitBytes;
     const bool timeThreshold = (now - m_progressLastEmitMs) >= kProgressEmitMs;
     if (!bytesThreshold && !timeThreshold && bytesDelta > 0) {
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         return;
     }
 
@@ -222,7 +246,6 @@ void FsRemote::noteTransferProgress(qint64 bytesDelta, const QString &currentNam
     if (m_progressCallback) {
         m_progressCallback(m_progressBytesDone, m_progressBytesTotal, currentName);
     }
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 }
 
 QString FsRemote::joinRemotePath(const QString &dir, const QString &name)
@@ -269,7 +292,8 @@ bool FsRemote::listDirectoryEntries(const QString &path,
         }
         return false;
     }
-    return m_engine->listDirectoryEntries(path, outEntries, error);
+    return withBlockingSession(
+        [&]() { return m_engine->listDirectoryEntries(path, outEntries, error); });
 }
 
 bool FsRemote::createDirectory(const QString &path, QString *error)
@@ -280,7 +304,7 @@ bool FsRemote::createDirectory(const QString &path, QString *error)
         }
         return false;
     }
-    return m_engine->createDirectory(path, error);
+    return withBlockingSession([&]() { return m_engine->createDirectory(path, error); });
 }
 
 bool FsRemote::createSymlink(const QString &target, const QString &linkPath, QString *error)
@@ -291,7 +315,7 @@ bool FsRemote::createSymlink(const QString &target, const QString &linkPath, QSt
         }
         return false;
     }
-    return m_engine->createSymlink(target, linkPath, error);
+    return withBlockingSession([&]() { return m_engine->createSymlink(target, linkPath, error); });
 }
 
 bool FsRemote::renamePath(const QString &from, const QString &to, QString *error)
@@ -302,7 +326,7 @@ bool FsRemote::renamePath(const QString &from, const QString &to, QString *error
         }
         return false;
     }
-    return m_engine->renamePath(from, to, error);
+    return withBlockingSession([&]() { return m_engine->renamePath(from, to, error); });
 }
 
 bool FsRemote::canonicalizePath(const QString &path, QString &canonicalOut, QString *error)
@@ -313,7 +337,8 @@ bool FsRemote::canonicalizePath(const QString &path, QString &canonicalOut, QStr
         }
         return false;
     }
-    return m_engine->canonicalizePath(path, canonicalOut, error);
+    return withBlockingSession(
+        [&]() { return m_engine->canonicalizePath(path, canonicalOut, error); });
 }
 
 bool FsRemote::resolveEntry(const QString &path, bool *isDir, QString *error)
@@ -324,7 +349,7 @@ bool FsRemote::resolveEntry(const QString &path, bool *isDir, QString *error)
         }
         return false;
     }
-    return m_engine->isRemoteDirectory(path, isDir, error);
+    return withBlockingSession([&]() { return m_engine->isRemoteDirectory(path, isDir, error); });
 }
 
 bool FsRemote::removePath(const QString &path, bool recursive, QString *error)
@@ -336,21 +361,23 @@ bool FsRemote::removePath(const QString &path, bool recursive, QString *error)
         return false;
     }
 
-    RemoteEntry entry;
-    if (!m_engine->statEntry(path, &entry, false, error)) {
-        return false;
-    }
-
-    if (entry.isSymlink) {
-        return m_engine->removeFile(path, error);
-    }
-    if (entry.isDir) {
-        if (recursive) {
-            return removePathRecursive(path, error);
+    return withBlockingSession([&]() -> bool {
+        RemoteEntry entry;
+        if (!m_engine->statEntry(path, &entry, false, error)) {
+            return false;
         }
-        return m_engine->removeDirectory(path, error);
-    }
-    return m_engine->removeFile(path, error);
+
+        if (entry.isSymlink) {
+            return m_engine->removeFile(path, error);
+        }
+        if (entry.isDir) {
+            if (recursive) {
+                return removePathRecursive(path, error);
+            }
+            return m_engine->removeDirectory(path, error);
+        }
+        return m_engine->removeFile(path, error);
+    });
 }
 
 qint64 FsRemote::computeLocalBytes(const QStringList &localPaths) const
@@ -686,46 +713,48 @@ bool FsRemote::uploadFiles(const QStringList &localPaths, const QString &remoteD
         return false;
     }
 
-    beginTransfer(computeLocalBytes(localPaths));
-    const TransferWriteMode mode = (m_backend == FsBackend::Sftp)
-                                       ? TransferWriteMode::FreshFilepart
-                                       : TransferWriteMode::OverwriteFinal;
+    return withBlockingSession([&]() -> bool {
+        beginTransfer(computeLocalBytes(localPaths));
+        const TransferWriteMode mode = (m_backend == FsBackend::Sftp)
+                                           ? TransferWriteMode::FreshFilepart
+                                           : TransferWriteMode::OverwriteFinal;
 
-    for (const QString &localPath : localPaths) {
-        if (transferShouldStop(error)) {
-            if (m_transferCancel.load(std::memory_order_relaxed)) {
-                m_lastEndReason = TransferEndReason::Canceled;
-            } else if (m_transferInterrupt.load(std::memory_order_relaxed)) {
-                m_lastEndReason = m_interruptReason;
-                m_lastEndMessage = m_interruptMessage;
-            } else {
-                m_lastEndReason = TransferEndReason::StallTimeout;
-                m_lastEndMessage = error ? *error : QString();
+        for (const QString &localPath : localPaths) {
+            if (transferShouldStop(error)) {
+                if (m_transferCancel.load(std::memory_order_relaxed)) {
+                    m_lastEndReason = TransferEndReason::Canceled;
+                } else if (m_transferInterrupt.load(std::memory_order_relaxed)) {
+                    m_lastEndReason = m_interruptReason;
+                    m_lastEndMessage = m_interruptMessage;
+                } else {
+                    m_lastEndReason = TransferEndReason::StallTimeout;
+                    m_lastEndMessage = error ? *error : QString();
+                }
+                endTransfer();
+                return false;
             }
-            endTransfer();
-            return false;
-        }
 
-        const QFileInfo info(localPath);
-        if (!info.exists()) {
-            endTransfer();
-            if (error) {
-                *error = trFs("Local path does not exist: %1").arg(localPath);
+            const QFileInfo info(localPath);
+            if (!info.exists()) {
+                endTransfer();
+                if (error) {
+                    *error = trFs("Local path does not exist: %1").arg(localPath);
+                }
+                m_lastEndReason = TransferEndReason::Failed;
+                return false;
             }
-            m_lastEndReason = TransferEndReason::Failed;
-            return false;
+
+            const QString remotePath = joinRemotePath(remoteDir, info.fileName());
+            if (!uploadPathRecursive(localPath, remotePath, mode, error)) {
+                endTransfer();
+                return false;
+            }
         }
 
-        const QString remotePath = joinRemotePath(remoteDir, info.fileName());
-        if (!uploadPathRecursive(localPath, remotePath, mode, error)) {
-            endTransfer();
-            return false;
-        }
-    }
-
-    endTransfer();
-    m_lastEndReason = TransferEndReason::Completed;
-    return true;
+        endTransfer();
+        m_lastEndReason = TransferEndReason::Completed;
+        return true;
+    });
 }
 
 bool FsRemote::uploadFileTo(const QString &localPath, const QString &remotePath, QString *error)
@@ -737,20 +766,22 @@ bool FsRemote::uploadFileTo(const QString &localPath, const QString &remotePath,
         return false;
     }
 
-    const QFileInfo info(localPath);
-    if (!info.exists() || !info.isFile()) {
-        if (error) {
-            *error = trFs("Local file does not exist: %1").arg(localPath);
+    return withBlockingSession([&]() -> bool {
+        const QFileInfo info(localPath);
+        if (!info.exists() || !info.isFile()) {
+            if (error) {
+                *error = trFs("Local file does not exist: %1").arg(localPath);
+            }
+            return false;
         }
-        return false;
-    }
 
-    beginTransfer(info.size());
-    // Open With / auto-sync: always overwrite final path (no resume).
-    const bool ok =
-        transferOneUpload(localPath, remotePath, TransferWriteMode::OverwriteFinal, error);
-    endTransfer();
-    return ok;
+        beginTransfer(info.size());
+        // Open With / auto-sync: always overwrite final path (no resume).
+        const bool ok =
+            transferOneUpload(localPath, remotePath, TransferWriteMode::OverwriteFinal, error);
+        endTransfer();
+        return ok;
+    });
 }
 
 bool FsRemote::downloadPaths(const QStringList &remotePaths,
@@ -765,52 +796,54 @@ bool FsRemote::downloadPaths(const QStringList &remotePaths,
         return false;
     }
 
-    QDir local(localDir);
-    if (!local.exists() && !local.mkpath(QStringLiteral("."))) {
-        if (error) {
-            *error = trFs("Cannot create local directory: %1").arg(localDir);
-        }
-        return false;
-    }
-
-    beginTransfer(computeRemoteBytes(remotePaths));
-    const TransferWriteMode mode = (m_backend == FsBackend::Sftp)
-                                       ? TransferWriteMode::FreshFilepart
-                                       : TransferWriteMode::OverwriteFinal;
-
-    for (const QString &remotePath : remotePaths) {
-        if (transferShouldStop(error)) {
-            if (m_transferCancel.load(std::memory_order_relaxed)) {
-                m_lastEndReason = TransferEndReason::Canceled;
-            } else if (m_transferInterrupt.load(std::memory_order_relaxed)) {
-                m_lastEndReason = m_interruptReason;
-                m_lastEndMessage = m_interruptMessage;
-            } else {
-                m_lastEndReason = TransferEndReason::StallTimeout;
-                m_lastEndMessage = error ? *error : QString();
+    return withBlockingSession([&]() -> bool {
+        QDir local(localDir);
+        if (!local.exists() && !local.mkpath(QStringLiteral("."))) {
+            if (error) {
+                *error = trFs("Cannot create local directory: %1").arg(localDir);
             }
-            endTransfer();
             return false;
         }
 
-        RemoteEntry entry;
-        if (!m_engine->statEntry(remotePath, &entry, false, error)) {
-            endTransfer();
-            m_lastEndReason = TransferEndReason::Failed;
-            return false;
+        beginTransfer(computeRemoteBytes(remotePaths));
+        const TransferWriteMode mode = (m_backend == FsBackend::Sftp)
+                                           ? TransferWriteMode::FreshFilepart
+                                           : TransferWriteMode::OverwriteFinal;
+
+        for (const QString &remotePath : remotePaths) {
+            if (transferShouldStop(error)) {
+                if (m_transferCancel.load(std::memory_order_relaxed)) {
+                    m_lastEndReason = TransferEndReason::Canceled;
+                } else if (m_transferInterrupt.load(std::memory_order_relaxed)) {
+                    m_lastEndReason = m_interruptReason;
+                    m_lastEndMessage = m_interruptMessage;
+                } else {
+                    m_lastEndReason = TransferEndReason::StallTimeout;
+                    m_lastEndMessage = error ? *error : QString();
+                }
+                endTransfer();
+                return false;
+            }
+
+            RemoteEntry entry;
+            if (!m_engine->statEntry(remotePath, &entry, false, error)) {
+                endTransfer();
+                m_lastEndReason = TransferEndReason::Failed;
+                return false;
+            }
+
+            const QString name = QFileInfo(remotePath).fileName();
+            const QString localPath = local.filePath(name);
+            if (!downloadPathRecursive(entry, localPath, mode, error, followSymlinks)) {
+                endTransfer();
+                return false;
+            }
         }
 
-        const QString name = QFileInfo(remotePath).fileName();
-        const QString localPath = local.filePath(name);
-        if (!downloadPathRecursive(entry, localPath, mode, error, followSymlinks)) {
-            endTransfer();
-            return false;
-        }
-    }
-
-    endTransfer();
-    m_lastEndReason = TransferEndReason::Completed;
-    return true;
+        endTransfer();
+        m_lastEndReason = TransferEndReason::Completed;
+        return true;
+    });
 }
 
 bool FsRemote::resumeInterruptedTransfer(QString *error)
@@ -836,18 +869,20 @@ bool FsRemote::resumeInterruptedTransfer(QString *error)
         return false;
     }
 
-    beginTransfer(job->bytesTotal);
-    seedProgressBytes(job->bytesDone);
-    bool ok = false;
-    if (job->direction == TransferDirection::Upload) {
-        ok = transferOneUpload(
-            job->localPath, job->remoteFinalPath, TransferWriteMode::ResumeFilepart, error);
-    } else {
-        ok = transferOneDownload(
-            job->remoteFinalPath, job->localPath, TransferWriteMode::ResumeFilepart, error);
-    }
-    endTransfer();
-    return ok;
+    return withBlockingSession([&]() -> bool {
+        beginTransfer(job->bytesTotal);
+        seedProgressBytes(job->bytesDone);
+        bool ok = false;
+        if (job->direction == TransferDirection::Upload) {
+            ok = transferOneUpload(
+                job->localPath, job->remoteFinalPath, TransferWriteMode::ResumeFilepart, error);
+        } else {
+            ok = transferOneDownload(
+                job->remoteFinalPath, job->localPath, TransferWriteMode::ResumeFilepart, error);
+        }
+        endTransfer();
+        return ok;
+    });
 }
 
 bool FsRemote::discardInterruptedTransfer(QString *error)
@@ -1035,4 +1070,777 @@ bool FsRemote::downloadPathRecursive(const RemoteEntry &entry,
     }
 
     return transferOneDownload(entry.path, localPath, mode, error);
+}
+
+void FsRemote::abortAsyncTransfer()
+{
+    if (m_aio) {
+        withBlockingSession([&]() {
+            m_aio->abort();
+            return true;
+        });
+        m_aio.reset();
+    }
+    if (m_scpChunk) {
+        withBlockingSession([&]() {
+            m_scpChunk->abort();
+            return true;
+        });
+        m_scpChunk.reset();
+    }
+    m_asyncWork.clear();
+    m_asyncActive = false;
+    m_activeJob.reset();
+}
+
+bool FsRemote::startAsyncCommon(qint64 bytesTotal, QString *error)
+{
+    if (!isOpen()) {
+        if (error) {
+            *error = trFs("Remote FS is not available");
+        }
+        return false;
+    }
+    if (m_backend != FsBackend::Sftp && m_backend != FsBackend::Scp) {
+        if (error) {
+            *error = trFs("Async transfer requires SFTP or SCP");
+        }
+        return false;
+    }
+    if (m_backend == FsBackend::Sftp && sftpEngine() == nullptr) {
+        if (error) {
+            *error = trFs("Async transfer requires SFTP");
+        }
+        return false;
+    }
+    if (m_backend == FsBackend::Scp && scpEngine() == nullptr) {
+        if (error) {
+            *error = trFs("Async transfer requires SCP");
+        }
+        return false;
+    }
+    if (m_asyncActive) {
+        if (error) {
+            *error = trFs("A transfer is already in progress");
+        }
+        return false;
+    }
+    abortAsyncTransfer();
+    m_transferCancel.store(false, std::memory_order_relaxed);
+    m_transferInterrupt.store(false, std::memory_order_relaxed);
+    beginTransfer(bytesTotal);
+    m_asyncActive = true;
+    m_lastEndReason = TransferEndReason::Completed;
+    m_lastEndMessage.clear();
+    return true;
+}
+
+void FsRemote::enqueueUploadPath(const QString &localPath,
+                                 const QString &remotePath,
+                                 TransferWriteMode mode)
+{
+    AsyncWorkItem item;
+    item.localPath = localPath;
+    item.remotePath = remotePath;
+    item.mode = mode;
+
+    const QFileInfo info(localPath);
+    if (info.isSymLink()) {
+        item.type = AsyncWorkItem::Type::RemoteSymlink;
+        QString target;
+        QString unused;
+        if (Symlink::read(localPath, target, &unused)) {
+            item.symlinkTarget = target;
+        }
+        m_asyncWork.push_back(item);
+        return;
+    }
+    if (info.isDir()) {
+        item.type = AsyncWorkItem::Type::UploadDir;
+        m_asyncWork.push_back(item);
+        return;
+    }
+    item.type = AsyncWorkItem::Type::UploadFile;
+    m_asyncWork.push_back(item);
+}
+
+bool FsRemote::enqueueDownloadEntry(const RemoteEntry &entry,
+                                    const QString &localPath,
+                                    TransferWriteMode mode,
+                                    bool followSymlinks,
+                                    QString *error)
+{
+    Q_UNUSED(error);
+    AsyncWorkItem item;
+    item.localPath = localPath;
+    item.remotePath = entry.path;
+    item.mode = mode;
+    item.followSymlinks = followSymlinks;
+    item.linkIsDir = entry.linkIsDir;
+    item.symlinkTarget = entry.linkTarget;
+
+    if (entry.isSymlink) {
+        if (followSymlinks) {
+            item.type = AsyncWorkItem::Type::DownloadFile;
+        } else {
+            item.type = AsyncWorkItem::Type::LocalSymlink;
+        }
+        m_asyncWork.push_back(item);
+        return true;
+    }
+    if (entry.isDir) {
+        item.type = AsyncWorkItem::Type::DownloadDir;
+        m_asyncWork.push_back(item);
+        return true;
+    }
+    item.type = AsyncWorkItem::Type::DownloadFile;
+    m_asyncWork.push_back(item);
+    return true;
+}
+
+bool FsRemote::beginAsyncUploadFiles(const QStringList &localPaths,
+                                     const QString &remoteDir,
+                                     QString *error)
+{
+    if (!startAsyncCommon(computeLocalBytes(localPaths), error)) {
+        return false;
+    }
+    const TransferWriteMode mode = TransferWriteMode::FreshFilepart;
+    for (const QString &localPath : localPaths) {
+        const QFileInfo info(localPath);
+        if (!info.exists()) {
+            abortAsyncTransfer();
+            endTransfer();
+            if (error) {
+                *error = trFs("Local path does not exist: %1").arg(localPath);
+            }
+            m_lastEndReason = TransferEndReason::Failed;
+            return false;
+        }
+        enqueueUploadPath(localPath, joinRemotePath(remoteDir, info.fileName()), mode);
+    }
+    return true;
+}
+
+bool FsRemote::beginAsyncUploadFileTo(const QString &localPath,
+                                      const QString &remotePath,
+                                      QString *error)
+{
+    const QFileInfo info(localPath);
+    if (!info.exists() || !info.isFile()) {
+        if (error) {
+            *error = trFs("Local file does not exist: %1").arg(localPath);
+        }
+        return false;
+    }
+    if (!startAsyncCommon(info.size(), error)) {
+        return false;
+    }
+    AsyncWorkItem item;
+    item.type = AsyncWorkItem::Type::UploadFile;
+    item.localPath = localPath;
+    item.remotePath = remotePath;
+    item.mode = TransferWriteMode::OverwriteFinal;
+    m_asyncWork.push_back(item);
+    return true;
+}
+
+bool FsRemote::beginAsyncDownloadPaths(const QStringList &remotePaths,
+                                       const QString &localDir,
+                                       QString *error,
+                                       bool followSymlinks)
+{
+    if (!startAsyncCommon(0, error)) {
+        return false;
+    }
+
+    // Compute total under brief blocking for size estimate.
+    qint64 total = 0;
+    const bool sized = withBlockingSession([&]() -> bool {
+        total = computeRemoteBytes(remotePaths);
+        return true;
+    });
+    if (!sized) {
+        abortAsyncTransfer();
+        endTransfer();
+        return false;
+    }
+    m_progressBytesTotal = total;
+
+    QDir local(localDir);
+    if (!local.exists() && !local.mkpath(QStringLiteral("."))) {
+        abortAsyncTransfer();
+        endTransfer();
+        if (error) {
+            *error = trFs("Cannot create local directory: %1").arg(localDir);
+        }
+        m_lastEndReason = TransferEndReason::Failed;
+        return false;
+    }
+
+    const TransferWriteMode mode = TransferWriteMode::FreshFilepart;
+    const bool planned = withBlockingSession([&]() -> bool {
+        for (const QString &remotePath : remotePaths) {
+            RemoteEntry entry;
+            if (!m_engine->statEntry(remotePath, &entry, false, error)) {
+                return false;
+            }
+            const QString name = QFileInfo(remotePath).fileName();
+            if (!enqueueDownloadEntry(entry, local.filePath(name), mode, followSymlinks, error)) {
+                return false;
+            }
+        }
+        return true;
+    });
+    if (!planned) {
+        abortAsyncTransfer();
+        endTransfer();
+        m_lastEndReason = TransferEndReason::Failed;
+        return false;
+    }
+    return true;
+}
+
+bool FsRemote::beginAsyncResumeInterrupted(QString *error)
+{
+    if (m_backend != FsBackend::Sftp) {
+        if (error) {
+            *error = trFs("Resume requires SFTP");
+        }
+        return false;
+    }
+    auto job = TransferJobStore::loadLatest(m_connectionId);
+    if (!job) {
+        if (error) {
+            *error = trFs("No interrupted transfer to resume");
+        }
+        return false;
+    }
+    if (!startAsyncCommon(job->bytesTotal, error)) {
+        return false;
+    }
+    seedProgressBytes(job->bytesDone);
+
+    AsyncWorkItem item;
+    item.mode = TransferWriteMode::ResumeFilepart;
+    if (job->direction == TransferDirection::Upload) {
+        item.type = AsyncWorkItem::Type::UploadFile;
+        item.localPath = job->localPath;
+        item.remotePath = job->remoteFinalPath;
+    } else {
+        item.type = AsyncWorkItem::Type::DownloadFile;
+        item.localPath = job->localPath;
+        item.remotePath = job->remoteFinalPath;
+    }
+    m_asyncWork.push_back(item);
+    return true;
+}
+
+bool FsRemote::prepareAsyncUploadJob(const QString &localPath,
+                                     const QString &remoteFinalPath,
+                                     TransferWriteMode mode,
+                                     QString *error)
+{
+    const QFileInfo info(localPath);
+    TransferJob job;
+    job.connectionId = m_connectionId;
+    job.direction = TransferDirection::Upload;
+    job.localPath = localPath;
+    job.remoteFinalPath = remoteFinalPath;
+    job.filepartPath = transferFilepartPathForFinal(remoteFinalPath);
+    job.bytesTotal = info.size();
+    job.sourceSize = info.size();
+    job.sourceMtimeUtcMs = info.lastModified().toUTC().toMSecsSinceEpoch();
+    job.backend = m_backend;
+
+    const TransferJob *resumePtr = nullptr;
+    TransferJob resumeJob;
+    if (mode == TransferWriteMode::ResumeFilepart) {
+        auto loaded = TransferJobStore::loadForPaths(
+            m_connectionId, TransferDirection::Upload, localPath, remoteFinalPath);
+        if (!loaded) {
+            if (error) {
+                *error = trFs("No resumable upload job found");
+            }
+            return false;
+        }
+        resumeJob = *loaded;
+        resumePtr = &resumeJob;
+        job = resumeJob;
+        seedProgressBytes(job.bytesDone);
+    }
+
+    m_activeJob = job;
+    m_asyncFileMode = mode;
+    const TransferOptions opts = optionsForMode(mode, resumePtr);
+
+    if (m_backend == FsBackend::Scp) {
+        // SCP has no filepart/resume; write the final remote path directly.
+        TransferOptions scpOpts = opts;
+        scpOpts.mode = TransferWriteMode::OverwriteFinal;
+        m_scpChunk = std::make_unique<ScpChunkTransfer>();
+        const bool started = withBlockingSession([&]() {
+            return m_scpChunk->startUpload(
+                scpEngine(), m_sshSession, localPath, remoteFinalPath, scpOpts, error);
+        });
+        if (!started) {
+            m_scpChunk.reset();
+            m_activeJob.reset();
+            return false;
+        }
+        return true;
+    }
+
+    m_aio = std::make_unique<SftpAioTransfer>();
+    const bool started = withBlockingSession([&]() {
+        return m_aio->startUpload(sftpEngine(), localPath, remoteFinalPath, opts, error);
+    });
+    if (!started) {
+        m_aio.reset();
+        m_activeJob.reset();
+        return false;
+    }
+    return true;
+}
+
+bool FsRemote::prepareAsyncDownloadJob(const QString &remoteFinalPath,
+                                       const QString &localFinalPath,
+                                       TransferWriteMode mode,
+                                       QString *error)
+{
+    qint64 remoteSize = 0;
+    if (!withBlockingSession(
+            [&]() { return m_engine->remoteFileSize(remoteFinalPath, &remoteSize, error); })) {
+        return false;
+    }
+
+    TransferJob job;
+    job.connectionId = m_connectionId;
+    job.direction = TransferDirection::Download;
+    job.localPath = localFinalPath;
+    job.remoteFinalPath = remoteFinalPath;
+    job.filepartPath = transferFilepartPathForFinal(localFinalPath);
+    job.bytesTotal = remoteSize;
+    job.sourceSize = remoteSize;
+    job.backend = m_backend;
+
+    const TransferJob *resumePtr = nullptr;
+    TransferJob resumeJob;
+    if (mode == TransferWriteMode::ResumeFilepart) {
+        auto loaded = TransferJobStore::loadForPaths(
+            m_connectionId, TransferDirection::Download, localFinalPath, remoteFinalPath);
+        if (!loaded) {
+            if (error) {
+                *error = trFs("No resumable download job found");
+            }
+            return false;
+        }
+        resumeJob = *loaded;
+        resumePtr = &resumeJob;
+        job = resumeJob;
+        seedProgressBytes(job.bytesDone);
+    }
+
+    m_activeJob = job;
+    m_asyncFileMode = mode;
+    const TransferOptions opts = optionsForMode(mode, resumePtr);
+
+    if (m_backend == FsBackend::Scp) {
+        TransferOptions scpOpts = opts;
+        scpOpts.mode = TransferWriteMode::OverwriteFinal;
+        m_scpChunk = std::make_unique<ScpChunkTransfer>();
+        const bool started = withBlockingSession([&]() {
+            return m_scpChunk->startDownload(
+                scpEngine(), m_sshSession, remoteFinalPath, localFinalPath, scpOpts, error);
+        });
+        if (!started) {
+            m_scpChunk.reset();
+            m_activeJob.reset();
+            return false;
+        }
+        return true;
+    }
+
+    m_aio = std::make_unique<SftpAioTransfer>();
+    const bool started = withBlockingSession([&]() {
+        return m_aio->startDownload(sftpEngine(), remoteFinalPath, localFinalPath, opts, error);
+    });
+    if (!started) {
+        m_aio.reset();
+        m_activeJob.reset();
+        return false;
+    }
+    return true;
+}
+
+bool FsRemote::finishAsyncFileFailure(QString *error)
+{
+    const qint64 partialBytes =
+        m_aio ? m_aio->partialBytes() : (m_scpChunk ? m_scpChunk->partialBytes() : 0);
+    const QString partialHash = m_aio ? m_aio->partialSha256PrefixHex() : QString();
+    if (m_aio) {
+        m_aio->abort();
+        m_aio.reset();
+    }
+    if (m_scpChunk) {
+        m_scpChunk->abort();
+        m_scpChunk.reset();
+    }
+
+    const bool hashFail =
+        error && error->contains(QLatin1String("hash mismatch"), Qt::CaseInsensitive);
+    if (hashFail) {
+        m_lastEndReason = TransferEndReason::HashMismatch;
+        m_lastEndMessage = error ? *error : QString();
+        m_activeJob.reset();
+        return false;
+    }
+
+    if (m_activeJob && m_asyncFileMode != TransferWriteMode::OverwriteFinal && partialBytes > 0 &&
+        !partialHash.isEmpty()) {
+        TransferJob job = *m_activeJob;
+        job.bytesDone = partialBytes;
+        job.sha256PrefixHex = partialHash;
+        if (m_transferCancel.load(std::memory_order_relaxed)) {
+            m_lastEndReason = TransferEndReason::Canceled;
+        } else if (m_transferInterrupt.load(std::memory_order_relaxed)) {
+            m_lastEndReason = m_interruptReason;
+            m_lastEndMessage = m_interruptMessage;
+        } else if (m_stallTimeoutSec > 0 &&
+                   (QDateTime::currentMSecsSinceEpoch() - m_progressLastActivityMs) >=
+                       static_cast<qint64>(m_stallTimeoutSec) * 1000) {
+            m_lastEndReason = TransferEndReason::StallTimeout;
+            m_lastEndMessage = error ? *error : QString();
+        } else if (m_lastEndReason == TransferEndReason::Completed) {
+            m_lastEndReason = TransferEndReason::Interrupted;
+        }
+        job.lastReason = m_lastEndReason;
+        job.lastMessage = error ? *error : QString();
+        persistInterruptedJob(job);
+    } else if (m_lastEndReason == TransferEndReason::Completed) {
+        if (m_transferCancel.load(std::memory_order_relaxed)) {
+            m_lastEndReason = TransferEndReason::Canceled;
+        } else if (m_transferInterrupt.load(std::memory_order_relaxed)) {
+            m_lastEndReason = m_interruptReason;
+            m_lastEndMessage = m_interruptMessage;
+        } else {
+            m_lastEndReason = TransferEndReason::Failed;
+            m_lastEndMessage = error ? *error : QString();
+        }
+    }
+    m_activeJob.reset();
+    return false;
+}
+
+FsRemote::TickResult FsRemote::tickAsyncAio(QString *error)
+{
+    const bool useScp = m_scpChunk && m_scpChunk->isActive();
+    const bool useSftp = m_aio && m_aio->isActive();
+    if (!useScp && !useSftp) {
+        return TickResult::Failed;
+    }
+
+    const auto shouldCancel = [this](QString *err) {
+        if (!transferShouldStop(err)) {
+            return false;
+        }
+        if (m_transferCancel.load(std::memory_order_relaxed)) {
+            m_lastEndReason = TransferEndReason::Canceled;
+        } else if (m_stallTimeoutSec > 0 &&
+                   (QDateTime::currentMSecsSinceEpoch() - m_progressLastActivityMs) >=
+                       static_cast<qint64>(m_stallTimeoutSec) * 1000) {
+            m_lastEndReason = TransferEndReason::StallTimeout;
+            m_lastEndMessage = err ? *err : QString();
+        } else {
+            m_lastEndReason = m_interruptReason;
+            m_lastEndMessage = m_interruptMessage;
+        }
+        return true;
+    };
+    const auto onProgress = [this](qint64 delta, const QString &name) {
+        noteTransferProgress(delta, name);
+    };
+
+    if (useScp) {
+        ScpChunkTransfer::TickResult r = ScpChunkTransfer::TickResult::Failed;
+        withBlockingSession([&]() {
+            r = m_scpChunk->tick(shouldCancel, onProgress, error);
+            return true;
+        });
+        if (r == ScpChunkTransfer::TickResult::Again) {
+            return TickResult::Running;
+        }
+        if (r == ScpChunkTransfer::TickResult::Done) {
+            if (m_activeJob) {
+                TransferJobStore::removeJob(*m_activeJob);
+            }
+            m_activeJob.reset();
+            m_scpChunk.reset();
+            return TickResult::Running;
+        }
+        finishAsyncFileFailure(error);
+        abortAsyncTransfer();
+        endTransfer();
+        return TickResult::Failed;
+    }
+
+    // Sync sftp_read/write need a blocking session; keep each tick short (few chunks).
+    SftpAioTransfer::TickResult r = SftpAioTransfer::TickResult::Failed;
+    withBlockingSession([&]() {
+        r = m_aio->tick(shouldCancel, onProgress, error);
+        return true;
+    });
+    if (r == SftpAioTransfer::TickResult::Again) {
+        return TickResult::Running;
+    }
+    if (r == SftpAioTransfer::TickResult::Done) {
+        if (m_activeJob) {
+            TransferJobStore::removeJob(*m_activeJob);
+            if (m_activeJob->direction == TransferDirection::Download) {
+                QFile::remove(transferMetaPathForFilepart(m_activeJob->filepartPath));
+            }
+        }
+        m_activeJob.reset();
+        m_aio.reset();
+        return TickResult::Running; // continue work queue
+    }
+
+    finishAsyncFileFailure(error);
+    abortAsyncTransfer();
+    endTransfer();
+    return TickResult::Failed;
+}
+
+FsRemote::TickResult FsRemote::tickAsyncWorkItem(QString *error)
+{
+    if (m_asyncWork.empty()) {
+        m_asyncActive = false;
+        endTransfer();
+        m_lastEndReason = TransferEndReason::Completed;
+        return TickResult::Done;
+    }
+
+    if (transferShouldStop(error)) {
+        if (m_transferCancel.load(std::memory_order_relaxed)) {
+            m_lastEndReason = TransferEndReason::Canceled;
+        } else if (m_transferInterrupt.load(std::memory_order_relaxed)) {
+            m_lastEndReason = m_interruptReason;
+            m_lastEndMessage = m_interruptMessage;
+        } else {
+            m_lastEndReason = TransferEndReason::StallTimeout;
+            m_lastEndMessage = error ? *error : QString();
+        }
+        abortAsyncTransfer();
+        endTransfer();
+        return TickResult::Failed;
+    }
+
+    AsyncWorkItem item = m_asyncWork.front();
+    m_asyncWork.pop_front();
+
+    switch (item.type) {
+    case AsyncWorkItem::Type::RemoteMkdir: {
+        const bool ok = withBlockingSession([&]() {
+            QString createError;
+            if (m_engine->createDirectory(item.remotePath, &createError)) {
+                return true;
+            }
+            bool existsAsDir = false;
+            QString statError;
+            if (m_engine->isRemoteDirectory(item.remotePath, &existsAsDir, &statError) &&
+                existsAsDir) {
+                return true;
+            }
+            if (error) {
+                *error = createError.isEmpty()
+                             ? trFs("Cannot create remote folder: %1").arg(statError)
+                             : createError;
+            }
+            return false;
+        });
+        if (!ok) {
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        return TickResult::Running;
+    }
+    case AsyncWorkItem::Type::LocalMkdir: {
+        if (!QDir().mkpath(item.localPath) && !QDir(item.localPath).exists()) {
+            if (error) {
+                *error = (errno == ENOSPC)
+                             ? trFs("Disk full")
+                             : trFs("Cannot create local folder: %1").arg(item.localPath);
+            }
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        return TickResult::Running;
+    }
+    case AsyncWorkItem::Type::RemoteSymlink: {
+        const bool ok = withBlockingSession(
+            [&]() { return m_engine->createSymlink(item.symlinkTarget, item.remotePath, error); });
+        if (!ok) {
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        return TickResult::Running;
+    }
+    case AsyncWorkItem::Type::LocalSymlink: {
+        QString target = item.symlinkTarget;
+        if (target.isEmpty()) {
+            const bool ok = withBlockingSession(
+                [&]() { return m_engine->readSymlink(item.remotePath, target, error); });
+            if (!ok || target.isEmpty()) {
+                if (error && error->isEmpty()) {
+                    *error = trFs("Cannot read remote symlink: %1").arg(item.remotePath);
+                }
+                m_lastEndReason = TransferEndReason::Failed;
+                abortAsyncTransfer();
+                endTransfer();
+                return TickResult::Failed;
+            }
+        }
+        if (!Symlink::create({.linkPath = item.localPath, .target = target}, error)) {
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        return TickResult::Running;
+    }
+    case AsyncWorkItem::Type::UploadDir: {
+        AsyncWorkItem mkdir;
+        mkdir.type = AsyncWorkItem::Type::RemoteMkdir;
+        mkdir.remotePath = item.remotePath;
+        m_asyncWork.push_front(mkdir);
+
+        const QDir dir(item.localPath);
+        const auto children =
+            dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::System | QDir::NoDotAndDotDot);
+        // Push in reverse so first child is processed first after mkdir.
+        for (auto it = children.rbegin(); it != children.rend(); ++it) {
+            AsyncWorkItem child;
+            child.localPath = it->absoluteFilePath();
+            child.remotePath = joinRemotePath(item.remotePath, it->fileName());
+            child.mode = item.mode;
+            if (it->isSymLink()) {
+                child.type = AsyncWorkItem::Type::RemoteSymlink;
+                QString target;
+                QString unused;
+                if (Symlink::read(child.localPath, target, &unused)) {
+                    child.symlinkTarget = target;
+                }
+            } else if (it->isDir()) {
+                child.type = AsyncWorkItem::Type::UploadDir;
+            } else {
+                child.type = AsyncWorkItem::Type::UploadFile;
+            }
+            m_asyncWork.insert(std::next(m_asyncWork.begin()), child);
+        }
+        return TickResult::Running;
+    }
+    case AsyncWorkItem::Type::DownloadDir: {
+        if (!QDir().mkpath(item.localPath) && !QDir(item.localPath).exists()) {
+            if (error) {
+                *error = (errno == ENOSPC)
+                             ? trFs("Disk full")
+                             : trFs("Cannot create local folder: %1").arg(item.localPath);
+            }
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+
+        QVector<RemoteEntry> children;
+        const bool listed = withBlockingSession(
+            [&]() { return m_engine->listDirectoryEntries(item.remotePath, &children, error); });
+        if (!listed) {
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+
+        for (auto it = children.rbegin(); it != children.rend(); ++it) {
+            if (isTransferFilepartName(it->name)) {
+                continue;
+            }
+            AsyncWorkItem child;
+            child.localPath = QDir(item.localPath).filePath(it->name);
+            child.remotePath = it->path;
+            child.mode = item.mode;
+            child.followSymlinks = item.followSymlinks;
+            child.linkIsDir = it->linkIsDir;
+            child.symlinkTarget = it->linkTarget;
+            if (it->isSymlink) {
+                child.type = item.followSymlinks ? AsyncWorkItem::Type::DownloadFile
+                                                 : AsyncWorkItem::Type::LocalSymlink;
+            } else if (it->isDir) {
+                child.type = AsyncWorkItem::Type::DownloadDir;
+            } else {
+                child.type = AsyncWorkItem::Type::DownloadFile;
+            }
+            m_asyncWork.push_front(child);
+        }
+        return TickResult::Running;
+    }
+    case AsyncWorkItem::Type::UploadFile: {
+        if (item.followSymlinks && item.linkIsDir) {
+            if (error) {
+                *error = trFs("Cannot follow directory symlink as a file: %1").arg(item.remotePath);
+            }
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        if (!prepareAsyncUploadJob(item.localPath, item.remotePath, item.mode, error)) {
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        noteTransferProgress(0, QFileInfo(item.localPath).fileName());
+        return TickResult::Running;
+    }
+    case AsyncWorkItem::Type::DownloadFile: {
+        if (item.followSymlinks && item.linkIsDir) {
+            if (error) {
+                *error = trFs("Cannot follow directory symlink as a file: %1").arg(item.remotePath);
+            }
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        if (!prepareAsyncDownloadJob(item.remotePath, item.localPath, item.mode, error)) {
+            m_lastEndReason = TransferEndReason::Failed;
+            abortAsyncTransfer();
+            endTransfer();
+            return TickResult::Failed;
+        }
+        noteTransferProgress(0, QFileInfo(item.remotePath).fileName());
+        return TickResult::Running;
+    }
+    }
+
+    return TickResult::Running;
+}
+
+FsRemote::TickResult FsRemote::tickAsync(QString *error)
+{
+    if (!m_asyncActive) {
+        return TickResult::Idle;
+    }
+    if ((m_aio && m_aio->isActive()) || (m_scpChunk && m_scpChunk->isActive())) {
+        return tickAsyncAio(error);
+    }
+    return tickAsyncWorkItem(error);
 }

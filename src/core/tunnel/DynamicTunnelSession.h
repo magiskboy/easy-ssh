@@ -14,6 +14,7 @@
 
 class QTcpServer;
 class QTcpSocket;
+class SshIoLoop;
 
 class DynamicTunnelSession final : public ITunnelSession
 {
@@ -22,6 +23,7 @@ class DynamicTunnelSession final : public ITunnelSession
 public:
     DynamicTunnelSession(const TunnelDefinition &def,
                          ssh_session session,
+                         SshIoLoop *loop,
                          QObject *parent = nullptr);
     ~DynamicTunnelSession() override;
 
@@ -30,7 +32,6 @@ public:
 
     bool start() override;
     void stop(bool emitOff) override;
-    void poll() override;
 
 private slots:
     void onNewConnection();
@@ -56,6 +57,7 @@ private:
 
     TunnelDefinition m_def;
     ssh_session m_session = nullptr;
+    SshIoLoop *m_loop = nullptr;
     QTcpServer *m_server = nullptr;
     QList<TunnelBridge *> m_bridges;
     QList<PendingClient *> m_pending;

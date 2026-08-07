@@ -7,6 +7,7 @@
 #include "ShellCommandSet.h"
 
 #include <QCoreApplication>
+#include <QScopeGuard>
 #include <QThread>
 
 namespace
@@ -41,7 +42,14 @@ QString ShellExecRunner::sessionError() const
 
 QString ShellExecRunner::buildExecCommand(const QString &command) const
 {
-    const QString shell = m_shellPath.trimmed();
+    return wrapCommand(m_shellPath, command);
+}
+
+QString ShellExecRunner::wrapCommand(
+    const QString &shellPath, // NOLINT(bugprone-easily-swappable-parameters)
+    const QString &command)   // NOLINT(bugprone-easily-swappable-parameters)
+{
+    const QString shell = shellPath.trimmed();
     if (shell.isEmpty()) {
         return command;
     }
@@ -58,10 +66,33 @@ QString ShellExecRunner::stderrText(const Result &result)
     return QString::fromUtf8(result.stderrBytes);
 }
 
-void ShellExecRunner::pump() const
+bool ShellExecRunner::waitChannelOk(const std::function<int()> &op,
+                                    Result *result,
+                                    QString *error,
+                                    const char *failPrefix)
 {
-    if (m_pump) {
-        m_pump();
+    int spins = 0;
+    for (;;) {
+        const int rc = op();
+        if (rc == SSH_OK) {
+            return true;
+        }
+        if (rc == SSH_AGAIN) {
+            if (++spins > 2000) {
+                result->errorMessage = trExec("%1: timed out").arg(QString::fromUtf8(failPrefix));
+                if (error) {
+                    *error = result->errorMessage;
+                }
+                return false;
+            }
+            QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
+            continue;
+        }
+        result->errorMessage = trExec("%1: %2").arg(QString::fromUtf8(failPrefix), sessionError());
+        if (error) {
+            *error = result->errorMessage;
+        }
+        return false;
     }
 }
 
@@ -78,6 +109,17 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         }
         return false;
     }
+
+    // Sync exec assumes a blocking session. IoLoop keeps the session
+    // non-blocking — temporarily restore blocking for this one-shot channel
+    // (connect-time SCP probe / open only).
+    const int wasBlocking = ssh_is_blocking(m_session);
+    ssh_set_blocking(m_session, 1);
+    auto restoreBlocking = qScopeGuard([this, wasBlocking]() {
+        if (m_session != nullptr) {
+            ssh_set_blocking(m_session, wasBlocking);
+        }
+    });
 
     ssh_channel channel = ssh_channel_new(m_session);
     if (channel == nullptr) {
@@ -99,21 +141,19 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         }
     };
 
-    if (ssh_channel_open_session(channel) != SSH_OK) {
-        result->errorMessage = trExec("Failed to open channel: %1").arg(sessionError());
-        if (error) {
-            *error = result->errorMessage;
-        }
+    if (!waitChannelOk([&]() { return ssh_channel_open_session(channel); },
+                       result,
+                       error,
+                       "Failed to open channel")) {
         cleanup();
         return false;
     }
 
     const QByteArray execCmd = buildExecCommand(command).toUtf8();
-    if (ssh_channel_request_exec(channel, execCmd.constData()) != SSH_OK) {
-        result->errorMessage = trExec("Failed to execute remote command: %1").arg(sessionError());
-        if (error) {
-            *error = result->errorMessage;
-        }
+    if (!waitChannelOk([&]() { return ssh_channel_request_exec(channel, execCmd.constData()); },
+                       result,
+                       error,
+                       "Failed to execute remote command")) {
         cleanup();
         return false;
     }
@@ -125,7 +165,6 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         const int nout = ssh_channel_read_timeout(channel, buffer, sizeof(buffer), 0, kPollSleepMs);
         if (nout > 0) {
             result->stdoutBytes.append(buffer, nout);
-            pump();
             continue;
         }
         if (nout == SSH_ERROR) {
@@ -140,7 +179,6 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         const int nerr = ssh_channel_read_timeout(channel, buffer, sizeof(buffer), 1, kPollSleepMs);
         if (nerr > 0) {
             result->stderrBytes.append(buffer, nerr);
-            pump();
             continue;
         }
         if (nerr == SSH_ERROR) {
@@ -156,11 +194,7 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
             eof = true;
             break;
         }
-        // Keep sibling channels (shell PTY, tunnels) alive while this exec waits.
-        pump();
-        if (!m_pump) {
-            QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
-        }
+        QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
         waitedMs += kPollSleepMs;
     }
 

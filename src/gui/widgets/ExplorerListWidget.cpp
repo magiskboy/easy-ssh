@@ -17,9 +17,9 @@
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
+#include <QSizePolicy>
 #include <QStackedLayout>
 #include <QTableView>
-#include <QToolButton>
 #include <QVBoxLayout>
 
 ExplorerListWidget::ExplorerListWidget(QWidget *parent) : QWidget(parent)
@@ -32,7 +32,9 @@ ExplorerListWidget::ExplorerListWidget(QWidget *parent) : QWidget(parent)
     root->setSpacing(UiMetrics::relatedSpacing);
 
     auto *toolbar = new QWidget(this);
+    m_toolbar = toolbar;
     auto *toolbarLayout = new QHBoxLayout(toolbar);
+    m_toolbarLayout = toolbarLayout;
     toolbarLayout->setContentsMargins(0, 0, 0, 0);
     toolbarLayout->setSpacing(UiMetrics::tightSpacing);
 
@@ -40,21 +42,7 @@ ExplorerListWidget::ExplorerListWidget(QWidget *parent) : QWidget(parent)
     m_searchEdit->setPlaceholderText(tr("Search…"));
     m_searchEdit->setClearButtonEnabled(true);
     toolbarLayout->addWidget(m_searchEdit, 1);
-
-    m_refreshButton = new QToolButton(toolbar);
-    m_refreshButton->setText(tr("Refresh"));
-    m_refreshButton->setToolTip(tr("Refresh"));
-    m_refreshButton->setAutoRaise(true);
-    m_refreshButton->setVisible(false);
-    toolbarLayout->addWidget(m_refreshButton);
     root->addWidget(toolbar);
-
-    m_filterBarHost = new QWidget(this);
-    m_filterBarLayout = new QVBoxLayout(m_filterBarHost);
-    m_filterBarLayout->setContentsMargins(0, 0, 0, 0);
-    m_filterBarLayout->setSpacing(0);
-    m_filterBarHost->setVisible(false);
-    root->addWidget(m_filterBarHost);
 
     auto *stackHost = new QWidget(this);
     m_stack = new QStackedLayout(stackHost);
@@ -93,7 +81,6 @@ ExplorerListWidget::ExplorerListWidget(QWidget *parent) : QWidget(parent)
     root->addWidget(stackHost, 1);
 
     connect(m_searchEdit, &QLineEdit::textChanged, this, &ExplorerListWidget::onSearchTextChanged);
-    connect(m_refreshButton, &QToolButton::clicked, this, &ExplorerListWidget::refresh);
     connect(m_table, &QTableView::activated, this, &ExplorerListWidget::onActivated);
     connect(m_table, &QTableView::clicked, this, [this](const QModelIndex &index) {
         if (m_activateOnSingleClick) {
@@ -152,18 +139,16 @@ void ExplorerListWidget::setFilterBar(QWidget *bar)
     }
 
     if (m_filterBar) {
-        m_filterBarLayout->removeWidget(m_filterBar);
+        m_toolbarLayout->removeWidget(m_filterBar);
         m_filterBar->deleteLater();
         m_filterBar = nullptr;
     }
 
     m_filterBar = bar;
-    if (m_filterBar) {
-        m_filterBar->setParent(m_filterBarHost);
-        m_filterBarLayout->addWidget(m_filterBar);
-        m_filterBarHost->setVisible(true);
-    } else {
-        m_filterBarHost->setVisible(false);
+    if (m_filterBar && m_toolbarLayout) {
+        m_filterBar->setParent(m_toolbar);
+        m_filterBar->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+        m_toolbarLayout->addWidget(m_filterBar, 0);
     }
 }
 
@@ -181,11 +166,6 @@ void ExplorerListWidget::setColumns(const QList<ExplorerColumn> &cols)
 {
     m_columns = cols;
     applyColumns();
-}
-
-void ExplorerListWidget::setRefreshVisible(bool visible)
-{
-    m_refreshButton->setVisible(visible);
 }
 
 void ExplorerListWidget::setActivateOnSingleClick(bool enabled)
@@ -208,11 +188,6 @@ void ExplorerListWidget::showLoading(const QString &message)
 void ExplorerListWidget::showList()
 {
     m_stack->setCurrentWidget(m_listHost);
-}
-
-void ExplorerListWidget::refresh()
-{
-    emit refreshRequested();
 }
 
 QModelIndex ExplorerListWidget::currentSourceIndex() const

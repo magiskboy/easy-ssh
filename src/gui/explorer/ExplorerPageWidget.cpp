@@ -13,6 +13,8 @@
 #include "gui/widgets/ExplorerListWidget.h"
 
 #include <QAbstractItemModel>
+#include <QHideEvent>
+#include <QShowEvent>
 #include <QVBoxLayout>
 
 ExplorerPageWidget::ExplorerPageWidget(QWidget *parent) : QWidget(parent)
@@ -22,13 +24,7 @@ ExplorerPageWidget::ExplorerPageWidget(QWidget *parent) : QWidget(parent)
     root->setSpacing(0);
 
     m_list = new ExplorerListWidget(this);
-    m_list->setRefreshVisible(true);
     root->addWidget(m_list, 1);
-
-    connect(m_list,
-            &ExplorerListWidget::refreshRequested,
-            this,
-            &ExplorerPageWidget::onRefreshRequested);
 }
 
 ExplorerPageWidget::~ExplorerPageWidget()
@@ -75,7 +71,10 @@ void ExplorerPageWidget::bind(std::unique_ptr<IExplorerModule> module, Session *
         m_model, &QAbstractItemModel::modelReset, this, &ExplorerPageWidget::onCapabilityChanged);
 
     applyCapabilityUi();
-    m_source->start();
+    // Only poll while the dock/page is visible — avoid remote spam when tabbed away.
+    if (isVisible()) {
+        m_source->start();
+    }
 }
 
 void ExplorerPageWidget::unbind()
@@ -110,10 +109,19 @@ void ExplorerPageWidget::onFailed(const QString &error)
     }
 }
 
-void ExplorerPageWidget::onRefreshRequested()
+void ExplorerPageWidget::showEvent(QShowEvent *event)
 {
+    QWidget::showEvent(event);
     if (m_source) {
-        m_source->refresh();
+        m_source->start();
+    }
+}
+
+void ExplorerPageWidget::hideEvent(QHideEvent *event)
+{
+    QWidget::hideEvent(event);
+    if (m_source) {
+        m_source->stop();
     }
 }
 
@@ -125,9 +133,14 @@ void ExplorerPageWidget::applyCapabilityUi()
 
     switch (m_source->capability()) {
     case ExplorerCapability::Checking:
-        m_list->showLoading(m_source->capabilityMessage().isEmpty()
-                                ? tr("Checking…")
-                                : m_source->capabilityMessage());
+        // Keep last rows visible while a background refresh runs after tab switch.
+        if (m_model && m_model->rowCount() > 0) {
+            m_list->showList();
+        } else {
+            m_list->showLoading(m_source->capabilityMessage().isEmpty()
+                                    ? tr("Checking…")
+                                    : m_source->capabilityMessage());
+        }
         break;
     case ExplorerCapability::Unavailable:
     case ExplorerCapability::PermissionDenied:

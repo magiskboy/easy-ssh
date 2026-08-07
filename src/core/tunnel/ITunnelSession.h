@@ -14,9 +14,11 @@
 
 #include <libssh/libssh.h>
 
+class SshIoLoop;
+
 /**
  * Per-active-tunnel interface (parallel to FsEngine).
- * Concrete: LocalTunnelSession, RemoteTunnelSession; Dynamic — not implement yet.
+ * Concrete: LocalTunnelSession, RemoteTunnelSession, DynamicTunnelSession.
  */
 class ITunnelSession : public QObject
 {
@@ -33,14 +35,13 @@ public:
     virtual bool start() = 0;
     virtual void stop(bool emitOff) = 0;
 
-    /// Poll bridges (and any per-session work). Remote accept is coordinated by the worker.
-    virtual void poll() = 0;
-
 signals:
     void statusChanged(const QUuid &tunnelId, const QString &status, const QString &detail);
     void errorOccurred(const QUuid &tunnelId, const QString &message);
 };
 
-/// Create Local/Remote/Dynamic session (parented).
-ITunnelSession *
-createTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *parent);
+/// Create Local/Remote/Dynamic session (parented). @p loop registers channel bridges.
+ITunnelSession *createTunnelSession(const TunnelDefinition &def,
+                                    ssh_session session,
+                                    SshIoLoop *loop,
+                                    QObject *parent);

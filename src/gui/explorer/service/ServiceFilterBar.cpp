@@ -16,11 +16,8 @@ ServiceFilterBar::ServiceFilterBar(ExplorerFilterProxy *proxy, QWidget *parent)
     : QWidget(parent), m_proxy(proxy)
 {
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(UiMetrics::relatedSpacing,
-                               UiMetrics::tightSpacing,
-                               UiMetrics::relatedSpacing,
-                               UiMetrics::tightSpacing);
-    layout->setSpacing(UiMetrics::relatedSpacing);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(UiMetrics::tightSpacing);
 
     layout->addWidget(new QLabel(tr("Active:"), this));
     m_activeCombo = new QComboBox(this);
@@ -46,8 +43,6 @@ ServiceFilterBar::ServiceFilterBar(ExplorerFilterProxy *proxy, QWidget *parent)
     m_enabledCombo->addItem(tr("transient"), QStringLiteral("transient"));
     m_enabledCombo->addItem(tr("alias"), QStringLiteral("alias"));
     layout->addWidget(m_enabledCombo);
-
-    layout->addStretch(1);
 
     connect(m_activeCombo, &QComboBox::currentIndexChanged, this, &ServiceFilterBar::applyFilters);
     connect(m_enabledCombo, &QComboBox::currentIndexChanged, this, &ServiceFilterBar::applyFilters);

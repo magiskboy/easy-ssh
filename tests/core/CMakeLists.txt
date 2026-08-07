@@ -67,3 +67,23 @@ add_easy_ssh_core_test(tst_TunnelDefinitionAndStore
 add_easy_ssh_core_test(tst_Socks5Handshake
     tunnel/tst_Socks5Handshake.cpp
 )
+
+add_easy_ssh_core_test(tst_SshIoLoop
+    ssh/tst_SshIoLoop.cpp
+)
+
+add_easy_ssh_core_test(tst_ShellIoHandler
+    ssh/tst_ShellIoHandler.cpp
+)
+
+add_easy_ssh_core_test(tst_ExecIoHandler
+    ssh/tst_ExecIoHandler.cpp
+)
+
+add_easy_ssh_core_test(tst_SftpIoHandler
+    ssh/tst_SftpIoHandler.cpp
+)
+
+add_easy_ssh_core_test(tst_ScpPhase5Helpers
+    fs/tst_ScpPhase5Helpers.cpp
+)

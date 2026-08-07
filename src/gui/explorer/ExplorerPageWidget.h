@@ -15,6 +15,8 @@ class ExplorerListWidget;
 class ExplorerTableModel;
 class IExplorerModule;
 class IExplorerSource;
+class QHideEvent;
+class QShowEvent;
 class Session;
 
 /// Wires an IExplorerModule into ExplorerListWidget for a Session.
@@ -33,10 +35,13 @@ public:
     ExplorerListWidget *listWidget() const { return m_list; }
     bool isBound() const { return m_module != nullptr && m_session != nullptr; }
 
+protected:
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
+
 private slots:
     void onCapabilityChanged();
     void onFailed(const QString &error);
-    void onRefreshRequested();
 
 private:
     void applyCapabilityUi();

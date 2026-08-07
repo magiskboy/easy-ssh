@@ -109,19 +109,29 @@ bool ShellDockHost::eventFilter(QObject *watched, QEvent *event)
         return true;
     }
 
-    const QUuid shellId = shellIdForDock(tab->dockWidget());
-    if (shellId.isNull()) {
-        return QWidget::eventFilter(watched, event);
-    }
-
     auto *ce = static_cast<QContextMenuEvent *>(event);
     QMenu menu(tab);
     tab->buildContextMenu(&menu);
-    menu.addSeparator();
-    menu.addAction(tr("Rename…"), this, [this, shellId]() { emit shellRenameRequested(shellId); });
-    menu.exec(ce->globalPos());
-    ce->accept();
-    return true;
+
+    const QUuid shellId = shellIdForDock(tab->dockWidget());
+    if (!shellId.isNull()) {
+        menu.addSeparator();
+        menu.addAction(
+            tr("Rename…"), this, [this, shellId]() { emit shellRenameRequested(shellId); });
+        menu.exec(ce->globalPos());
+        ce->accept();
+        return true;
+    }
+
+    const QString toolId = toolIdForDock(tab->dockWidget());
+    if (!toolId.isEmpty()) {
+        emit toolContextMenuAboutToShow(toolId, &menu);
+        menu.exec(ce->globalPos());
+        ce->accept();
+        return true;
+    }
+
+    return QWidget::eventFilter(watched, event);
 }
 
 bool ShellDockHost::unpinShell(const QUuid &shellId)
@@ -218,6 +228,9 @@ bool ShellDockHost::pinTool(const QString &toolId,
     }
 
     m_tools.insert(toolId, dock);
+    if (ads::CDockWidgetTab *tab = dock->tabWidget()) {
+        tab->installEventFilter(this);
+    }
     updateEmptyState();
     dock->setAsCurrentTab();
     widget->setFocus(Qt::OtherFocusReason);

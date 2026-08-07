@@ -4,12 +4,141 @@
 
 #include "TunnelBridge.h"
 
+#include "core/ssh/SshIoLoop.h"
+
 #include <QAbstractSocket>
 #include <QIODevice>
 #include <QLocalSocket>
+#include <QMetaObject>
+#include <QObject>
+#include <QPointer>
+
+namespace
+{
+class TunnelBridgeChannelSink final : public SshChannelCallbacks
+{
+public:
+    explicit TunnelBridgeChannelSink(TunnelBridge *bridge) : m_bridge(bridge) {}
+
+    int onData(ssh_session session,
+               ssh_channel channel,
+               void *data,
+               uint32_t len,          // NOLINT(bugprone-easily-swappable-parameters)
+               int isStderr) override // NOLINT(bugprone-easily-swappable-parameters)
+    {
+        Q_UNUSED(session);
+        Q_UNUSED(channel);
+        Q_UNUSED(isStderr);
+        if (m_bridge == nullptr || m_bridge->closing || data == nullptr || len == 0) {
+            return static_cast<int>(len);
+        }
+
+        if (m_bridge->socket == nullptr) {
+            scheduleClose();
+            return static_cast<int>(len);
+        }
+
+        const char *ptr = static_cast<const char *>(data);
+        int remaining = static_cast<int>(len);
+        while (remaining > 0) {
+            const qint64 written = m_bridge->socket->write(ptr, remaining);
+            if (written < 0) {
+                scheduleClose();
+                return static_cast<int>(len);
+            }
+            if (written == 0) {
+                m_bridge->pendingToSocket.append(ptr, remaining);
+                break;
+            }
+            ptr += written;
+            remaining -= static_cast<int>(written);
+        }
+        return static_cast<int>(len);
+    }
+
+    void onEof(ssh_session session, ssh_channel channel) override
+    {
+        Q_UNUSED(session);
+        Q_UNUSED(channel);
+        flushPending();
+        scheduleClose();
+    }
+
+    void onClose(ssh_session session, ssh_channel channel) override
+    {
+        Q_UNUSED(session);
+        Q_UNUSED(channel);
+        flushPending();
+        scheduleClose();
+    }
+
+private:
+    void flushPending()
+    {
+        if (m_bridge == nullptr || m_bridge->socket == nullptr ||
+            m_bridge->pendingToSocket.isEmpty()) {
+            return;
+        }
+        m_bridge->socket->write(m_bridge->pendingToSocket);
+        m_bridge->pendingToSocket.clear();
+        if (auto *abstract = qobject_cast<QAbstractSocket *>(m_bridge->socket)) {
+            if (abstract->bytesToWrite() > 0) {
+                abstract->flush();
+            }
+        } else if (auto *local = qobject_cast<QLocalSocket *>(m_bridge->socket)) {
+            if (local->bytesToWrite() > 0) {
+                local->flush();
+            }
+        }
+    }
+
+    void scheduleClose()
+    {
+        if (m_bridge == nullptr || m_bridge->closePending || m_bridge->closing) {
+            return;
+        }
+        m_bridge->closePending = true;
+        if (m_bridge->owner == nullptr || !m_bridge->requestClose) {
+            return;
+        }
+        // Defer: must not free channel/bridge during libssh callback.
+        QPointer<QObject> owner = m_bridge->owner;
+        auto closeFn = m_bridge->requestClose;
+        QMetaObject::invokeMethod(
+            m_bridge->owner,
+            [owner, closeFn]() {
+                if (owner.isNull() || !closeFn) {
+                    return;
+                }
+                closeFn();
+            },
+            Qt::QueuedConnection);
+    }
+
+    TunnelBridge *m_bridge = nullptr;
+};
+} // namespace
 
 namespace TunnelBridgeIo
 {
+bool attachToLoop(TunnelBridge *bridge, SshIoLoop *loop, QString *error)
+{
+    if (bridge == nullptr || loop == nullptr || bridge->channel == nullptr) {
+        if (error != nullptr) {
+            *error = QStringLiteral("TunnelBridge: missing loop or channel");
+        }
+        return false;
+    }
+
+    auto sink = std::make_unique<TunnelBridgeChannelSink>(bridge);
+    if (!loop->registerChannel(bridge->channel, sink.get(), error)) {
+        return false;
+    }
+    bridge->loop = loop;
+    bridge->channelSink = std::move(sink);
+    return true;
+}
+
 bool writeSocketToChannel(TunnelBridge *bridge, const QByteArray &data)
 {
     if (bridge == nullptr || bridge->closing || bridge->channel == nullptr || data.isEmpty()) {
@@ -36,62 +165,19 @@ bool writeSocketToChannel(TunnelBridge *bridge, const QByteArray &data)
     return true;
 }
 
-bool pollChannelToSocket(TunnelBridge *bridge)
-{
-    if (bridge == nullptr || bridge->closing || bridge->channel == nullptr ||
-        bridge->socket == nullptr) {
-        return false;
-    }
-
-    // Drain channel data before acting on EOF — unread buffered bytes would otherwise be lost.
-    char buffer[8192];
-    bool sawEof = false;
-    bool hardError = false;
-    while (true) {
-        const int nbytes = ssh_channel_read_nonblocking(bridge->channel, buffer, sizeof(buffer), 0);
-        if (nbytes == SSH_AGAIN || nbytes == 0) {
-            break;
-        }
-        if (nbytes == SSH_EOF) {
-            sawEof = true;
-            break;
-        }
-        if (nbytes < 0) {
-            hardError = true;
-            break;
-        }
-        const qint64 written = bridge->socket->write(buffer, nbytes);
-        if (written < 0) {
-            return true;
-        }
-    }
-
-    const bool channelDone = hardError || sawEof || !ssh_channel_is_open(bridge->channel) ||
-                             ssh_channel_is_eof(bridge->channel);
-    if (!channelDone) {
-        return false;
-    }
-
-    // Push any Qt-buffered response to the OS before the bridge is torn down.
-    if (auto *abstract = qobject_cast<QAbstractSocket *>(bridge->socket)) {
-        if (abstract->bytesToWrite() > 0) {
-            abstract->flush();
-        }
-    } else if (auto *local = qobject_cast<QLocalSocket *>(bridge->socket)) {
-        if (local->bytesToWrite() > 0) {
-            local->flush();
-        }
-    }
-
-    return true;
-}
-
 void closeBridge(TunnelBridge *bridge, QObject *socketSignalContext)
 {
     if (bridge == nullptr || bridge->closing) {
         return;
     }
     bridge->closing = true;
+
+    if (bridge->loop != nullptr && bridge->channel != nullptr) {
+        bridge->loop->unregisterChannel(bridge->channel);
+    }
+    bridge->channelSink.reset();
+    bridge->loop = nullptr;
+    bridge->requestClose = {};
 
     if (bridge->socket) {
         if (socketSignalContext) {

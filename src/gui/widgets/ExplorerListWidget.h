@@ -17,12 +17,11 @@
 
 class ExplorerFilterProxy;
 class QAbstractTableModel;
+class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QStackedLayout;
 class QTableView;
-class QToolButton;
-class QVBoxLayout;
 
 /// Reusable view-only multi-column explorer: search, sort, filter bar, detail dialog.
 class ExplorerListWidget final : public QWidget
@@ -40,7 +39,7 @@ public:
     void setFilterProxy(ExplorerFilterProxy *proxy);
     ExplorerFilterProxy *filterProxy() const { return m_proxy; }
 
-    /// Reparents @p bar into the filter-bar host. Pass nullptr to clear.
+    /// Reparents @p bar into the toolbar row (beside search). Pass nullptr to clear.
     void setFilterBar(QWidget *bar);
     QWidget *filterBar() const { return m_filterBar; }
 
@@ -49,22 +48,17 @@ public:
     void setSearchPlaceholder(const QString &text);
     void setColumns(const QList<ExplorerColumn> &cols);
 
-    void setRefreshVisible(bool visible);
     void setActivateOnSingleClick(bool enabled);
 
     void showEmptyState(const QString &message);
     void showLoading(const QString &message = {});
     void showList();
 
-    /// Emits refreshRequested() for the domain layer to reload data.
-    void refresh();
-
     QModelIndex currentSourceIndex() const;
     QTableView *tableView() const { return m_table; }
     QLineEdit *searchEdit() const { return m_searchEdit; }
 
 signals:
-    void refreshRequested();
     void currentSourceChanged(const QModelIndex &sourceIndex);
 
 private slots:
@@ -84,9 +78,8 @@ private:
     std::unique_ptr<IExplorerDetailFactory> m_detailFactory;
 
     QLineEdit *m_searchEdit = nullptr;
-    QToolButton *m_refreshButton = nullptr;
-    QWidget *m_filterBarHost = nullptr;
-    QVBoxLayout *m_filterBarLayout = nullptr;
+    QWidget *m_toolbar = nullptr;
+    QHBoxLayout *m_toolbarLayout = nullptr;
     QWidget *m_filterBar = nullptr;
     QTableView *m_table = nullptr;
     QLabel *m_emptyLabel = nullptr;

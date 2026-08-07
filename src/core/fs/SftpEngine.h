@@ -10,8 +10,11 @@
 
 #include <QCryptographicHash>
 #include <QFile>
+#include <QVector>
 
 #include <libssh/sftp.h>
+
+class SftpAioTransfer;
 
 /**
  * SFTP implementation of FsEngine. Migrated from the protocol layer of SftpClient.
@@ -19,6 +22,8 @@
 class SftpEngine final : public FsEngine
 {
 public:
+    friend class SftpAioTransfer;
+
     SftpEngine() = default;
     ~SftpEngine() override;
 
@@ -30,6 +35,7 @@ public:
     bool open(ssh_session session, QString *failureMessage = nullptr) override;
     void close() override;
     bool isOpen() const override { return m_sftp != nullptr; }
+    sftp_session handle() const { return m_sftp; }
 
     bool listDirectoryEntries(const QString &path,
                               QVector<RemoteEntry> *outEntries,
@@ -61,6 +67,31 @@ public:
                       QString *error,
                       qint64 *partialBytes = nullptr,
                       QString *partialSha256PrefixHex = nullptr) override;
+
+    /**
+     * Chunked directory listing for IoLoop (Phase 3). Caller runs brief blocking
+     * around open/readBatch/close; yields between batches.
+     */
+    class DirListSession
+    {
+    public:
+        DirListSession() = default;
+        ~DirListSession();
+        DirListSession(const DirListSession &) = delete;
+        DirListSession &operator=(const DirListSession &) = delete;
+
+        bool open(SftpEngine *engine, const QString &path, QString *error);
+        /// Append up to @p maxEntries (excluding . / ..). Sets *eof when finished.
+        bool readBatch(int maxEntries, QVector<RemoteEntry> *outEntries, bool *eof, QString *error);
+        void close();
+        bool isOpen() const { return m_dir != nullptr; }
+        QString path() const { return m_path; }
+
+    private:
+        SftpEngine *m_engine = nullptr;
+        sftp_dir m_dir = nullptr;
+        QString m_path;
+    };
 
 private:
     enum class EntryType : uint8_t

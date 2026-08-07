@@ -11,8 +11,9 @@
 
 DynamicTunnelSession::DynamicTunnelSession(const TunnelDefinition &def,
                                            ssh_session session,
+                                           SshIoLoop *loop,
                                            QObject *parent)
-    : ITunnelSession(parent), m_def(def), m_session(session)
+    : ITunnelSession(parent), m_def(def), m_session(session), m_loop(loop)
 {
 }
 
@@ -100,19 +101,6 @@ void DynamicTunnelSession::stop(bool emitOff)
 
     if (emitOff) {
         emit statusChanged(m_def.id, QStringLiteral("Off"), QString());
-    }
-}
-
-void DynamicTunnelSession::poll()
-{
-    QList<TunnelBridge *> toClose;
-    for (TunnelBridge *bridge : m_bridges) {
-        if (TunnelBridgeIo::pollChannelToSocket(bridge)) {
-            toClose.append(bridge);
-        }
-    }
-    for (TunnelBridge *bridge : toClose) {
-        closeBridge(bridge);
     }
 }
 
@@ -222,6 +210,7 @@ bool DynamicTunnelSession::openForwardBridge(QTcpSocket *socket,
                                  sourceHost.isEmpty() ? "127.0.0.1" : sourceHost.constData(),
                                  sourcePort > 0 ? sourcePort : 0);
     if (rc != SSH_OK) {
+        ssh_set_blocking(m_session, 0);
         ssh_channel_free(channel);
         const QString message = tr("Dynamic forward open failed for %1:%2: %3")
                                     .arg(destHost)
@@ -231,12 +220,29 @@ bool DynamicTunnelSession::openForwardBridge(QTcpSocket *socket,
         return false;
     }
 
+    // Restore non-blocking so SshIoLoop / shell callbacks keep working (Phase 2).
+    ssh_set_blocking(m_session, 0);
+
     Socks5Handshake::writeConnectReply(socket, true);
 
     auto *bridge = new TunnelBridge;
     bridge->tunnelId = m_def.id;
     bridge->channel = channel;
     bridge->socket = socket;
+    bridge->owner = this;
+    bridge->requestClose = [this, bridge]() { closeBridge(bridge); };
+    if (m_loop != nullptr) {
+        QString attachError;
+        if (!TunnelBridgeIo::attachToLoop(bridge, m_loop, &attachError)) {
+            delete bridge;
+            ssh_channel_close(channel);
+            ssh_channel_free(channel);
+            emit errorOccurred(m_def.id,
+                               attachError.isEmpty() ? tr("Failed to attach forward channel")
+                                                     : attachError);
+            return false;
+        }
+    }
     m_bridges.append(bridge);
 
     connect(socket, &QTcpSocket::readyRead, this, &DynamicTunnelSession::onBridgeSocketReadyRead);

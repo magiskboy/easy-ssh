@@ -13,8 +13,9 @@
 
 LocalTunnelSession::LocalTunnelSession(const TunnelDefinition &def,
                                        ssh_session session,
+                                       SshIoLoop *loop,
                                        QObject *parent)
-    : ITunnelSession(parent), m_def(def), m_session(session)
+    : ITunnelSession(parent), m_def(def), m_session(session), m_loop(loop)
 {
 }
 
@@ -139,19 +140,6 @@ void LocalTunnelSession::stop(bool emitOff)
     }
 }
 
-void LocalTunnelSession::poll()
-{
-    QList<TunnelBridge *> toClose;
-    for (TunnelBridge *bridge : m_bridges) {
-        if (TunnelBridgeIo::pollChannelToSocket(bridge)) {
-            toClose.append(bridge);
-        }
-    }
-    for (TunnelBridge *bridge : toClose) {
-        closeBridge(bridge);
-    }
-}
-
 void LocalTunnelSession::onNewTcpConnection()
 {
     if (m_tcpServer == nullptr) {
@@ -211,6 +199,7 @@ bool LocalTunnelSession::openForwardBridge(QIODevice *socket,
         const QByteArray path = m_def.remoteSocketPath.toUtf8();
         rc = ssh_channel_open_forward_unix(channel, path.constData(), originHost, originPort);
         if (rc != SSH_OK) {
+            ssh_set_blocking(m_session, 0);
             ssh_channel_free(channel);
             const QString message = tr("Unix socket forward open failed (server may not support "
                                        "direct-streamlocal): %1")
@@ -223,6 +212,7 @@ bool LocalTunnelSession::openForwardBridge(QIODevice *socket,
         rc = ssh_channel_open_forward(
             channel, remoteHost.constData(), m_def.remotePort, originHost, originPort);
         if (rc != SSH_OK) {
+            ssh_set_blocking(m_session, 0);
             ssh_channel_free(channel);
             const QString message = tr("Forward open failed: %1").arg(sessionError());
             emit errorOccurred(m_def.id, message);
@@ -230,10 +220,27 @@ bool LocalTunnelSession::openForwardBridge(QIODevice *socket,
         }
     }
 
+    // Restore non-blocking so SshIoLoop / shell callbacks keep working (Phase 2).
+    ssh_set_blocking(m_session, 0);
+
     auto *bridge = new TunnelBridge;
     bridge->tunnelId = m_def.id;
     bridge->channel = channel;
     bridge->socket = socket;
+    bridge->owner = this;
+    bridge->requestClose = [this, bridge]() { closeBridge(bridge); };
+    if (m_loop != nullptr) {
+        QString attachError;
+        if (!TunnelBridgeIo::attachToLoop(bridge, m_loop, &attachError)) {
+            delete bridge;
+            ssh_channel_close(channel);
+            ssh_channel_free(channel);
+            emit errorOccurred(m_def.id,
+                               attachError.isEmpty() ? tr("Failed to attach forward channel")
+                                                     : attachError);
+            return false;
+        }
+    }
     m_bridges.append(bridge);
 
     wireBridgeSocket(socket);

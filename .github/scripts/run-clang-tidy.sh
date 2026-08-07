@@ -29,13 +29,46 @@ if ! command -v clang-tidy >/dev/null 2>&1; then
   exit 1
 fi
 
-# Portable alternative to mapfile (macOS /bin/bash 3.2).
+# Only tidy TUs present in compile_commands.json. A blind find under src/
+# also picks platform-only files (e.g. src/macos/*.cpp needs dispatch.h)
+# that are not built on Linux and fail with clang-diagnostic-error.
+# See: https://clang.llvm.org/docs/JSONCompilationDatabase.html
 files=()
 while IFS= read -r line; do
+  [[ -n "$line" ]] || continue
   files+=("$line")
-done < <(find src -type f -name '*.cpp' | sort)
+done < <(
+  python3 - "$COMPDB" "$ROOT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+compdb = Path(sys.argv[1]).resolve()
+root = Path(sys.argv[2]).resolve()
+seen: set[str] = set()
+ordered: list[str] = []
+for entry in json.loads(compdb.read_text(encoding="utf-8")):
+    raw = entry.get("file") or ""
+    path = Path(raw)
+    if not path.is_absolute():
+        path = (Path(entry.get("directory") or ".") / path)
+    path = path.resolve()
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        continue
+    if not (rel.startswith("src/") and rel.endswith(".cpp")):
+        continue
+    if rel in seen:
+        continue
+    seen.add(rel)
+    ordered.append(rel)
+for rel in sorted(ordered):
+    print(rel)
+PY
+)
 if [[ ${#files[@]} -eq 0 ]]; then
-  echo "error: no .cpp sources found under src/" >&2
+  echo "error: no src/**/*.cpp entries found in ${COMPDB}" >&2
   exit 1
 fi
 
