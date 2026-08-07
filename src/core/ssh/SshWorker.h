@@ -10,6 +10,8 @@
 #include "core/fs/FsRemote.h"
 #include "core/fs/SftpTypes.h"
 #include "core/fs/TransferTypes.h"
+#include "core/ssh/SftpMetaIoHandler.h"
+#include "core/ssh/SftpTransferIoHandler.h"
 #include "core/ssh/ShellIoHandler.h"
 #include "core/ssh/SshIoLoop.h"
 #include "core/ssh/SshKnownHosts.h"
@@ -29,6 +31,7 @@
 #include <QWaitCondition>
 
 #include <atomic>
+#include <functional>
 
 #if defined(LIBSSH_VERSION_INT) && (LIBSSH_VERSION_INT < SSH_VERSION_INT(0, 11, 0))
 #error "easy-ssh requires libssh >= 0.11 for ProxyJump (SSH_OPTIONS_PROXYJUMP)"
@@ -152,6 +155,11 @@ private:
     void onIoLoopFault(const QString &message);
     void onIoLoopSessionEof();
     ShellIoHandler::Hooks makeShellHooks();
+    bool useAsyncFs() const;
+    void enqueueFsOp(std::function<void()> op);
+    void onFsHandlerFinished(const QString &handlerId);
+    void startMetaHandler(SftpMetaIoHandler::Request request);
+    void startTransferHandler(SftpTransferIoHandler::Request request);
     /// Run sync libssh work that assumes blocking mode (FS / open helpers).
     template <typename Fn>
     auto withBlockingSession(Fn &&fn) -> decltype(fn())
@@ -178,6 +186,8 @@ private:
     class QTimer *m_ioTimer = nullptr;
     bool m_running = false;
     bool m_execBusy = false;
+    bool m_fsBusy = false;
+    QVector<std::function<void()>> m_pendingFsOps;
     struct PendingExecCommand
     {
         QString requestId;

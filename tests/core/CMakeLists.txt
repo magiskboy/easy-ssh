@@ -75,3 +75,7 @@ add_easy_ssh_core_test(tst_SshIoLoop
 add_easy_ssh_core_test(tst_ShellIoHandler
     ssh/tst_ShellIoHandler.cpp
 )
+
+add_easy_ssh_core_test(tst_SftpIoHandler
+    ssh/tst_SftpIoHandler.cpp
+)

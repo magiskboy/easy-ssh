@@ -8,6 +8,8 @@
 #include "core/fs/TransferJobStore.h"
 #include "core/settings/AppSettings.h"
 #include "core/ssh/AgentForwardHost.h"
+#include "core/ssh/SftpMetaIoHandler.h"
+#include "core/ssh/SftpTransferIoHandler.h"
 #include "core/tunnel/RemoteTunnelSession.h"
 #include "core/util/Logging.h"
 
@@ -21,6 +23,7 @@
 #include <algorithm>
 #include <libssh/libssh.h>
 #include <memory>
+#include <utility>
 
 namespace
 {
@@ -358,15 +361,22 @@ void SshWorker::listDirectory(const QString &path)
         return;
     }
 
-    QVector<RemoteEntry> entries;
-    QString error;
-    if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QVector<RemoteEntry> entries;
+        QString error;
+        if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        filterTransferPartials(&entries);
+        emit directoryListed(path, entries);
         return;
     }
 
-    filterTransferPartials(&entries);
-    emit directoryListed(path, entries);
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::ListDirectory;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::emitTransferFailure(const QString &error)
@@ -395,6 +405,96 @@ void SshWorker::emitTransferFailure(const QString &error)
     emit transferResumableChanged(m_fs.lastInterruptedJob().has_value());
 }
 
+bool SshWorker::useAsyncFs() const
+{
+    return m_fs.backend() == FsBackend::Sftp;
+}
+
+void SshWorker::enqueueFsOp(std::function<void()> op)
+{
+    if (m_fsBusy) {
+        m_pendingFsOps.push_back(std::move(op));
+        return;
+    }
+    m_fsBusy = true;
+    op();
+}
+
+void SshWorker::onFsHandlerFinished(const QString &handlerId)
+{
+    QMetaObject::invokeMethod(
+        this,
+        [this, handlerId]() {
+            m_ioLoop.removeHandler(handlerId);
+            m_fsBusy = false;
+            if (m_pendingFsOps.isEmpty()) {
+                return;
+            }
+            auto next = std::move(m_pendingFsOps.front());
+            m_pendingFsOps.erase(m_pendingFsOps.begin());
+            m_fsBusy = true;
+            next();
+        },
+        Qt::QueuedConnection);
+}
+
+void SshWorker::startMetaHandler(SftpMetaIoHandler::Request request)
+{
+    SftpMetaIoHandler::Hooks hooks;
+    hooks.listed = [this](const QString &path, const QVector<RemoteEntry> &entries) {
+        QVector<RemoteEntry> filtered = entries;
+        filterTransferPartials(&filtered);
+        emit directoryListed(path, filtered);
+    };
+    hooks.resolved = [this](const QString &path, bool isDir, bool ok, const QString &error) {
+        emit entryResolved(path, isDir, ok, error);
+    };
+    hooks.canonicalized = [this](const QString &requested, const QString &canonical) {
+        emit pathCanonicalized(requested, canonical);
+    };
+    hooks.finished = [this](const QString &message) { emit sftpFinished(message); };
+    hooks.failed = [this](const QString &message) {
+        if (!message.isEmpty()) {
+            emit sftpError(message);
+        }
+    };
+
+    auto handler = std::make_unique<SftpMetaIoHandler>(&m_fs, std::move(request), std::move(hooks));
+    const QString id = handler->id();
+    handler->setCompletedHook([this, id]() { onFsHandlerFinished(id); });
+
+    QString error;
+    if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+        m_fsBusy = false;
+        emit sftpError(error.isEmpty() ? tr("Failed to start SFTP operation") : error);
+        return;
+    }
+    m_ioLoop.wake();
+}
+
+void SshWorker::startTransferHandler(SftpTransferIoHandler::Request request)
+{
+    SftpTransferIoHandler::Hooks hooks;
+    hooks.finished = [this](const QString &message) {
+        emit sftpFinished(message);
+        emit transferResumableChanged(false);
+    };
+    hooks.failed = [this](const QString &error) { emitTransferFailure(error); };
+
+    auto handler =
+        std::make_unique<SftpTransferIoHandler>(&m_fs, std::move(request), std::move(hooks));
+    const QString id = handler->id();
+    handler->setCompletedHook([this, id]() { onFsHandlerFinished(id); });
+
+    QString error;
+    if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+        m_fsBusy = false;
+        emit sftpError(error.isEmpty() ? tr("Failed to start transfer") : error);
+        return;
+    }
+    m_ioLoop.wake();
+}
+
 void SshWorker::createDirectory(const QString &path)
 {
     if (!m_running || !m_fs.isOpen()) {
@@ -402,13 +502,20 @@ void SshWorker::createDirectory(const QString &path)
         return;
     }
 
-    QString error;
-    if (!m_fs.createDirectory(path, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.createDirectory(path, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Created folder: %1").arg(path));
         return;
     }
 
-    emit sftpFinished(tr("Created folder: %1").arg(path));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::CreateDirectory;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::createSymlink(const QString &target, const QString &linkPath)
@@ -418,13 +525,21 @@ void SshWorker::createSymlink(const QString &target, const QString &linkPath)
         return;
     }
 
-    QString error;
-    if (!m_fs.createSymlink(target, linkPath, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.createSymlink(target, linkPath, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Created symlink: %1").arg(linkPath));
         return;
     }
 
-    emit sftpFinished(tr("Created symlink: %1").arg(linkPath));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::CreateSymlink;
+    req.target = target;
+    req.linkPath = linkPath;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::resolveEntry(const QString &path)
@@ -434,24 +549,28 @@ void SshWorker::resolveEntry(const QString &path)
         return;
     }
 
-    bool isDir = false;
-    QString error;
-    if (!m_fs.resolveEntry(path, &isDir, &error)) {
-        emit entryResolved(path, false, false, error);
+    if (!useAsyncFs()) {
+        bool isDir = false;
+        QString error;
+        if (!m_fs.resolveEntry(path, &isDir, &error)) {
+            emit entryResolved(path, false, false, error);
+            return;
+        }
+        if (isDir) {
+            QVector<RemoteEntry> entries;
+            if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
+                emit entryResolved(path, true, false, error);
+                return;
+            }
+        }
+        emit entryResolved(path, isDir, true, {});
         return;
     }
 
-    // Symlink-to-dir (and any dir resolve): verify the directory is listable before the
-    // UI navigates — otherwise we land on an empty explorer (e.g. Permission denied).
-    if (isDir) {
-        QVector<RemoteEntry> entries;
-        if (!m_fs.listDirectoryEntries(path, &entries, &error)) {
-            emit entryResolved(path, true, false, error);
-            return;
-        }
-    }
-
-    emit entryResolved(path, isDir, true, {});
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::ResolveEntry;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::renamePath(const QString &from, const QString &to)
@@ -461,13 +580,21 @@ void SshWorker::renamePath(const QString &from, const QString &to)
         return;
     }
 
-    QString error;
-    if (!m_fs.renamePath(from, to, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.renamePath(from, to, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Renamed to %1").arg(QFileInfo(to).fileName()));
         return;
     }
 
-    emit sftpFinished(tr("Renamed to %1").arg(QFileInfo(to).fileName()));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::RenamePath;
+    req.from = from;
+    req.to = to;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::removePath(const QString &path, bool recursive)
@@ -477,13 +604,21 @@ void SshWorker::removePath(const QString &path, bool recursive)
         return;
     }
 
-    QString error;
-    if (!m_fs.removePath(path, recursive, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.removePath(path, recursive, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit sftpFinished(tr("Deleted: %1").arg(path));
         return;
     }
 
-    emit sftpFinished(tr("Deleted: %1").arg(path));
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::RemovePath;
+    req.path = path;
+    req.recursive = recursive;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::uploadFiles(const QStringList &localPaths, const QString &remoteDir)
@@ -493,14 +628,23 @@ void SshWorker::uploadFiles(const QStringList &localPaths, const QString &remote
         return;
     }
 
-    QString error;
-    if (!m_fs.uploadFiles(localPaths, remoteDir, &error)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.uploadFiles(localPaths, remoteDir, &error)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Upload finished (%1 item(s))").arg(localPaths.size()));
+        emit transferResumableChanged(false);
         return;
     }
 
-    emit sftpFinished(tr("Upload finished (%1 item(s))").arg(localPaths.size()));
-    emit transferResumableChanged(false);
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::UploadFiles;
+    req.localPaths = localPaths;
+    req.remoteDir = remoteDir;
+    req.finishedMessage = tr("Upload finished (%1 item(s))").arg(localPaths.size());
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath)
@@ -510,13 +654,22 @@ void SshWorker::uploadFileTo(const QString &localPath, const QString &remotePath
         return;
     }
 
-    QString error;
-    if (!m_fs.uploadFileTo(localPath, remotePath, &error)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.uploadFileTo(localPath, remotePath, &error)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Synced: %1").arg(QFileInfo(remotePath).fileName()));
         return;
     }
 
-    emit sftpFinished(tr("Synced: %1").arg(QFileInfo(remotePath).fileName()));
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::UploadFileTo;
+    req.localPath = localPath;
+    req.remotePath = remotePath;
+    req.finishedMessage = tr("Synced: %1").arg(QFileInfo(remotePath).fileName());
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::downloadPaths(const QStringList &remotePaths, const QString &localDir)
@@ -533,14 +686,24 @@ void SshWorker::downloadPaths(const QStringList &remotePaths,
         return;
     }
 
-    QString error;
-    if (!m_fs.downloadPaths(remotePaths, localDir, &error, followSymlinks)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.downloadPaths(remotePaths, localDir, &error, followSymlinks)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Download finished (%1 item(s))").arg(remotePaths.size()));
+        emit transferResumableChanged(false);
         return;
     }
 
-    emit sftpFinished(tr("Download finished (%1 item(s))").arg(remotePaths.size()));
-    emit transferResumableChanged(false);
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::DownloadPaths;
+    req.remotePaths = remotePaths;
+    req.localDir = localDir;
+    req.followSymlinks = followSymlinks;
+    req.finishedMessage = tr("Download finished (%1 item(s))").arg(remotePaths.size());
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::cancelTransfer()
@@ -560,14 +723,21 @@ void SshWorker::resumeInterruptedTransfer()
         return;
     }
 
-    QString error;
-    if (!m_fs.resumeInterruptedTransfer(&error)) {
-        emitTransferFailure(error);
+    if (!useAsyncFs()) {
+        QString error;
+        if (!m_fs.resumeInterruptedTransfer(&error)) {
+            emitTransferFailure(error);
+            return;
+        }
+        emit sftpFinished(tr("Resumed transfer finished"));
+        emit transferResumableChanged(false);
         return;
     }
 
-    emit sftpFinished(tr("Resumed transfer finished"));
-    emit transferResumableChanged(false);
+    SftpTransferIoHandler::Request req;
+    req.kind = SftpTransferIoHandler::Kind::ResumeInterrupted;
+    req.finishedMessage = tr("Resumed transfer finished");
+    enqueueFsOp([this, req]() { startTransferHandler(req); });
 }
 
 void SshWorker::discardInterruptedTransfer()
@@ -588,15 +758,22 @@ void SshWorker::canonicalizePath(const QString &path)
         return;
     }
 
-    const QString requested = path.isEmpty() ? QStringLiteral(".") : path;
-    QString canonical;
-    QString error;
-    if (!m_fs.canonicalizePath(requested, canonical, &error)) {
-        emit sftpError(error);
+    if (!useAsyncFs()) {
+        const QString requested = path.isEmpty() ? QStringLiteral(".") : path;
+        QString canonical;
+        QString error;
+        if (!m_fs.canonicalizePath(requested, canonical, &error)) {
+            emit sftpError(error);
+            return;
+        }
+        emit pathCanonicalized(requested, canonical);
         return;
     }
 
-    emit pathCanonicalized(requested, canonical);
+    SftpMetaIoHandler::Request req;
+    req.op = SftpMetaIoHandler::Op::CanonicalizePath;
+    req.path = path;
+    enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
 void SshWorker::pollChannel()
@@ -845,6 +1022,7 @@ void SshWorker::execCommand(QStringView requestId, const QString &command)
     }
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 void SshWorker::runExecCommand(const QString &id, const QString &command)
 {
     m_execBusy = true;

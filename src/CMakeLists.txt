@@ -20,6 +20,10 @@ set(EASY_SSH_CORE_SOURCES
     core/ssh/SshIoHandler.h
     core/ssh/ShellIoHandler.cpp
     core/ssh/ShellIoHandler.h
+    core/ssh/SftpMetaIoHandler.cpp
+    core/ssh/SftpMetaIoHandler.h
+    core/ssh/SftpTransferIoHandler.cpp
+    core/ssh/SftpTransferIoHandler.h
     core/ssh/AgentForwardHost.cpp
     core/ssh/AgentForwardHost.h
     core/ssh/SshKnownHosts.cpp
@@ -42,6 +46,8 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/FsEngine.h
     core/fs/FsRemote.cpp
     core/fs/FsRemote.h
+    core/fs/SftpAioTransfer.cpp
+    core/fs/SftpAioTransfer.h
     core/fs/SftpEngine.cpp
     core/fs/SftpEngine.h
     core/fs/ScpEngine.cpp
