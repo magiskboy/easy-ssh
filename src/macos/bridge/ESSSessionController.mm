@@ -500,7 +500,7 @@ void dispatchMain(dispatch_block_t block)
 } // namespace
 
 @interface ESSSessionController ()
-@property (nonatomic, strong, nullable) NSUUID *primaryShellId;
+@property (nonatomic, strong, nullable) NSUUID *primaryTerminalId;
 @property (nonatomic, assign) BOOL connected;
 - (void)handleInspectFinished:(const QString &)requestId
                    exitStatus:(int)exitStatus
@@ -600,18 +600,18 @@ void dispatchMain(dispatch_block_t block)
     delete m_worker;
     m_worker = nullptr;
     self.connected = NO;
-    self.primaryShellId = nil;
+    self.primaryTerminalId = nil;
 }
 
 - (void)wireWorkerSignals
 {
-    QObject::connect(m_worker, &SshWorker::connected, m_worker, [self](const QUuid &shellId) {
-        NSUUID *nsId = uuidToNS(shellId);
+    QObject::connect(m_worker, &SshWorker::connected, m_worker, [self](const QUuid &terminalId) {
+        NSUUID *nsId = uuidToNS(terminalId);
         if (m_remoteExec != nullptr) {
             m_remoteExec->setConnected(true);
         }
         dispatchMain(^{
-            self.primaryShellId = nsId;
+            self.primaryTerminalId = nsId;
             self.connected = YES;
             if (self.onConnected) {
                 self.onConnected(nsId);
@@ -620,11 +620,11 @@ void dispatchMain(dispatch_block_t block)
     });
 
     QObject::connect(m_worker, &SshWorker::dataReceived, m_worker,
-                     [self](const QUuid &shellId, const QByteArray &data) {
+                     [self](const QUuid &terminalId, const QByteArray &data) {
                          if (data.isEmpty()) {
                              return;
                          }
-                         NSUUID *nsId = uuidToNS(shellId);
+                         NSUUID *nsId = uuidToNS(terminalId);
                          NSData *nsData = [NSData dataWithBytes:data.constData() length:static_cast<NSUInteger>(data.size())];
                          dispatchMain(^{
                              if (self.onData) {
@@ -633,34 +633,34 @@ void dispatchMain(dispatch_block_t block)
                          });
                      });
 
-    QObject::connect(m_worker, &SshWorker::shellOpened, m_worker, [self](const QUuid &shellId) {
-        NSUUID *nsId = uuidToNS(shellId);
+    QObject::connect(m_worker, &SshWorker::terminalOpened, m_worker, [self](const QUuid &terminalId) {
+        NSUUID *nsId = uuidToNS(terminalId);
         dispatchMain(^{
-            if (self.onShellOpened) {
-                self.onShellOpened(nsId);
+            if (self.onTerminalOpened) {
+                self.onTerminalOpened(nsId);
             }
         });
     });
 
-    QObject::connect(m_worker, &SshWorker::shellClosed, m_worker, [self](const QUuid &shellId) {
-        NSUUID *nsId = uuidToNS(shellId);
+    QObject::connect(m_worker, &SshWorker::terminalClosed, m_worker, [self](const QUuid &terminalId) {
+        NSUUID *nsId = uuidToNS(terminalId);
         dispatchMain(^{
-            if (self.primaryShellId != nil && [self.primaryShellId isEqual:nsId]) {
-                self.primaryShellId = nil;
+            if (self.primaryTerminalId != nil && [self.primaryTerminalId isEqual:nsId]) {
+                self.primaryTerminalId = nil;
             }
-            if (self.onShellClosed) {
-                self.onShellClosed(nsId);
+            if (self.onTerminalClosed) {
+                self.onTerminalClosed(nsId);
             }
         });
     });
 
-    QObject::connect(m_worker, &SshWorker::shellFailed, m_worker,
-                     [self](const QUuid &shellId, const QString &message) {
-                         NSUUID *nsId = uuidToNS(shellId);
+    QObject::connect(m_worker, &SshWorker::terminalFailed, m_worker,
+                     [self](const QUuid &terminalId, const QString &message) {
+                         NSUUID *nsId = uuidToNS(terminalId);
                          NSString *msg = qToNS(message);
                          dispatchMain(^{
-                             if (self.onShellFailed) {
-                                 self.onShellFailed(nsId, msg);
+                             if (self.onTerminalFailed) {
+                                 self.onTerminalFailed(nsId, msg);
                              }
                          });
                      });
@@ -707,7 +707,7 @@ void dispatchMain(dispatch_block_t block)
         dispatchMain(^{
             [self stopAllExplorers];
             self.connected = NO;
-            self.primaryShellId = nil;
+            self.primaryTerminalId = nil;
             if (self.onDisconnected) {
                 self.onDisconnected();
             }
@@ -904,15 +904,15 @@ void dispatchMain(dispatch_block_t block)
 
     const int useCols = cols > 0 ? static_cast<int>(cols) : 80;
     const int useRows = rows > 0 ? static_cast<int>(rows) : 24;
-    const QUuid shellId = QUuid::createUuid();
-    self.primaryShellId = uuidToNS(shellId);
+    const QUuid terminalId = QUuid::createUuid();
+    self.primaryTerminalId = uuidToNS(terminalId);
 
     const Connection conn = m_connection;
     const SessionCredentials creds = m_credentials;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, conn, creds, shellId, useCols, useRows]() {
-            worker->connectToHost(conn, creds, shellId, useCols, useRows);
+        [worker = m_worker, conn, creds, terminalId, useCols, useRows]() {
+            worker->connectToHost(conn, creds, terminalId, useCols, useRows);
         },
         Qt::QueuedConnection);
 }
@@ -977,32 +977,32 @@ void dispatchMain(dispatch_block_t block)
         Qt::QueuedConnection);
 }
 
-- (QUuid)resolvedShellId:(NSUUID *)shellId
+- (QUuid)resolvedTerminalId:(NSUUID *)terminalId
 {
-    if (shellId != nil) {
-        return nsToUuid(shellId);
+    if (terminalId != nil) {
+        return nsToUuid(terminalId);
     }
-    return nsToUuid(self.primaryShellId);
+    return nsToUuid(self.primaryTerminalId);
 }
 
-- (void)writeData:(NSData *)data shellId:(NSUUID *)shellId
+- (void)writeData:(NSData *)data terminalId:(NSUUID *)terminalId
 {
     if (m_worker == nullptr || data == nil || data.length == 0) {
         return;
     }
-    const QUuid id = [self resolvedShellId:shellId];
+    const QUuid id = [self resolvedTerminalId:terminalId];
     const QByteArray bytes(static_cast<const char *>(data.bytes), static_cast<int>(data.length));
     QMetaObject::invokeMethod(
         m_worker, [worker = m_worker, id, bytes]() { worker->writeToChannel(id, bytes); },
         Qt::QueuedConnection);
 }
 
-- (void)resizeCols:(NSInteger)cols rows:(NSInteger)rows shellId:(NSUUID *)shellId
+- (void)resizeCols:(NSInteger)cols rows:(NSInteger)rows terminalId:(NSUUID *)terminalId
 {
     if (m_worker == nullptr) {
         return;
     }
-    const QUuid id = [self resolvedShellId:shellId];
+    const QUuid id = [self resolvedTerminalId:terminalId];
     const int c = static_cast<int>(cols);
     const int r = static_cast<int>(rows);
     QMetaObject::invokeMethod(
@@ -1010,27 +1010,27 @@ void dispatchMain(dispatch_block_t block)
         Qt::QueuedConnection);
 }
 
-- (void)openShell:(NSUUID *)shellId cols:(NSInteger)cols rows:(NSInteger)rows
+- (void)openTerminal:(NSUUID *)terminalId cols:(NSInteger)cols rows:(NSInteger)rows
 {
-    if (m_worker == nullptr || shellId == nil) {
+    if (m_worker == nullptr || terminalId == nil) {
         return;
     }
-    const QUuid id = nsToUuid(shellId);
+    const QUuid id = nsToUuid(terminalId);
     const int c = static_cast<int>(cols);
     const int r = static_cast<int>(rows);
     QMetaObject::invokeMethod(
-        m_worker, [worker = m_worker, id, c, r]() { worker->openShell(id, c, r); },
+        m_worker, [worker = m_worker, id, c, r]() { worker->openTerminal(id, c, r); },
         Qt::QueuedConnection);
 }
 
-- (void)closeShell:(NSUUID *)shellId
+- (void)closeTerminal:(NSUUID *)terminalId
 {
-    if (m_worker == nullptr || shellId == nil) {
+    if (m_worker == nullptr || terminalId == nil) {
         return;
     }
-    const QUuid id = nsToUuid(shellId);
+    const QUuid id = nsToUuid(terminalId);
     QMetaObject::invokeMethod(
-        m_worker, [worker = m_worker, id]() { worker->closeShell(id); }, Qt::QueuedConnection);
+        m_worker, [worker = m_worker, id]() { worker->closeTerminal(id); }, Qt::QueuedConnection);
 }
 
 - (void)listDirectory:(NSString *)path

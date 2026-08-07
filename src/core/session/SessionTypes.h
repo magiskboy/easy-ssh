@@ -42,7 +42,7 @@ enum class FsBackend
     Scp = 2,
 };
 
-struct ShellChannelState
+struct TerminalChannelState
 {
     QUuid id;
     QString title;
@@ -51,7 +51,7 @@ struct ShellChannelState
     int cols = 80;
     int rows = 24;
     QDateTime createdAt;
-    /// Hidden from SessionPage panes / Go to Shell; owned by a secondary UI (e.g. logs dialog).
+    /// Hidden from SessionPage panes / Go to Terminal; owned by a secondary UI (e.g. logs dialog).
     bool auxiliary = false;
 };
 
@@ -75,6 +75,6 @@ Q_DECLARE_METATYPE(SessionState)
 Q_DECLARE_METATYPE(ChannelState)
 Q_DECLARE_METATYPE(TunnelRunStatus)
 Q_DECLARE_METATYPE(FsBackend)
-Q_DECLARE_METATYPE(ShellChannelState)
+Q_DECLARE_METATYPE(TerminalChannelState)
 Q_DECLARE_METATYPE(FileChannelState)
 Q_DECLARE_METATYPE(TunnelChannelState)

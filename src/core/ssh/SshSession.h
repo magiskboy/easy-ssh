@@ -22,7 +22,7 @@
 
 /**
  * Owns ssh_session: connect options, ProxyJump, auth, keepalive.
- * Interactive shell lives in core/shell/SshShell. Host-key UI via HostKeyVerifyFn.
+ * Interactive shell lives in core/terminal/SshTerminal. Host-key UI via HostKeyVerifyFn.
  */
 class SshSession
 {

@@ -19,16 +19,16 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
     ESSHostKeyPromptReasonOther = 2,
 };
 
-/// One SSH transport + shells/SFTP/tunnels. Mirrors SshWorker for future Swift UI features.
+/// One SSH transport + terminals/SFTP/tunnels. Mirrors SshWorker for future Swift UI features.
 ///
 /// Threading: all callback blocks are invoked on the main queue.
 @interface ESSSessionController : NSObject
 
-@property(nonatomic, copy, nullable) void (^onConnected)(NSUUID *shellId);
-@property(nonatomic, copy, nullable) void (^onData)(NSUUID *shellId, NSData *data);
-@property(nonatomic, copy, nullable) void (^onShellOpened)(NSUUID *shellId);
-@property(nonatomic, copy, nullable) void (^onShellClosed)(NSUUID *shellId);
-@property(nonatomic, copy, nullable) void (^onShellFailed)(NSUUID *shellId, NSString *message);
+@property(nonatomic, copy, nullable) void (^onConnected)(NSUUID *terminalId);
+@property(nonatomic, copy, nullable) void (^onData)(NSUUID *terminalId, NSData *data);
+@property(nonatomic, copy, nullable) void (^onTerminalOpened)(NSUUID *terminalId);
+@property(nonatomic, copy, nullable) void (^onTerminalClosed)(NSUUID *terminalId);
+@property(nonatomic, copy, nullable) void (^onTerminalFailed)(NSUUID *terminalId, NSString *message);
 @property(nonatomic, copy, nullable) void (^onHostKeyPrompt)
     (ESSHostKeyPromptReason reason, NSString *fingerprint, NSString *contextLabel);
 @property(nonatomic, copy, nullable) void (^onError)(NSString *message);
@@ -100,7 +100,7 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 @property(nonatomic, copy, nullable) void (^onServiceInspect)
     (NSDictionary *info, NSString *_Nullable error);
 
-@property(nonatomic, readonly, nullable) NSUUID *primaryShellId;
+@property(nonatomic, readonly, nullable) NSUUID *primaryTerminalId;
 @property(nonatomic, readonly, getter=isConnected) BOOL connected;
 
 /// Full connection payload (preferred).
@@ -123,10 +123,10 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 - (void)reconnectWithCols:(NSInteger)cols rows:(NSInteger)rows;
 - (void)respondHostKeyTrust:(BOOL)accept;
 
-- (void)writeData:(NSData *)data shellId:(nullable NSUUID *)shellId;
-- (void)resizeCols:(NSInteger)cols rows:(NSInteger)rows shellId:(nullable NSUUID *)shellId;
-- (void)openShell:(NSUUID *)shellId cols:(NSInteger)cols rows:(NSInteger)rows;
-- (void)closeShell:(NSUUID *)shellId;
+- (void)writeData:(NSData *)data terminalId:(nullable NSUUID *)terminalId;
+- (void)resizeCols:(NSInteger)cols rows:(NSInteger)rows terminalId:(nullable NSUUID *)terminalId;
+- (void)openTerminal:(NSUUID *)terminalId cols:(NSInteger)cols rows:(NSInteger)rows;
+- (void)closeTerminal:(NSUUID *)terminalId;
 
 - (void)listDirectory:(NSString *)path;
 - (void)createDirectory:(NSString *)path;

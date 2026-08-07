@@ -44,7 +44,7 @@ struct AppStatusBar: View {
         guard let session = appModel.selectedSession else { return nil }
         let host = session.connection.host.isEmpty ? "—" : session.connection.host
         let user = session.connection.username.isEmpty ? "—" : session.connection.username
-        let shell = session.focusedShell?.title ?? "—"
+        let shell = session.focusedTerminal?.title ?? "—"
         let ttl: String
         if session.state == .connected, let connectedAt = session.connectedAt {
             ttl = Self.formatTtl(seconds: max(0, Int(now.timeIntervalSince(connectedAt))))

@@ -34,12 +34,12 @@ struct ContentView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
-                    appModel.openShellInSelectedSession()
+                    appModel.openTerminalInSelectedSession()
                 } label: {
                     Image(systemName: "plus.rectangle.on.rectangle")
                 }
                 .help("New Terminal")
-                .disabled(!(appModel.selectedSession?.canOpenShell ?? false))
+                .disabled(!(appModel.selectedSession?.canOpenTerminal ?? false))
 
                 Button {
                     appModel.presentExplorer(.container)

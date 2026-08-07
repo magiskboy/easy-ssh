@@ -23,15 +23,15 @@ struct HostKeyPromptData: Identifiable {
     let contextLabel: String
 }
 
-struct ShellRenameRequest: Identifiable {
+struct TerminalRenameRequest: Identifiable {
     let id = UUID()
-    let shellId: UUID
+    let terminalId: UUID
     var title: String
 }
 
 @MainActor
 final class SessionViewModel: ObservableObject, Identifiable {
-    static let maxShells = 8
+    static let maxTerminals = 8
 
     let id = UUID()
     let connection: ESSConnectionInfo
@@ -45,10 +45,10 @@ final class SessionViewModel: ObservableObject, Identifiable {
     @Published var hostKeyPrompt: HostKeyPromptData?
     @Published var connectedAt: Date?
 
-    @Published var shells: [ShellViewModel] = []
-    @Published var focusedShellId: UUID?
-    @Published var layout: ShellLayoutNode?
-    @Published var renameRequest: ShellRenameRequest?
+    @Published var terminals: [TerminalViewModel] = []
+    @Published var focusedTerminalId: UUID?
+    @Published var layout: TerminalLayoutNode?
+    @Published var renameRequest: TerminalRenameRequest?
     @Published var pendingMultilinePaste: String?
     @Published var showFindBar: Bool = false
     /// Bumped when ESSAppSettings changes so terminals re-apply appearance.
@@ -63,9 +63,9 @@ final class SessionViewModel: ObservableObject, Identifiable {
     @Published var tunnels: SessionTunnelsModel?
 
     /// Injected once after the next shell opens (service logs).
-    private var pendingExplorerLogs: (shellId: UUID, command: String, title: String)?
-    /// Shells opened for explorer logs — omitted from workspace capture.
-    private var explorerAuxShellIds = Set<UUID>()
+    private var pendingExplorerLogs: (terminalId: UUID, command: String, title: String)?
+    /// Terminals opened for explorer logs — omitted from workspace capture.
+    private var explorerAuxTerminalIds = Set<UUID>()
     /// Pending restore payload for this session (workspace Phase 8).
     var pendingWorkspaceRestore: ESSWorkspaceSessionEntry?
     private var workspaceRestoreBusy = false
@@ -81,8 +81,8 @@ final class SessionViewModel: ObservableObject, Identifiable {
 
     private let controller = ESSSessionController()
     private var didRecordRecent = false
-    private var shellSerial = 0
-    private var shellCancellables = Set<AnyCancellable>()
+    private var terminalSerial = 0
+    private var terminalCancellables = Set<AnyCancellable>()
 
     init(connection: ESSConnectionInfo, credentials: ESSSessionCredentials?) {
         self.connection = connection
@@ -105,13 +105,13 @@ final class SessionViewModel: ObservableObject, Identifiable {
         appearanceEpoch &+= 1
     }
 
-    var focusedShell: ShellViewModel? {
-        guard let focusedShellId else { return shells.first }
-        return shells.first { $0.id == focusedShellId } ?? shells.first
+    var focusedTerminal: TerminalViewModel? {
+        guard let focusedTerminalId else { return terminals.first }
+        return terminals.first { $0.id == focusedTerminalId } ?? terminals.first
     }
 
-    var canOpenShell: Bool {
-        state == .connected && shells.count < Self.maxShells
+    var canOpenTerminal: Bool {
+        state == .connected && terminals.count < Self.maxTerminals
     }
 
     /// Workspace restore should only reopen live / in-flight sessions.
@@ -126,7 +126,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
     var onTransportEnded: (() -> Void)?
 
     private func wireController() {
-        controller.onConnected = { [weak self] shellId in
+        controller.onConnected = { [weak self] terminalId in
             Task { @MainActor in
                 guard let self else { return }
                 self.state = .connected
@@ -135,13 +135,13 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.showReconnect = false
                 self.statusMessage = "Connected"
                 self.onStatus?("Connected: \(self.title)", .success)
-                self.resetShells()
-                let initialId = shellId as UUID
+                self.resetTerminals()
+                let initialId = terminalId as UUID
                 if let restore = self.pendingWorkspaceRestore {
-                    self.addShell(id: initialId, focusAndLayout: false)
-                    self.continueWorkspaceRestore(initialShellId: initialId)
+                    self.addTerminal(id: initialId, focusAndLayout: false)
+                    self.continueWorkspaceRestore(initialTerminalId: initialId)
                 } else {
-                    self.addShell(id: initialId, focusAndLayout: true)
+                    self.addTerminal(id: initialId, focusAndLayout: true)
                 }
                 self.files?.onSessionConnected()
                 self.explorers?.onSessionConnected()
@@ -152,39 +152,39 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 }
             }
         }
-        controller.onShellOpened = { [weak self] shellId in
+        controller.onTerminalOpened = { [weak self] terminalId in
             Task { @MainActor in
                 guard let self else { return }
-                let id = shellId as UUID
-                if self.shells.contains(where: { $0.id == id }) {
-                    self.finishExplorerLogsIfNeeded(shellId: id)
+                let id = terminalId as UUID
+                if self.terminals.contains(where: { $0.id == id }) {
+                    self.finishExplorerLogsIfNeeded(terminalId: id)
                     return
                 }
-                self.addShell(id: id, focusAndLayout: true)
-                self.finishExplorerLogsIfNeeded(shellId: id)
+                self.addTerminal(id: id, focusAndLayout: true)
+                self.finishExplorerLogsIfNeeded(terminalId: id)
             }
         }
-        controller.onData = { [weak self] shellId, data in
+        controller.onData = { [weak self] terminalId, data in
             Task { @MainActor in
                 guard let self else { return }
-                let id = shellId as UUID
-                if let shell = self.shells.first(where: { $0.id == id }) {
+                let id = terminalId as UUID
+                if let shell = self.terminals.first(where: { $0.id == id }) {
                     shell.enqueueData(data)
                 }
             }
         }
-        controller.onShellClosed = { [weak self] shellId in
+        controller.onTerminalClosed = { [weak self] terminalId in
             Task { @MainActor in
                 guard let self else { return }
-                self.removeShellLocally(id: shellId as UUID, fromRemote: true)
+                self.removeTerminalLocally(id: terminalId as UUID, fromRemote: true)
             }
         }
-        controller.onShellFailed = { [weak self] shellId, message in
+        controller.onTerminalFailed = { [weak self] terminalId, message in
             Task { @MainActor in
                 guard let self else { return }
-                let id = shellId as UUID
-                self.onStatus?("Shell failed: \(message)", .error)
-                self.removeShellLocally(id: id, fromRemote: true)
+                let id = terminalId as UUID
+                self.onStatus?("Terminal failed: \(message)", .error)
+                self.removeTerminalLocally(id: id, fromRemote: true)
             }
         }
         controller.onHostKeyPrompt = { [weak self] reason, fingerprint, context in
@@ -208,7 +208,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.showReconnect = true
                 self.statusMessage = message
                 self.onStatus?("Failed: \(self.title)", .error)
-                self.resetShells()
+                self.resetTerminals()
                 self.files?.onSessionDisconnected()
                 self.explorers?.onSessionDisconnected()
                 self.tunnels?.onSessionDisconnected()
@@ -228,7 +228,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
                 self.showReconnect = true
                 self.statusMessage = "Disconnected"
                 self.onStatus?("Disconnected: \(self.title)", .warning)
-                self.resetShells()
+                self.resetTerminals()
                 self.files?.onSessionDisconnected()
                 self.explorers?.onSessionDisconnected()
                 self.tunnels?.onSessionDisconnected()
@@ -250,8 +250,8 @@ final class SessionViewModel: ObservableObject, Identifiable {
         overlayMessage = "Connecting…"
         showReconnect = false
         statusMessage = "Connecting…"
-        let cols = focusedShell?.cols ?? 80
-        let rows = focusedShell?.rows ?? 24
+        let cols = focusedTerminal?.cols ?? 80
+        let rows = focusedTerminal?.rows ?? 24
         controller.connect(
             withConnection: connection,
             credentials: credentials,
@@ -278,7 +278,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
         connectedAt = nil
         overlayMessage = "Connecting…"
         showReconnect = false
-        resetShells()
+        resetTerminals()
         let cols = 80
         let rows = 24
         controller.reconnect(withCols: cols, rows: rows)
@@ -293,135 +293,135 @@ final class SessionViewModel: ObservableObject, Identifiable {
             overlayMessage = "Host key rejected."
             showReconnect = true
             onStatus?("Host key rejected: \(title)", .warning)
-            resetShells()
+            resetTerminals()
         }
     }
 
-    // MARK: - Shell management
+    // MARK: - Terminal management
 
-    func openShell(id shellId: UUID, title: String? = nil) {
-        guard canOpenShell else { return }
-        let cols = focusedShell?.cols ?? 80
-        let rows = focusedShell?.rows ?? 24
-        addShell(id: shellId, focusAndLayout: false)
+    func openTerminal(id terminalId: UUID, title: String? = nil) {
+        guard canOpenTerminal else { return }
+        let cols = focusedTerminal?.cols ?? 80
+        let rows = focusedTerminal?.rows ?? 24
+        addTerminal(id: terminalId, focusAndLayout: false)
         if let title, !title.isEmpty {
-            shells.first { $0.id == shellId }?.rename(title)
+            terminals.first { $0.id == terminalId }?.rename(title)
         }
-        controller.openShell(shellId, cols: cols, rows: rows)
+        controller.openTerminal(terminalId, cols: cols, rows: rows)
     }
 
-    func openShell() {
-        guard canOpenShell else {
-            if shells.count >= Self.maxShells {
-                onStatus?("Maximum of \(Self.maxShells) shells per session", .warning)
+    func openTerminal() {
+        guard canOpenTerminal else {
+            if terminals.count >= Self.maxTerminals {
+                onStatus?("Maximum of \(Self.maxTerminals) terminals per session", .warning)
             }
             return
         }
-        let shellId = UUID()
-        let cols = focusedShell?.cols ?? 80
-        let rows = focusedShell?.rows ?? 24
-        // Optimistic local entry; bridge also emits onShellOpened.
-        addShell(id: shellId, focusAndLayout: true)
-        controller.openShell(shellId, cols: cols, rows: rows)
+        let terminalId = UUID()
+        let cols = focusedTerminal?.cols ?? 80
+        let rows = focusedTerminal?.rows ?? 24
+        // Optimistic local entry; bridge also emits onTerminalOpened.
+        addTerminal(id: terminalId, focusAndLayout: true)
+        controller.openTerminal(terminalId, cols: cols, rows: rows)
     }
 
     /// Opens a new shell and injects a follow-logs command (service explorer).
-    func openShellForExplorerLogs(title: String, command: String) {
-        guard canOpenShell else {
-            onStatus?("Cannot open logs shell (session busy or at shell limit).", .warning)
+    func openTerminalForExplorerLogs(title: String, command: String) {
+        guard canOpenTerminal else {
+            onStatus?("Cannot open logs terminal (session busy or at terminal limit).", .warning)
             return
         }
-        let shellId = UUID()
-        let cols = focusedShell?.cols ?? 80
-        let rows = focusedShell?.rows ?? 24
-        pendingExplorerLogs = (shellId, command, title)
-        explorerAuxShellIds.insert(shellId)
-        addShell(id: shellId, focusAndLayout: true)
-        shells.first { $0.id == shellId }?.rename(title)
-        controller.openShell(shellId, cols: cols, rows: rows)
+        let terminalId = UUID()
+        let cols = focusedTerminal?.cols ?? 80
+        let rows = focusedTerminal?.rows ?? 24
+        pendingExplorerLogs = (terminalId, command, title)
+        explorerAuxTerminalIds.insert(terminalId)
+        addTerminal(id: terminalId, focusAndLayout: true)
+        terminals.first { $0.id == terminalId }?.rename(title)
+        controller.openTerminal(terminalId, cols: cols, rows: rows)
     }
 
-    private func finishExplorerLogsIfNeeded(shellId: UUID) {
-        guard let pending = pendingExplorerLogs, pending.shellId == shellId else { return }
+    private func finishExplorerLogsIfNeeded(terminalId: UUID) {
+        guard let pending = pendingExplorerLogs, pending.terminalId == terminalId else { return }
         pendingExplorerLogs = nil
-        shells.first { $0.id == shellId }?.rename(pending.title)
+        terminals.first { $0.id == terminalId }?.rename(pending.title)
         if let data = pending.command.data(using: .utf8) {
             // Slight delay so the remote PTY is ready.
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 250_000_000)
-                self.sendTerminalData(data, shellId: shellId)
+                self.sendTerminalData(data, terminalId: terminalId)
             }
         }
     }
 
-    func closeShell(_ shellId: UUID) {
-        guard shells.contains(where: { $0.id == shellId }) else { return }
-        if shells.count <= 1 {
+    func closeTerminal(_ terminalId: UUID) {
+        guard terminals.contains(where: { $0.id == terminalId }) else { return }
+        if terminals.count <= 1 {
             // Closing the last shell tears down transport UX like Qt close-last.
-            controller.closeShell(shellId)
-            removeShellLocally(id: shellId, fromRemote: false)
-            overlayMessage = "Shell closed. Reconnect to open a new shell."
+            controller.closeTerminal(terminalId)
+            removeTerminalLocally(id: terminalId, fromRemote: false)
+            overlayMessage = "Terminal closed. Reconnect to open a new terminal."
             showReconnect = true
-            statusMessage = "Shell closed"
+            statusMessage = "Terminal closed"
             connectedAt = nil
-            onStatus?("Shell closed: \(title)", .warning)
+            onStatus?("Terminal closed: \(title)", .warning)
             return
         }
-        controller.closeShell(shellId)
-        removeShellLocally(id: shellId, fromRemote: false)
+        controller.closeTerminal(terminalId)
+        removeTerminalLocally(id: terminalId, fromRemote: false)
     }
 
-    func closeFocusedShell() {
-        guard let id = focusedShellId ?? shells.first?.id else { return }
-        closeShell(id)
+    func closeFocusedTerminal() {
+        guard let id = focusedTerminalId ?? terminals.first?.id else { return }
+        closeTerminal(id)
     }
 
-    /// Marks `shellId` as the session's focused shell and optionally transfers AppKit key focus
+    /// Marks `terminalId` as the session's focused shell and optionally transfers AppKit key focus
     /// to its SwiftTerm view (so only that caret blinks; others stay steady/visible).
-    func focusShell(_ shellId: UUID, activateTerminal: Bool = true) {
-        guard shells.contains(where: { $0.id == shellId }) else { return }
-        let previous = focusedShellId
-        focusedShellId = shellId
+    func focusTerminal(_ terminalId: UUID, activateTerminal: Bool = true) {
+        guard terminals.contains(where: { $0.id == terminalId }) else { return }
+        let previous = focusedTerminalId
+        focusedTerminalId = terminalId
         guard var tree = layout else {
-            layout = .leaf(shellId)
+            layout = .leaf(terminalId)
             if activateTerminal {
-                requestTerminalActivation(for: shellId)
+                requestTerminalActivation(for: terminalId)
             } else {
-                syncTerminalCursors(activeId: shellId)
+                syncTerminalCursors(activeId: terminalId)
             }
             return
         }
-        if tree.contains(shellId) {
+        if tree.contains(terminalId) {
             objectWillChange.send()
             if activateTerminal {
-                requestTerminalActivation(for: shellId)
+                requestTerminalActivation(for: terminalId)
             } else {
-                syncTerminalCursors(activeId: shellId)
+                syncTerminalCursors(activeId: terminalId)
             }
             return
         }
         // Shell not in visible tree (overflow past max panes / smart layout off): swap into focus leaf.
         if let previous, tree.contains(previous) {
-            tree = tree.replacing(previous, with: shellId)
+            tree = tree.replacing(previous, with: terminalId)
             layout = tree
         } else if let first = tree.leafIds.first {
-            tree = tree.replacing(first, with: shellId)
+            tree = tree.replacing(first, with: terminalId)
             layout = tree
         } else {
-            layout = .leaf(shellId)
+            layout = .leaf(terminalId)
         }
         if activateTerminal {
-            requestTerminalActivation(for: shellId)
+            requestTerminalActivation(for: terminalId)
         } else {
-            syncTerminalCursors(activeId: shellId)
+            syncTerminalCursors(activeId: terminalId)
         }
     }
 
     /// Queue AppKit first-responder transfer. Safe to call before the `TerminalView` exists;
     /// `TerminalRepresentable.updateNSView` / a deferred flush will complete it.
-    func requestTerminalActivation(for shellId: UUID) {
-        guard focusedShellId == shellId else { return }
-        pendingTerminalActivationId = shellId
+    func requestTerminalActivation(for terminalId: UUID) {
+        guard focusedTerminalId == terminalId else { return }
+        pendingTerminalActivationId = terminalId
         DispatchQueue.main.async { [weak self] in
             self?.flushPendingTerminalActivation()
         }
@@ -431,8 +431,8 @@ final class SessionViewModel: ObservableObject, Identifiable {
     /// Returns `true` when activation completed or is no longer needed.
     @discardableResult
     func flushPendingTerminalActivation() -> Bool {
-        guard let shellId = pendingTerminalActivationId else { return true }
-        guard focusedShellId == shellId else {
+        guard let terminalId = pendingTerminalActivationId else { return true }
+        guard focusedTerminalId == terminalId else {
             pendingTerminalActivationId = nil
             return true
         }
@@ -440,7 +440,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
         if showFindBar {
             return false
         }
-        guard let terminal = shells.first(where: { $0.id == shellId })?.terminalView,
+        guard let terminal = terminals.first(where: { $0.id == terminalId })?.terminalView,
               let window = terminal.window
         else {
             return false
@@ -449,49 +449,49 @@ final class SessionViewModel: ObservableObject, Identifiable {
         if window.firstResponder !== terminal {
             window.makeFirstResponder(terminal)
         }
-        syncTerminalCursors(activeId: shellId)
+        syncTerminalCursors(activeId: terminalId)
         return true
     }
 
     /// Ensure only the focused shell's caret blinks; all others stay steady/visible.
     func syncTerminalCursors(activeId: UUID? = nil) {
-        let active = activeId ?? focusedShellId
-        for shell in shells {
+        let active = activeId ?? focusedTerminalId
+        for shell in terminals {
             guard let terminal = shell.terminalView else { continue }
             TerminalAppearance.applyCursor(to: terminal, active: shell.id == active)
         }
     }
 
-    func beginRenameShell(_ shellId: UUID) {
-        guard let shell = shells.first(where: { $0.id == shellId }) else { return }
-        renameRequest = ShellRenameRequest(shellId: shellId, title: shell.title)
+    func beginRenameTerminal(_ terminalId: UUID) {
+        guard let shell = terminals.first(where: { $0.id == terminalId }) else { return }
+        renameRequest = TerminalRenameRequest(terminalId: terminalId, title: shell.title)
     }
 
-    func beginRenameFocusedShell() {
-        guard let id = focusedShellId ?? shells.first?.id else { return }
-        beginRenameShell(id)
+    func beginRenameFocusedTerminal() {
+        guard let id = focusedTerminalId ?? terminals.first?.id else { return }
+        beginRenameTerminal(id)
     }
 
-    func commitRename(request: ShellRenameRequest) {
+    func commitRename(request: TerminalRenameRequest) {
         renameRequest = nil
-        shells.first { $0.id == request.shellId }?.rename(request.title)
+        terminals.first { $0.id == request.terminalId }?.rename(request.title)
     }
 
-    func sendTerminalData(_ data: Data, shellId: UUID?) {
+    func sendTerminalData(_ data: Data, terminalId: UUID?) {
         guard state == .connected else { return }
-        let target = shellId ?? focusedShellId
-        controller.write(data, shellId: target)
+        let target = terminalId ?? focusedTerminalId
+        controller.write(data, terminalId: target)
     }
 
-    func resizeTerminal(cols: Int, rows: Int, shellId: UUID) {
-        guard let shell = shells.first(where: { $0.id == shellId }) else { return }
+    func resizeTerminal(cols: Int, rows: Int, terminalId: UUID) {
+        guard let shell = terminals.first(where: { $0.id == terminalId }) else { return }
         let nextCols = max(cols, 2)
         let nextRows = max(rows, 2)
         let sizeChanged = shell.cols != nextCols || shell.rows != nextRows
         shell.cols = nextCols
         shell.rows = nextRows
         guard state == .connected, sizeChanged else { return }
-        controller.resizeCols(Int(shell.cols), rows: Int(shell.rows), shellId: shellId)
+        controller.resizeCols(Int(shell.cols), rows: Int(shell.rows), terminalId: terminalId)
     }
 
     func pasteClipboard() {
@@ -515,16 +515,16 @@ final class SessionViewModel: ObservableObject, Identifiable {
     }
 
     func copySelection() {
-        focusedShell?.copySelection()
+        focusedTerminal?.copySelection()
     }
 
     func clearFocusedTerminal() {
-        focusedShell?.clearScreen()
+        focusedTerminal?.clearScreen()
     }
 
     func toggleFindBar() {
         showFindBar.toggle()
-        if let shell = focusedShell {
+        if let shell = focusedTerminal {
             shell.showFindBar = showFindBar
             if !showFindBar {
                 shell.clearFind()
@@ -535,8 +535,8 @@ final class SessionViewModel: ObservableObject, Identifiable {
         }
     }
 
-    func saveLogForFocusedShell() {
-        guard let shell = focusedShell else { return }
+    func saveLogForFocusedTerminal() {
+        guard let shell = focusedTerminal else { return }
         let text = shell.bufferText()
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
@@ -557,8 +557,8 @@ final class SessionViewModel: ObservableObject, Identifiable {
         }
     }
 
-    func saveScreenshotForFocusedShell() {
-        guard let shell = focusedShell, let view = shell.terminalView else {
+    func saveScreenshotForFocusedTerminal() {
+        guard let shell = focusedTerminal, let view = shell.terminalView else {
             onStatus?("No terminal to capture", .warning)
             return
         }
@@ -602,16 +602,16 @@ final class SessionViewModel: ObservableObject, Identifiable {
     func captureWorkspaceEntry() -> ESSWorkspaceSessionEntry {
         let entry = ESSWorkspaceSessionEntry()
         entry.connectionId = connection.connectionId as UUID
-        var shellEntries: [ESSWorkspaceShellEntry] = []
-        for shell in shells where !explorerAuxShellIds.contains(shell.id) {
-            let spec = ESSWorkspaceShellEntry()
-            spec.shellId = shell.id
+        var terminalEntries: [ESSWorkspaceTerminalEntry] = []
+        for shell in terminals where !explorerAuxTerminalIds.contains(shell.id) {
+            let spec = ESSWorkspaceTerminalEntry()
+            spec.terminalId = shell.id
             spec.title = shell.title
-            shellEntries.append(spec)
+            terminalEntries.append(spec)
         }
-        entry.shells = shellEntries
-        if let focusedShellId {
-            entry.activeShellId = focusedShellId
+        entry.terminals = terminalEntries
+        if let focusedTerminalId {
+            entry.activeTerminalId = focusedTerminalId
         }
         if let explorers {
             entry.activeToolId = explorers.selectedKind.bridgeKind
@@ -619,36 +619,36 @@ final class SessionViewModel: ObservableObject, Identifiable {
             entry.activeToolId = ""
         }
         entry.tools = []
-        entry.dockState = ShellLayoutCodec.encode(layout)
+        entry.dockState = TerminalLayoutCodec.encode(layout)
         return entry
     }
 
-    private func continueWorkspaceRestore(initialShellId: UUID) {
+    private func continueWorkspaceRestore(initialTerminalId: UUID) {
         guard !workspaceRestoreBusy, let entry = pendingWorkspaceRestore else { return }
         workspaceRestoreBusy = true
 
-        let savedIds = Set(entry.shells.compactMap { $0.shellId as UUID? })
-        if !savedIds.isEmpty, !savedIds.contains(initialShellId) {
-            controller.closeShell(initialShellId)
-            removeShellLocally(id: initialShellId, fromRemote: false)
+        let savedIds = Set(entry.terminals.compactMap { $0.terminalId as UUID? })
+        if !savedIds.isEmpty, !savedIds.contains(initialTerminalId) {
+            controller.closeTerminal(initialTerminalId)
+            removeTerminalLocally(id: initialTerminalId, fromRemote: false)
         }
 
-        var alive = Set(shells.map(\.id))
-        for spec in entry.shells {
-            guard let id = spec.shellId as UUID? else { continue }
+        var alive = Set(terminals.map(\.id))
+        for spec in entry.terminals {
+            guard let id = spec.terminalId as UUID? else { continue }
             if alive.contains(id) { continue }
-            openShell(id: id, title: spec.title)
+            openTerminal(id: id, title: spec.title)
             alive.insert(id)
         }
 
-        for spec in entry.shells {
-            guard let id = spec.shellId as UUID?, !spec.title.isEmpty else { continue }
-            shells.first { $0.id == id }?.rename(spec.title)
+        for spec in entry.terminals {
+            guard let id = spec.terminalId as UUID?, !spec.title.isEmpty else { continue }
+            terminals.first { $0.id == id }?.rename(spec.title)
         }
 
-        if let data = entry.dockState as Data?, let restored = ShellLayoutCodec.decode(data) {
+        if let data = entry.dockState as Data?, let restored = TerminalLayoutCodec.decode(data) {
             layout = restored
-        } else if layout == nil, let first = shells.first?.id {
+        } else if layout == nil, let first = terminals.first?.id {
             layout = .leaf(first)
         }
 
@@ -659,10 +659,10 @@ final class SessionViewModel: ObservableObject, Identifiable {
             onStatus?("Restored explorer: \(kind.title)", .status)
         }
 
-        if let activeShell = entry.activeShellId as UUID?, shells.contains(where: { $0.id == activeShell }) {
-            focusShell(activeShell)
-        } else if let first = shells.first?.id {
-            focusShell(first)
+        if let activeShell = entry.activeTerminalId as UUID?, terminals.contains(where: { $0.id == activeShell }) {
+            focusTerminal(activeShell)
+        } else if let first = terminals.first?.id {
+            focusTerminal(first)
         }
 
         pendingWorkspaceRestore = nil
@@ -708,47 +708,47 @@ final class SessionViewModel: ObservableObject, Identifiable {
 
     private func sendPaste(_ str: String) {
         guard let data = str.data(using: .utf8) else { return }
-        sendTerminalData(data, shellId: focusedShellId)
+        sendTerminalData(data, terminalId: focusedTerminalId)
     }
 
-    private func resetShells() {
-        for shell in shells {
+    private func resetTerminals() {
+        for shell in terminals {
             shell.releaseTerminal()
         }
-        shellCancellables.removeAll()
-        shells = []
-        focusedShellId = nil
+        terminalCancellables.removeAll()
+        terminals = []
+        focusedTerminalId = nil
         layout = nil
         showFindBar = false
         renameRequest = nil
         pendingMultilinePaste = nil
-        shellSerial = 0
-        explorerAuxShellIds.removeAll()
+        terminalSerial = 0
+        explorerAuxTerminalIds.removeAll()
     }
 
-    private func addShell(id: UUID, focusAndLayout: Bool) {
-        if shells.contains(where: { $0.id == id }) {
+    private func addTerminal(id: UUID, focusAndLayout: Bool) {
+        if terminals.contains(where: { $0.id == id }) {
             if focusAndLayout {
-                focusShell(id)
+                focusTerminal(id)
             }
             return
         }
-        shellSerial += 1
-        let shell = ShellViewModel(id: id, title: "Shell \(shellSerial)")
+        terminalSerial += 1
+        let shell = TerminalViewModel(id: id, title: "Terminal \(terminalSerial)")
         shell.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
-            .store(in: &shellCancellables)
-        shells.append(shell)
+            .store(in: &terminalCancellables)
+        terminals.append(shell)
         if focusAndLayout {
-            placeShellInLayout(id)
-            focusedShellId = id
+            placeTerminalInLayout(id)
+            focusedTerminalId = id
             requestTerminalActivation(for: id)
         }
     }
 
-    private func placeShellInLayout(_ newId: UUID) {
+    private func placeTerminalInLayout(_ newId: UUID) {
         let smart = ESSAppSettings.shared().smartLayout
         guard var tree = layout else {
             layout = .leaf(newId)
@@ -756,7 +756,7 @@ final class SessionViewModel: ObservableObject, Identifiable {
         }
 
         if !smart {
-            if let focus = focusedShellId, tree.contains(focus) {
+            if let focus = focusedTerminalId, tree.contains(focus) {
                 tree = tree.replacing(focus, with: newId)
                 layout = tree
             } else {
@@ -766,8 +766,8 @@ final class SessionViewModel: ObservableObject, Identifiable {
         }
 
         let leafCount = tree.leafCount
-        if leafCount >= ShellLayoutPlanner.maxVisibleLeaves {
-            if let focus = focusedShellId, tree.contains(focus) {
+        if leafCount >= TerminalLayoutPlanner.maxVisibleLeaves {
+            if let focus = focusedTerminalId, tree.contains(focus) {
                 tree = tree.replacing(focus, with: newId)
                 layout = tree
             } else if let first = tree.leafIds.first {
@@ -779,34 +779,34 @@ final class SessionViewModel: ObservableObject, Identifiable {
             return
         }
 
-        let relative = focusedShellId.flatMap { tree.contains($0) ? $0 : nil }
+        let relative = focusedTerminalId.flatMap { tree.contains($0) ? $0 : nil }
             ?? tree.leafIds.first
             ?? newId
         if relative == newId, leafCount == 0 {
             layout = .leaf(newId)
             return
         }
-        let axis = ShellLayoutPlanner.axisForNewShell(currentLeafCount: leafCount)
+        let axis = TerminalLayoutPlanner.axisForNewTerminal(currentLeafCount: leafCount)
         layout = tree.splitting(relativeTo: relative, newId: newId, axis: axis)
     }
 
-    private func removeShellLocally(id: UUID, fromRemote: Bool) {
-        if let shell = shells.first(where: { $0.id == id }) {
+    private func removeTerminalLocally(id: UUID, fromRemote: Bool) {
+        if let shell = terminals.first(where: { $0.id == id }) {
             shell.releaseTerminal()
         }
-        shells.removeAll { $0.id == id }
+        terminals.removeAll { $0.id == id }
         if let tree = layout {
             layout = tree.removing(id)
         }
 
         // Closing the only visible leaf collapses layout to nil (common with smart
         // layout off). Promote a remaining shell into focus + layout so the UI
-        // does not flash "No Shell" while shells.isEmpty is still false.
-        let focusStillValid = focusedShellId.map { fid in shells.contains(where: { $0.id == fid }) } ?? false
+        // does not flash "No Terminal" while terminals.isEmpty is still false.
+        let focusStillValid = focusedTerminalId.map { fid in terminals.contains(where: { $0.id == fid }) } ?? false
         if !focusStillValid {
-            focusedShellId = shells.last?.id
+            focusedTerminalId = terminals.last?.id
         }
-        if let focus = focusedShellId {
+        if let focus = focusedTerminalId {
             if layout == nil {
                 layout = .leaf(focus)
             } else if let tree = layout, !tree.contains(focus) {
@@ -821,12 +821,12 @@ final class SessionViewModel: ObservableObject, Identifiable {
             layout = nil
         }
 
-        if shells.isEmpty, state == .connected, fromRemote {
-            overlayMessage = "Shell closed. Reconnect to open a new shell."
+        if terminals.isEmpty, state == .connected, fromRemote {
+            overlayMessage = "Terminal closed. Reconnect to open a new terminal."
             showReconnect = true
-            statusMessage = "Shell closed"
+            statusMessage = "Terminal closed"
             connectedAt = nil
-            onStatus?("Shell closed: \(title)", .warning)
+            onStatus?("Terminal closed: \(title)", .warning)
         }
     }
 

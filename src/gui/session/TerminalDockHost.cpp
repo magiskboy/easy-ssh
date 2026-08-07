@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "ShellDockHost.h"
+#include "TerminalDockHost.h"
 
 #include <QContextMenuEvent>
 #include <QLabel>
@@ -13,7 +13,7 @@
 #include <DockWidget.h>
 #include <DockWidgetTab.h>
 
-ShellDockHost::ShellDockHost(QWidget *parent) : QWidget(parent)
+TerminalDockHost::TerminalDockHost(QWidget *parent) : QWidget(parent)
 {
     m_root = new QVBoxLayout(this);
     m_root->setContentsMargins(0, 0, 0, 0);
@@ -22,7 +22,7 @@ ShellDockHost::ShellDockHost(QWidget *parent) : QWidget(parent)
     m_termHolder = new QWidget(this);
     m_termHolder->hide();
 
-    m_emptyLabel = new QLabel(tr("No open shells.\nUse Terminal → New Shell to open one."), this);
+    m_emptyLabel = new QLabel(tr("No open terminals.\nUse Terminal → New Terminal to open one."), this);
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setWordWrap(true);
 
@@ -34,41 +34,41 @@ ShellDockHost::ShellDockHost(QWidget *parent) : QWidget(parent)
             &ads::CDockManager::focusedDockWidgetChanged,
             this,
             [this](ads::CDockWidget * /*old*/, ads::CDockWidget *now) {
-                const QUuid id = shellIdForDock(now);
+                const QUuid id = terminalIdForDock(now);
                 if (!id.isNull() && m_docks.contains(id)) {
-                    emit shellFocused(id);
+                    emit terminalFocused(id);
                 }
             });
 
     updateEmptyState();
 }
 
-ShellDockHost::~ShellDockHost()
+TerminalDockHost::~TerminalDockHost()
 {
     clearLayout();
 }
 
-bool ShellDockHost::pinShell(const QUuid &shellId,
+bool TerminalDockHost::pinTerminal(const QUuid &terminalId,
                              const QString &title,
                              QWidget *term,
                              int dockArea,
                              const QUuid &relativeTo)
 {
-    if (shellId.isNull() || !term || !m_manager) {
+    if (terminalId.isNull() || !term || !m_manager) {
         return false;
     }
-    if (m_docks.contains(shellId)) {
-        return focusShell(shellId);
+    if (m_docks.contains(terminalId)) {
+        return focusTerminal(terminalId);
     }
 
-    auto *dock = m_manager->createDockWidget(title.isEmpty() ? tr("Shell") : title);
-    dock->setObjectName(shellId.toString(QUuid::WithoutBraces));
+    auto *dock = m_manager->createDockWidget(title.isEmpty() ? tr("Terminal") : title);
+    dock->setObjectName(terminalId.toString(QUuid::WithoutBraces));
     dock->setFeature(ads::CDockWidget::CustomCloseHandling, true);
     dock->setFeature(ads::CDockWidget::DockWidgetDeleteOnClose, false);
     dock->setWidget(term);
 
-    connect(dock, &ads::CDockWidget::closeRequested, this, [this, shellId]() {
-        emit shellCloseRequested(shellId);
+    connect(dock, &ads::CDockWidget::closeRequested, this, [this, terminalId]() {
+        emit terminalCloseRequested(terminalId);
     });
 
     const auto area =
@@ -76,7 +76,7 @@ bool ShellDockHost::pinShell(const QUuid &shellId,
 
     ads::CDockAreaWidget *relativeArea = nullptr;
     if (!relativeTo.isNull()) {
-        if (ads::CDockWidget *rel = dockForShell(relativeTo)) {
+        if (ads::CDockWidget *rel = dockForTerminal(relativeTo)) {
             if (!rel->isFloating()) {
                 relativeArea = rel->dockAreaWidget();
             }
@@ -84,7 +84,7 @@ bool ShellDockHost::pinShell(const QUuid &shellId,
     }
 
     m_manager->addDockWidget(area, dock, relativeArea);
-    m_docks.insert(shellId, dock);
+    m_docks.insert(terminalId, dock);
     if (ads::CDockWidgetTab *tab = dock->tabWidget()) {
         tab->installEventFilter(this);
     }
@@ -94,7 +94,7 @@ bool ShellDockHost::pinShell(const QUuid &shellId,
     return true;
 }
 
-bool ShellDockHost::eventFilter(QObject *watched, QEvent *event)
+bool TerminalDockHost::eventFilter(QObject *watched, QEvent *event)
 {
     if (event->type() != QEvent::ContextMenu) {
         return QWidget::eventFilter(watched, event);
@@ -113,11 +113,11 @@ bool ShellDockHost::eventFilter(QObject *watched, QEvent *event)
     QMenu menu(tab);
     tab->buildContextMenu(&menu);
 
-    const QUuid shellId = shellIdForDock(tab->dockWidget());
-    if (!shellId.isNull()) {
+    const QUuid terminalId = terminalIdForDock(tab->dockWidget());
+    if (!terminalId.isNull()) {
         menu.addSeparator();
         menu.addAction(
-            tr("Rename…"), this, [this, shellId]() { emit shellRenameRequested(shellId); });
+            tr("Rename…"), this, [this, terminalId]() { emit terminalRenameRequested(terminalId); });
         menu.exec(ce->globalPos());
         ce->accept();
         return true;
@@ -134,9 +134,9 @@ bool ShellDockHost::eventFilter(QObject *watched, QEvent *event)
     return QWidget::eventFilter(watched, event);
 }
 
-bool ShellDockHost::unpinShell(const QUuid &shellId)
+bool TerminalDockHost::unpinTerminal(const QUuid &terminalId)
 {
-    ads::CDockWidget *dock = dockForShell(shellId);
+    ads::CDockWidget *dock = dockForTerminal(terminalId);
     if (!dock) {
         return false;
     }
@@ -147,16 +147,16 @@ bool ShellDockHost::unpinShell(const QUuid &shellId)
         term->hide();
     }
 
-    m_docks.remove(shellId);
+    m_docks.remove(terminalId);
     m_manager->removeDockWidget(dock);
     dock->deleteLater();
     updateEmptyState();
     return true;
 }
 
-bool ShellDockHost::focusShell(const QUuid &shellId)
+bool TerminalDockHost::focusTerminal(const QUuid &terminalId)
 {
-    ads::CDockWidget *dock = dockForShell(shellId);
+    ads::CDockWidget *dock = dockForTerminal(terminalId);
     if (!dock) {
         return false;
     }
@@ -165,17 +165,17 @@ bool ShellDockHost::focusShell(const QUuid &shellId)
     if (QWidget *w = dock->widget()) {
         w->setFocus(Qt::OtherFocusReason);
     }
-    emit shellFocused(shellId);
+    emit terminalFocused(terminalId);
     return true;
 }
 
-bool ShellDockHost::isPinned(const QUuid &shellId) const
+bool TerminalDockHost::isPinned(const QUuid &terminalId) const
 {
-    return m_docks.contains(shellId);
+    return m_docks.contains(terminalId);
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-bool ShellDockHost::pinTool(const QString &toolId,
+bool TerminalDockHost::pinTool(const QString &toolId,
                             const QString &title,
                             QWidget *widget,
                             int dockArea)
@@ -195,7 +195,7 @@ bool ShellDockHost::pinTool(const QString &toolId,
 
     connect(dock, &ads::CDockWidget::closeRequested, this, [this, toolId]() { unpinTool(toolId); });
 
-    // Prefer a full-size tab beside existing shells (not a split pane).
+    // Prefer a full-size tab beside existing terminals (not a split pane).
     ads::CDockAreaWidget *targetArea = nullptr;
     if (ads::CDockWidget *focused = m_manager->focusedDockWidget()) {
         if (!focused->isFloating()) {
@@ -237,7 +237,7 @@ bool ShellDockHost::pinTool(const QString &toolId,
     return true;
 }
 
-bool ShellDockHost::unpinTool(const QString &toolId)
+bool TerminalDockHost::unpinTool(const QString &toolId)
 {
     ads::CDockWidget *dock = dockForTool(toolId);
     if (!dock) {
@@ -258,7 +258,7 @@ bool ShellDockHost::unpinTool(const QString &toolId)
     return true;
 }
 
-bool ShellDockHost::focusTool(const QString &toolId)
+bool TerminalDockHost::focusTool(const QString &toolId)
 {
     ads::CDockWidget *dock = dockForTool(toolId);
     if (!dock) {
@@ -272,22 +272,22 @@ bool ShellDockHost::focusTool(const QString &toolId)
     return true;
 }
 
-bool ShellDockHost::isToolPinned(const QString &toolId) const
+bool TerminalDockHost::isToolPinned(const QString &toolId) const
 {
     return m_tools.contains(toolId);
 }
 
-QList<QUuid> ShellDockHost::pinnedShellIds() const
+QList<QUuid> TerminalDockHost::pinnedTerminalIds() const
 {
     return m_docks.keys();
 }
 
-QStringList ShellDockHost::pinnedToolIds() const
+QStringList TerminalDockHost::pinnedToolIds() const
 {
     return m_tools.keys();
 }
 
-QList<QUuid> ShellDockHost::dockedShellIds() const
+QList<QUuid> TerminalDockHost::dockedTerminalIds() const
 {
     QList<QUuid> ids;
     ids.reserve(m_docks.size());
@@ -299,15 +299,15 @@ QList<QUuid> ShellDockHost::dockedShellIds() const
     return ids;
 }
 
-QUuid ShellDockHost::focusedShellId() const
+QUuid TerminalDockHost::focusedTerminalId() const
 {
     if (!m_manager) {
         return {};
     }
-    return shellIdForDock(m_manager->focusedDockWidget());
+    return terminalIdForDock(m_manager->focusedDockWidget());
 }
 
-QString ShellDockHost::focusedToolId() const
+QString TerminalDockHost::focusedToolId() const
 {
     if (!m_manager) {
         return {};
@@ -315,7 +315,7 @@ QString ShellDockHost::focusedToolId() const
     return toolIdForDock(m_manager->focusedDockWidget());
 }
 
-void ShellDockHost::clearLayout()
+void TerminalDockHost::clearLayout()
 {
     const QList<QString> toolIds = m_tools.keys();
     for (const QString &id : toolIds) {
@@ -323,11 +323,11 @@ void ShellDockHost::clearLayout()
     }
     const QList<QUuid> ids = m_docks.keys();
     for (const QUuid &id : ids) {
-        unpinShell(id);
+        unpinTerminal(id);
     }
 }
 
-void ShellDockHost::setLayoutActive(bool active)
+void TerminalDockHost::setLayoutActive(bool active)
 {
     if (!m_manager) {
         m_layoutActive = active;
@@ -344,14 +344,14 @@ void ShellDockHost::setLayoutActive(bool active)
     m_layoutActive = active;
 }
 
-void ShellDockHost::setShellTitle(const QUuid &shellId, const QString &title)
+void TerminalDockHost::setTerminalTitle(const QUuid &terminalId, const QString &title)
 {
-    if (ads::CDockWidget *dock = dockForShell(shellId)) {
+    if (ads::CDockWidget *dock = dockForTerminal(terminalId)) {
         dock->setWindowTitle(title);
     }
 }
 
-QByteArray ShellDockHost::saveLayout() const
+QByteArray TerminalDockHost::saveLayout() const
 {
     if (!m_manager || !hasAnyDocks()) {
         return {};
@@ -359,7 +359,7 @@ QByteArray ShellDockHost::saveLayout() const
     return m_manager->saveState();
 }
 
-bool ShellDockHost::restoreLayout(const QByteArray &state)
+bool TerminalDockHost::restoreLayout(const QByteArray &state)
 {
     if (!m_manager || state.isEmpty()) {
         return false;
@@ -367,17 +367,17 @@ bool ShellDockHost::restoreLayout(const QByteArray &state)
     return m_manager->restoreState(state);
 }
 
-ads::CDockWidget *ShellDockHost::dockForShell(const QUuid &shellId) const
+ads::CDockWidget *TerminalDockHost::dockForTerminal(const QUuid &terminalId) const
 {
-    return m_docks.value(shellId, nullptr);
+    return m_docks.value(terminalId, nullptr);
 }
 
-ads::CDockWidget *ShellDockHost::dockForTool(const QString &toolId) const
+ads::CDockWidget *TerminalDockHost::dockForTool(const QString &toolId) const
 {
     return m_tools.value(toolId, nullptr);
 }
 
-QUuid ShellDockHost::shellIdForDock(ads::CDockWidget *dock) const
+QUuid TerminalDockHost::terminalIdForDock(ads::CDockWidget *dock) const
 {
     if (!dock) {
         return {};
@@ -394,7 +394,7 @@ QUuid ShellDockHost::shellIdForDock(ads::CDockWidget *dock) const
     return QUuid(name);
 }
 
-QString ShellDockHost::toolIdForDock(ads::CDockWidget *dock) const
+QString TerminalDockHost::toolIdForDock(ads::CDockWidget *dock) const
 {
     if (!dock) {
         return {};
@@ -412,7 +412,7 @@ QString ShellDockHost::toolIdForDock(ads::CDockWidget *dock) const
     return {};
 }
 
-void ShellDockHost::updateEmptyState()
+void TerminalDockHost::updateEmptyState()
 {
     const bool empty = !hasAnyDocks();
     if (empty) {
@@ -424,7 +424,7 @@ void ShellDockHost::updateEmptyState()
     }
 }
 
-bool ShellDockHost::hasAnyDocks() const
+bool TerminalDockHost::hasAnyDocks() const
 {
     return !m_docks.isEmpty() || !m_tools.isEmpty();
 }

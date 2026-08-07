@@ -384,7 +384,7 @@ final class SessionExplorersModel: ObservableObject {
             lastError = "Logs not supported for this service."
             return
         }
-        session.openShellForExplorerLogs(title: "Logs: \(row.unit)", command: cmd + "\n")
+        session.openTerminalForExplorerLogs(title: "Logs: \(row.unit)", command: cmd + "\n")
     }
 
     func systemInfoText() -> String {

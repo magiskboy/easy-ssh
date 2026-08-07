@@ -549,20 +549,20 @@ final class AppModel: ObservableObject {
         selectedSession?.copySelection()
     }
 
-    func openShellInSelectedSession() {
-        selectedSession?.openShell()
+    func openTerminalInSelectedSession() {
+        selectedSession?.openTerminal()
     }
 
-    func closeShellInSelectedSession() {
-        selectedSession?.closeFocusedShell()
+    func closeTerminalInSelectedSession() {
+        selectedSession?.closeFocusedTerminal()
     }
 
-    func renameShellInSelectedSession() {
-        selectedSession?.beginRenameFocusedShell()
+    func renameTerminalInSelectedSession() {
+        selectedSession?.beginRenameFocusedTerminal()
     }
 
-    func focusShellInSelectedSession(_ shellId: UUID) {
-        selectedSession?.focusShell(shellId)
+    func focusTerminalInSelectedSession(_ terminalId: UUID) {
+        selectedSession?.focusTerminal(terminalId)
     }
 
     func clearTerminalInSelectedSession() {
@@ -574,15 +574,15 @@ final class AppModel: ObservableObject {
     }
 
     func saveLogInSelectedSession() {
-        selectedSession?.saveLogForFocusedShell()
+        selectedSession?.saveLogForFocusedTerminal()
     }
 
     func saveScreenshotInSelectedSession() {
-        selectedSession?.saveScreenshotForFocusedShell()
+        selectedSession?.saveScreenshotForFocusedTerminal()
     }
 
     var canUseTerminalActions: Bool {
-        selectedSession?.state == .connected && selectedSession?.focusedShell != nil
+        selectedSession?.state == .connected && selectedSession?.focusedTerminal != nil
     }
 
     func openLogFile() {
@@ -682,8 +682,8 @@ final class AppModel: ObservableObject {
         presentPalette(.connections)
     }
 
-    func openGoToShell() {
-        presentPalette(.shells)
+    func openGoToTerminal() {
+        presentPalette(.terminals)
     }
 
     func dismissCommandPalette() {
@@ -716,8 +716,8 @@ final class AppModel: ObservableObject {
             return buildActionRows(query: query)
         case .connections:
             return buildConnectionRows(query: query)
-        case .shells:
-            return buildShellRows(query: query)
+        case .terminals:
+            return buildTerminalRows(query: query)
         }
     }
 
@@ -731,9 +731,9 @@ final class AppModel: ObservableObject {
         case .createConnection:
             dismissCommandPalette()
             createConnection(fromQuery: filter)
-        case let .shell(item, _):
+        case let .terminal(item, _):
             dismissCommandPalette()
-            focusShell(connectionId: item.connectionId, shellId: item.shellId)
+            focusTerminal(connectionId: item.connectionId, terminalId: item.terminalId)
         case .hint:
             break
         }
@@ -744,12 +744,12 @@ final class AppModel: ObservableObject {
         openConnectionManager()
     }
 
-    func focusShell(connectionId: UUID, shellId: UUID) {
+    func focusTerminal(connectionId: UUID, terminalId: UUID) {
         guard let session = session(forConnectionId: connectionId) else { return }
         selectedConnectionId = connectionId
         selectedSessionId = session.id
         sidebarMode = .sessions
-        session.focusShell(shellId)
+        session.focusTerminal(terminalId)
     }
 
     func performPaletteAction(id actionId: String) {
@@ -766,9 +766,9 @@ final class AppModel: ObservableObject {
         case "general.about":
             activeModal = .about
         case "session.newSession":
-            openShellInSelectedSession()
-        case "shell.close":
-            closeShellInSelectedSession()
+            openTerminalInSelectedSession()
+        case "terminal.close":
+            closeTerminalInSelectedSession()
         case "session.nextTab":
             selectNextSession()
         case "session.previousTab":
@@ -903,8 +903,8 @@ final class AppModel: ObservableObject {
     private func isPaletteActionEnabled(_ actionId: String) -> Bool {
         switch actionId {
         case "session.newSession":
-            return selectedSession?.canOpenShell ?? false
-        case "shell.close", "terminal.copy", "terminal.paste", "terminal.clearScreen",
+            return selectedSession?.canOpenTerminal ?? false
+        case "terminal.close", "terminal.copy", "terminal.paste", "terminal.clearScreen",
              "terminal.search", "terminal.saveLog", "terminal.saveScreenshot":
             return canUseTerminalActions
         case "session.nextTab":
@@ -953,32 +953,32 @@ final class AppModel: ObservableObject {
         return rows
     }
 
-    private func buildShellRows(query: String) -> [PaletteRow] {
+    private func buildTerminalRows(query: String) -> [PaletteRow] {
         var rows: [PaletteRow] = []
         for session in sessions {
             let connectionId = session.connection.connectionId as UUID
-            for shell in session.shells {
+            for shell in session.terminals {
                 let subtitle = session.title
                 let fields = [shell.title, subtitle, session.title]
                 guard var score = FuzzyMatch.bestMatchScore(pattern: query, fields: fields) else { continue }
-                let isActive = session.focusedShellId == shell.id
+                let isActive = session.focusedTerminalId == shell.id
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, isActive {
                     score += 500
                 }
-                let item = PaletteShellItem(
+                let item = PaletteTerminalItem(
                     connectionId: connectionId,
-                    shellId: shell.id,
+                    terminalId: shell.id,
                     sessionTitle: session.title,
-                    shellTitle: shell.title,
+                    terminalTitle: shell.title,
                     subtitle: subtitle,
                     searchFields: fields,
                     isActive: isActive
                 )
-                rows.append(.shell(item, score: score))
+                rows.append(.terminal(item, score: score))
             }
         }
         if rows.isEmpty {
-            return [.hint("No open shells. Connect and open a session first.")]
+            return [.hint("No open terminals. Connect and open a session first.")]
         }
         rows.sort { $0.score > $1.score }
         return rows

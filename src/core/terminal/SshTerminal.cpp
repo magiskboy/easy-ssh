@@ -2,39 +2,39 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "SshShell.h"
+#include "SshTerminal.h"
 
 #include <QCoreApplication>
 #include <QThread>
 
 namespace
 {
-QString trShell(const char *text)
+QString trTerminal(const char *text)
 {
-    return QCoreApplication::translate("SshShell", text);
+    return QCoreApplication::translate("SshTerminal", text);
 }
 } // namespace
 
-SshShell::~SshShell()
+SshTerminal::~SshTerminal()
 {
     cleanup();
 }
 
-bool SshShell::isOpen() const
+bool SshTerminal::isOpen() const
 {
     return m_channel != nullptr && ssh_channel_is_open(m_channel) && !ssh_channel_is_eof(m_channel);
 }
 
-QString SshShell::sessionError() const
+QString SshTerminal::sessionError() const
 {
     if (m_session == nullptr) {
-        return trShell("Unknown error");
+        return trTerminal("Unknown error");
     }
     const char *err = ssh_get_error(m_session);
-    return err ? QString::fromUtf8(err) : trShell("Unknown error");
+    return err ? QString::fromUtf8(err) : trTerminal("Unknown error");
 }
 
-void SshShell::cleanup()
+void SshTerminal::cleanup()
 {
     if (m_channel) {
         if (ssh_channel_is_open(m_channel)) {
@@ -47,12 +47,12 @@ void SshShell::cleanup()
     m_session = nullptr;
 }
 
-bool SshShell::pumpAgain(const AgainPump &againPump, QString *errorOut, const char *what)
+bool SshTerminal::pumpAgain(const AgainPump &againPump, QString *errorOut, const char *what)
 {
     if (againPump) {
         if (!againPump()) {
             if (errorOut) {
-                *errorOut = trShell("Aborted while waiting for %1").arg(QString::fromUtf8(what));
+                *errorOut = trTerminal("Aborted while waiting for %1").arg(QString::fromUtf8(what));
             }
             return false;
         }
@@ -62,12 +62,12 @@ bool SshShell::pumpAgain(const AgainPump &againPump, QString *errorOut, const ch
     return true;
 }
 
-bool SshShell::open(ssh_session session,
+bool SshTerminal::open(ssh_session session,
                     int cols,
                     int rows,
                     QString *errorOut,
                     const AgainPump &againPump,
-                    const BeforeShellHook &beforeShell)
+                    const BeforeTerminalHook &beforeTerminal)
 {
     cleanup();
     m_session = session;
@@ -75,7 +75,7 @@ bool SshShell::open(ssh_session session,
     m_channel = ssh_channel_new(m_session);
     if (m_channel == nullptr) {
         if (errorOut) {
-            *errorOut = trShell("Failed to create channel: %1").arg(sessionError());
+            *errorOut = trTerminal("Failed to create channel: %1").arg(sessionError());
         }
         return false;
     }
@@ -88,7 +88,7 @@ bool SshShell::open(ssh_session session,
                 if (++spins > 2000) {
                     if (errorOut) {
                         *errorOut =
-                            trShell("Timed out waiting for %1").arg(QString::fromUtf8(what));
+                            trTerminal("Timed out waiting for %1").arg(QString::fromUtf8(what));
                     }
                     return false;
                 }
@@ -100,7 +100,7 @@ bool SshShell::open(ssh_session session,
             if (rc != SSH_OK) {
                 if (errorOut) {
                     *errorOut =
-                        trShell("Failed to %1: %2").arg(QString::fromUtf8(what), sessionError());
+                        trTerminal("Failed to %1: %2").arg(QString::fromUtf8(what), sessionError());
                 }
                 return false;
             }
@@ -122,7 +122,7 @@ bool SshShell::open(ssh_session session,
 
     // RFC 9987 / OpenSSH: auth-agent-req must be sent before shell/exec/subsystem
     // so sshd can inject SSH_AUTH_SOCK into the remote environment.
-    if (beforeShell && !beforeShell(m_channel, errorOut)) {
+    if (beforeTerminal && !beforeTerminal(m_channel, errorOut)) {
         cleanup();
         return false;
     }
@@ -135,7 +135,7 @@ bool SshShell::open(ssh_session session,
     return true;
 }
 
-bool SshShell::write(const QByteArray &data, QString *errorOut)
+bool SshTerminal::write(const QByteArray &data, QString *errorOut)
 {
     if (m_channel == nullptr || data.isEmpty()) {
         return true;
@@ -159,7 +159,7 @@ bool SshShell::write(const QByteArray &data, QString *errorOut)
     return true;
 }
 
-int SshShell::writeNonBlocking(const char *data, int len, QString *errorOut)
+int SshTerminal::writeNonBlocking(const char *data, int len, QString *errorOut)
 {
     if (m_channel == nullptr || data == nullptr || len <= 0) {
         return 0;
@@ -170,7 +170,7 @@ int SshShell::writeNonBlocking(const char *data, int len, QString *errorOut)
         if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
             (m_session && !ssh_is_connected(m_session))) {
             if (errorOut) {
-                *errorOut = trShell("Failed to write to channel: %1").arg(sessionError());
+                *errorOut = trTerminal("Failed to write to channel: %1").arg(sessionError());
             }
             return -1;
         }
@@ -180,7 +180,7 @@ int SshShell::writeNonBlocking(const char *data, int len, QString *errorOut)
     return written;
 }
 
-bool SshShell::changePtySize(int cols, int rows, QString *errorOut)
+bool SshTerminal::changePtySize(int cols, int rows, QString *errorOut)
 {
     Q_UNUSED(errorOut);
     if (m_channel == nullptr) {
@@ -193,7 +193,7 @@ bool SshShell::changePtySize(int cols, int rows, QString *errorOut)
     return true;
 }
 
-SshShell::PollStatus SshShell::poll(QByteArray *outData, QString *errorOut)
+SshTerminal::PollStatus SshTerminal::poll(QByteArray *outData, QString *errorOut)
 {
     if (m_session == nullptr) {
         return PollStatus::ChannelClosed;
@@ -223,12 +223,12 @@ SshShell::PollStatus SshShell::poll(QByteArray *outData, QString *errorOut)
                 }
                 if (!ssh_is_connected(m_session)) {
                     if (errorOut) {
-                        *errorOut = trShell("Read error: %1").arg(sessionError());
+                        *errorOut = trTerminal("Read error: %1").arg(sessionError());
                     }
                     return PollStatus::Error;
                 }
                 if (errorOut) {
-                    *errorOut = trShell("Read error: %1").arg(sessionError());
+                    *errorOut = trTerminal("Read error: %1").arg(sessionError());
                 }
                 return PollStatus::Error;
             }
@@ -255,7 +255,7 @@ SshShell::PollStatus SshShell::poll(QByteArray *outData, QString *errorOut)
 
     if (!ssh_is_connected(m_session)) {
         if (errorOut) {
-            *errorOut = trShell("SSH connection lost");
+            *errorOut = trTerminal("SSH connection lost");
         }
         return PollStatus::Error;
     }

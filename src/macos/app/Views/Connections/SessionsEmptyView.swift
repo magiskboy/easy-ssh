@@ -16,7 +16,7 @@ struct SessionsEmptyView: View {
             Text("No Sessions")
                 .font(.title2.weight(.semibold))
 
-            Text("Connect to a host to open a SwiftTerm shell backed by Qt Core + libssh.")
+            Text("Connect to a host to open a SwiftTerm terminal backed by Qt Core + libssh.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)

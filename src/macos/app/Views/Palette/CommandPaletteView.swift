@@ -161,9 +161,9 @@ struct CommandPaletteView: View {
             }
         case .createConnection:
             Label("Create connection…", systemImage: "plus.circle")
-        case let .shell(item, _):
+        case let .terminal(item, _):
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.shellTitle)
+                Text(item.terminalTitle)
                 Text(item.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)

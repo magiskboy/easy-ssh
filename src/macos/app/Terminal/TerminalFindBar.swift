@@ -5,37 +5,37 @@
 import SwiftUI
 
 struct TerminalFindBar: View {
-    @ObservedObject var shell: ShellViewModel
+    @ObservedObject var terminal: TerminalViewModel
     var onClose: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Find", text: $shell.findQuery)
+            TextField("Find", text: $terminal.findQuery)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 240)
-                .onSubmit { shell.findNext() }
+                .onSubmit { terminal.findNext() }
             Text(matchLabel)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 40, alignment: .trailing)
             Button {
-                shell.findPrevious()
+                terminal.findPrevious()
             } label: {
                 Image(systemName: "chevron.up")
             }
-            .disabled(shell.findQuery.isEmpty)
+            .disabled(terminal.findQuery.isEmpty)
             .help("Find Previous")
             Button {
-                shell.findNext()
+                terminal.findNext()
             } label: {
                 Image(systemName: "chevron.down")
             }
-            .disabled(shell.findQuery.isEmpty)
+            .disabled(terminal.findQuery.isEmpty)
             .help("Find Next")
             Button {
-                shell.clearFind()
+                terminal.clearFind()
                 onClose()
             } label: {
                 Image(systemName: "xmark")
@@ -48,12 +48,12 @@ struct TerminalFindBar: View {
     }
 
     private var matchLabel: String {
-        if shell.findQuery.isEmpty {
+        if terminal.findQuery.isEmpty {
             return ""
         }
-        if shell.findMatchTotal == 0 {
+        if terminal.findMatchTotal == 0 {
             return "0/0"
         }
-        return "\(shell.findMatchIndex)/\(shell.findMatchTotal)"
+        return "\(terminal.findMatchIndex)/\(terminal.findMatchTotal)"
     }
 }

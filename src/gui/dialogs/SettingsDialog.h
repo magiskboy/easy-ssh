@@ -43,7 +43,7 @@ private slots:
 private:
     QWidget *createGeneralPage();
     QWidget *createFileExplorerPage();
-    QWidget *createShellPage();
+    QWidget *createTerminalPage();
     QWidget *createShortcutsPage();
     void loadFromSettings();
     void saveToSettings();
@@ -81,7 +81,7 @@ private:
     QSpinBox *m_stallTimeout = nullptr;
     QCheckBox *m_autoResumeTransfer = nullptr;
 
-    // Shell
+    // Terminal
     QFontComboBox *m_fontCombo = nullptr;
     QSpinBox *m_fontSize = nullptr;
     QComboBox *m_colorScheme = nullptr;

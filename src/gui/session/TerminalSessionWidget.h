@@ -106,14 +106,14 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
-    void onConnected(const QUuid &initialShellId);
-    void onDataReceived(const QUuid &shellId, const QByteArray &data);
+    void onConnected(const QUuid &initialTerminalId);
+    void onDataReceived(const QUuid &terminalId, const QByteArray &data);
     void onHostKeyPrompt(const QString &fingerprint,
                          SshWorker::HostKeyPrompt reason,
                          const QString &contextLabel);
     void onErrorOccurred(const QString &message);
     void onDisconnected();
-    void onShellClosed(const QUuid &shellId);
+    void onTerminalClosed(const QUuid &terminalId);
     void onSendData(const char *data, int length);
     void syncPtySize();
 
@@ -140,7 +140,7 @@ private:
     QPushButton *m_reconnectButton = nullptr;
     QThread *m_thread = nullptr;
     SshWorker *m_worker = nullptr;
-    QUuid m_primaryShellId;
+    QUuid m_primaryTerminalId;
     QTimer *m_resizeDebounce = nullptr;
     TerminalIoBridge *m_ioBridge = nullptr;
     bool m_teletypeStarted = false;

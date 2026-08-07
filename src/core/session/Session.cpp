@@ -77,9 +77,9 @@ QString Session::displayName() const
     return QStringLiteral("%1@%2").arg(m_connection.username, m_connection.host);
 }
 
-QList<ShellChannelState> Session::shells() const
+QList<TerminalChannelState> Session::terminals() const
 {
-    return m_shells;
+    return m_terminals;
 }
 
 QList<TunnelChannelState> Session::tunnels() const
@@ -87,7 +87,7 @@ QList<TunnelChannelState> Session::tunnels() const
     return m_tunnels.values();
 }
 
-void Session::connectTransport(int cols, int rows, const QUuid &initialShellId)
+void Session::connectTransport(int cols, int rows, const QUuid &initialTerminalId)
 {
     if (m_state == SessionState::Connecting) {
         return;
@@ -99,9 +99,9 @@ void Session::connectTransport(int cols, int rows, const QUuid &initialShellId)
         return;
     }
 
-    m_shells.clear();
-    m_activeShellId = {};
-    m_nextShellSerial = 1;
+    m_terminals.clear();
+    m_activeTerminalId = {};
+    m_nextTerminalSerial = 1;
     m_tunnels.clear();
     markFileUnavailable(m_file);
     emit fileChanged();
@@ -116,26 +116,26 @@ void Session::connectTransport(int cols, int rows, const QUuid &initialShellId)
 
     ensureWorker();
 
-    const QUuid shellId = initialShellId.isNull() ? QUuid::createUuid() : initialShellId;
-    ShellChannelState shell;
-    shell.id = shellId;
-    shell.serial = nextShellSerial();
-    shell.title = QStringLiteral("Shell %1").arg(shell.serial);
+    const QUuid terminalId = initialTerminalId.isNull() ? QUuid::createUuid() : initialTerminalId;
+    TerminalChannelState shell;
+    shell.id = terminalId;
+    shell.serial = nextTerminalSerial();
+    shell.title = QStringLiteral("Terminal %1").arg(shell.serial);
     shell.state = ChannelState::Opening;
     shell.cols = cols;
     shell.rows = rows;
     shell.createdAt = QDateTime::currentDateTimeUtc();
-    m_shells.append(shell);
-    m_activeShellId = shellId;
-    emit shellsChanged();
-    emit activeShellChanged(m_activeShellId);
+    m_terminals.append(shell);
+    m_activeTerminalId = terminalId;
+    emit terminalsChanged();
+    emit activeTerminalChanged(m_activeTerminalId);
 
     const Connection connection = m_connection;
     const SessionCredentials credentials = m_credentials;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, connection, credentials, shellId, cols, rows]() {
-            worker->connectToHost(connection, credentials, shellId, cols, rows);
+        [worker = m_worker, connection, credentials, terminalId, cols, rows]() {
+            worker->connectToHost(connection, credentials, terminalId, cols, rows);
         },
         Qt::QueuedConnection);
 }
@@ -156,14 +156,14 @@ void Session::disconnectTransport()
     }
 
     // Optimistic UI: never wait on connect timeout / worker teardown.
-    for (ShellChannelState &shell : m_shells) {
+    for (TerminalChannelState &shell : m_terminals) {
         shell.state = ChannelState::Closed;
     }
-    m_activeShellId = {};
+    m_activeTerminalId = {};
     markFileUnavailable(m_file);
     setState(SessionState::Disconnected);
-    emit shellsChanged();
-    emit activeShellChanged(m_activeShellId);
+    emit terminalsChanged();
+    emit activeTerminalChanged(m_activeTerminalId);
     emit fileChanged();
     emit statusMessage(tr("Disconnected: %1").arg(displayName()), kWarningLevel);
 
@@ -224,10 +224,10 @@ void Session::shutdown()
     m_shuttingDown = true;
     teardownWorker();
 
-    for (ShellChannelState &shell : m_shells) {
+    for (TerminalChannelState &shell : m_terminals) {
         shell.state = ChannelState::Closed;
     }
-    m_activeShellId = {};
+    m_activeTerminalId = {};
     m_tunnels.clear();
     markFileUnavailable(m_file);
 
@@ -235,119 +235,119 @@ void Session::shutdown()
         setState(SessionState::Disconnected);
     }
 
-    emit shellsChanged();
-    emit activeShellChanged(m_activeShellId);
+    emit terminalsChanged();
+    emit activeTerminalChanged(m_activeTerminalId);
     emit fileChanged();
     emit tunnelsChanged();
 }
 
-QUuid Session::newShell(int cols, int rows, const QUuid &shellId, bool auxiliary)
+QUuid Session::newTerminal(int cols, int rows, const QUuid &terminalId, bool auxiliary)
 {
     if (m_state != SessionState::Connected || m_worker == nullptr) {
         return {};
     }
-    if (m_shells.size() >= SshWorker::kMaxShells) {
-        emit statusMessage(tr("Maximum of %1 shells per session").arg(SshWorker::kMaxShells),
+    if (m_terminals.size() >= SshWorker::kMaxTerminals) {
+        emit statusMessage(tr("Maximum of %1 terminals per session").arg(SshWorker::kMaxTerminals),
                            kErrorLevel);
         return {};
     }
 
-    const QUuid id = shellId.isNull() ? QUuid::createUuid() : shellId;
-    if (findShell(id) != nullptr) {
+    const QUuid id = terminalId.isNull() ? QUuid::createUuid() : terminalId;
+    if (findTerminal(id) != nullptr) {
         return id;
     }
 
-    ShellChannelState shell;
+    TerminalChannelState shell;
     shell.id = id;
-    shell.serial = nextShellSerial();
-    shell.title = QStringLiteral("Shell %1").arg(shell.serial);
+    shell.serial = nextTerminalSerial();
+    shell.title = QStringLiteral("Terminal %1").arg(shell.serial);
     shell.state = ChannelState::Opening;
     shell.cols = cols;
     shell.rows = rows;
     shell.createdAt = QDateTime::currentDateTimeUtc();
     shell.auxiliary = auxiliary;
-    m_shells.append(shell);
-    emit shellsChanged();
+    m_terminals.append(shell);
+    emit terminalsChanged();
 
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, id, cols, rows]() { worker->openShell(id, cols, rows); },
+        [worker = m_worker, id, cols, rows]() { worker->openTerminal(id, cols, rows); },
         Qt::QueuedConnection);
     return id;
 }
 
-void Session::closeShell(const QUuid &shellId)
+void Session::closeTerminal(const QUuid &terminalId)
 {
-    if (m_worker == nullptr || shellId.isNull() || findShell(shellId) == nullptr) {
+    if (m_worker == nullptr || terminalId.isNull() || findTerminal(terminalId) == nullptr) {
         return;
     }
 
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, shellId]() { worker->closeShell(shellId); },
+        [worker = m_worker, terminalId]() { worker->closeTerminal(terminalId); },
         Qt::QueuedConnection);
 }
 
-void Session::setActiveShell(const QUuid &shellId)
+void Session::setActiveTerminal(const QUuid &terminalId)
 {
-    if (shellId == m_activeShellId) {
+    if (terminalId == m_activeTerminalId) {
         return;
     }
-    const ShellChannelState *shell = findShell(shellId);
+    const TerminalChannelState *shell = findTerminal(terminalId);
     if (shell == nullptr || shell->auxiliary) {
         return;
     }
 
-    m_activeShellId = shellId;
-    emit activeShellChanged(m_activeShellId);
+    m_activeTerminalId = terminalId;
+    emit activeTerminalChanged(m_activeTerminalId);
 }
 
-void Session::renameShell(const QUuid &shellId, const QString &title)
+void Session::renameTerminal(const QUuid &terminalId, const QString &title)
 {
-    ShellChannelState *shell = findShell(shellId);
+    TerminalChannelState *shell = findTerminal(terminalId);
     if (shell == nullptr) {
         return;
     }
 
     shell->title = title;
-    emit shellsChanged();
+    emit terminalsChanged();
 }
 
 void Session::writeToActiveShell(const QByteArray &data)
 {
-    if (m_activeShellId.isNull()) {
+    if (m_activeTerminalId.isNull()) {
         return;
     }
-    writeToShell(m_activeShellId, data);
+    writeToTerminal(m_activeTerminalId, data);
 }
 
-void Session::writeToShell(const QUuid &shellId, const QByteArray &data)
+void Session::writeToTerminal(const QUuid &terminalId, const QByteArray &data)
 {
-    if (m_state != SessionState::Connected || m_worker == nullptr || shellId.isNull() ||
+    if (m_state != SessionState::Connected || m_worker == nullptr || terminalId.isNull() ||
         data.isEmpty()) {
         return;
     }
 
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, shellId, data]() { worker->writeToChannel(shellId, data); },
+        [worker = m_worker, terminalId, data]() { worker->writeToChannel(terminalId, data); },
         Qt::QueuedConnection);
 }
 
-void Session::changePtySize(const QUuid &shellId, int cols, int rows)
+void Session::changePtySize(const QUuid &terminalId, int cols, int rows)
 {
-    if (m_state != SessionState::Connected || m_worker == nullptr || shellId.isNull()) {
+    if (m_state != SessionState::Connected || m_worker == nullptr || terminalId.isNull()) {
         return;
     }
 
-    if (ShellChannelState *shell = findShell(shellId)) {
+    if (TerminalChannelState *shell = findTerminal(terminalId)) {
         shell->cols = cols;
         shell->rows = rows;
     }
 
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, shellId, cols, rows]() { worker->changePtySize(shellId, cols, rows); },
+        [worker = m_worker, terminalId, cols, rows]() { worker->changePtySize(terminalId, cols, rows); },
         Qt::QueuedConnection);
 }
 
@@ -637,10 +637,10 @@ void Session::wireWorker()
     connect(m_worker, &SshWorker::disconnected, this, &Session::onWorkerDisconnected);
     connect(m_worker, &SshWorker::errorOccurred, this, &Session::onWorkerError);
     connect(m_worker, &SshWorker::dataReceived, this, &Session::shellData);
-    connect(m_worker, &SshWorker::shellOpened, this, &Session::onShellOpened);
-    connect(m_worker, &SshWorker::shellClosed, this, &Session::onShellClosed);
-    connect(m_worker, &SshWorker::shellFailed, this, &Session::onShellFailed);
-    connect(m_worker, &SshWorker::shellOpenFailed, this, &Session::onShellOpenFailed);
+    connect(m_worker, &SshWorker::terminalOpened, this, &Session::onTerminalOpened);
+    connect(m_worker, &SshWorker::terminalClosed, this, &Session::onTerminalClosed);
+    connect(m_worker, &SshWorker::terminalFailed, this, &Session::onTerminalFailed);
+    connect(m_worker, &SshWorker::terminalOpenFailed, this, &Session::onTerminalOpenFailed);
     connect(m_worker, &SshWorker::hostKeyPrompt, this, &Session::hostKeyPrompt);
     connect(m_worker, &SshWorker::directoryListed, this, &Session::directoryListed);
     connect(m_worker, &SshWorker::entryResolved, this, &Session::entryResolved);
@@ -688,15 +688,15 @@ void Session::wireWorker()
     connect(m_worker, &SshWorker::commandFinished, this, &Session::commandFinished);
 }
 
-int Session::nextShellSerial()
+int Session::nextTerminalSerial()
 {
-    return m_nextShellSerial++;
+    return m_nextTerminalSerial++;
 }
 
-ShellChannelState *Session::findShell(const QUuid &shellId)
+TerminalChannelState *Session::findTerminal(const QUuid &terminalId)
 {
-    for (ShellChannelState &shell : m_shells) {
-        if (shell.id == shellId) {
+    for (TerminalChannelState &shell : m_terminals) {
+        if (shell.id == terminalId) {
             return &shell;
         }
     }
@@ -714,7 +714,7 @@ void Session::updateTunnelStatus(const QUuid &tunnelId,
     emit tunnelsChanged();
 }
 
-void Session::onWorkerConnected(const QUuid &initialShellId)
+void Session::onWorkerConnected(const QUuid &initialTerminalId)
 {
     // Optimistic until remoteFsOpened / sftpUnavailable settles (same thread queue).
     m_file.available = true;
@@ -723,9 +723,9 @@ void Session::onWorkerConnected(const QUuid &initialShellId)
     m_file.unavailableReason.clear();
     emit fileChanged();
 
-    if (ShellChannelState *shell = findShell(initialShellId)) {
+    if (TerminalChannelState *shell = findTerminal(initialTerminalId)) {
         shell->state = ChannelState::Open;
-        emit shellsChanged();
+        emit terminalsChanged();
     }
 
     m_autoReconnectAttempted = false;
@@ -740,15 +740,15 @@ void Session::onWorkerDisconnected()
         return;
     }
 
-    for (ShellChannelState &shell : m_shells) {
+    for (TerminalChannelState &shell : m_terminals) {
         shell.state = ChannelState::Closed;
     }
-    m_activeShellId = {};
+    m_activeTerminalId = {};
     markFileUnavailable(m_file);
 
     setState(SessionState::Disconnected);
-    emit shellsChanged();
-    emit activeShellChanged(m_activeShellId);
+    emit terminalsChanged();
+    emit activeTerminalChanged(m_activeTerminalId);
     emit fileChanged();
     emit statusMessage(tr("Disconnected: %1").arg(displayName()), kWarningLevel);
 
@@ -815,15 +815,15 @@ void Session::onWorkerError(const QString &message)
     qCWarning(lcSsh) << "Session error:" << message;
     m_lastError = message;
 
-    for (ShellChannelState &shell : m_shells) {
+    for (TerminalChannelState &shell : m_terminals) {
         shell.state = ChannelState::Closed;
     }
-    m_activeShellId = {};
+    m_activeTerminalId = {};
     markFileUnavailable(m_file);
 
     setState(SessionState::Failed);
-    emit shellsChanged();
-    emit activeShellChanged(m_activeShellId);
+    emit terminalsChanged();
+    emit activeTerminalChanged(m_activeTerminalId);
     emit fileChanged();
     emit statusMessage(tr("Error: %1").arg(message), kErrorLevel);
     emit sessionFailed(message);
@@ -847,90 +847,90 @@ void Session::onWorkerError(const QString &message)
     }
 }
 
-void Session::onShellOpened(const QUuid &shellId)
+void Session::onTerminalOpened(const QUuid &terminalId)
 {
-    ShellChannelState *shell = findShell(shellId);
+    TerminalChannelState *shell = findTerminal(terminalId);
     if (shell == nullptr) {
         return;
     }
 
     if (shell->state != ChannelState::Open) {
         shell->state = ChannelState::Open;
-        emit shellsChanged();
+        emit terminalsChanged();
     }
 }
 
-void Session::onShellClosed(const QUuid &shellId)
+void Session::onTerminalClosed(const QUuid &terminalId)
 {
-    const bool wasActive = (shellId == m_activeShellId);
-    m_shells.removeIf([&shellId](const ShellChannelState &shell) { return shell.id == shellId; });
+    const bool wasActive = (terminalId == m_activeTerminalId);
+    m_terminals.removeIf([&terminalId](const TerminalChannelState &shell) { return shell.id == terminalId; });
 
     if (wasActive) {
-        m_activeShellId = {};
-        for (const ShellChannelState &shell : m_shells) {
+        m_activeTerminalId = {};
+        for (const TerminalChannelState &shell : m_terminals) {
             if (shell.auxiliary) {
                 continue;
             }
             if (shell.state == ChannelState::Open) {
-                m_activeShellId = shell.id;
+                m_activeTerminalId = shell.id;
                 break;
             }
         }
-        if (m_activeShellId.isNull()) {
-            for (const ShellChannelState &shell : m_shells) {
+        if (m_activeTerminalId.isNull()) {
+            for (const TerminalChannelState &shell : m_terminals) {
                 if (!shell.auxiliary) {
-                    m_activeShellId = shell.id;
+                    m_activeTerminalId = shell.id;
                     break;
                 }
             }
         }
     }
 
-    emit shellsChanged();
+    emit terminalsChanged();
     if (wasActive) {
-        emit activeShellChanged(m_activeShellId);
+        emit activeTerminalChanged(m_activeTerminalId);
     }
 }
 
-void Session::onShellFailed(const QUuid &shellId, const QString &message)
+void Session::onTerminalFailed(const QUuid &terminalId, const QString &message)
 {
-    if (ShellChannelState *shell = findShell(shellId)) {
+    if (TerminalChannelState *shell = findTerminal(terminalId)) {
         shell->state = ChannelState::Failed;
-        emit shellsChanged();
+        emit terminalsChanged();
     }
     emit statusMessage(message, kErrorLevel);
-    onShellClosed(shellId);
+    onTerminalClosed(terminalId);
 }
 
-void Session::onShellOpenFailed(const QUuid &shellId, const QString &message)
+void Session::onTerminalOpenFailed(const QUuid &terminalId, const QString &message)
 {
-    const bool wasActive = (shellId == m_activeShellId);
-    m_shells.removeIf([&shellId](const ShellChannelState &shell) { return shell.id == shellId; });
+    const bool wasActive = (terminalId == m_activeTerminalId);
+    m_terminals.removeIf([&terminalId](const TerminalChannelState &shell) { return shell.id == terminalId; });
 
     if (wasActive) {
-        m_activeShellId = {};
-        for (const ShellChannelState &shell : m_shells) {
+        m_activeTerminalId = {};
+        for (const TerminalChannelState &shell : m_terminals) {
             if (shell.auxiliary) {
                 continue;
             }
             if (shell.state == ChannelState::Open) {
-                m_activeShellId = shell.id;
+                m_activeTerminalId = shell.id;
                 break;
             }
         }
-        if (m_activeShellId.isNull()) {
-            for (const ShellChannelState &shell : m_shells) {
+        if (m_activeTerminalId.isNull()) {
+            for (const TerminalChannelState &shell : m_terminals) {
                 if (!shell.auxiliary) {
-                    m_activeShellId = shell.id;
+                    m_activeTerminalId = shell.id;
                     break;
                 }
             }
         }
     }
 
-    emit shellsChanged();
+    emit terminalsChanged();
     if (wasActive) {
-        emit activeShellChanged(m_activeShellId);
+        emit activeTerminalChanged(m_activeTerminalId);
     }
     emit statusMessage(message, kErrorLevel);
 }

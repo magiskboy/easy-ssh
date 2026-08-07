@@ -4,8 +4,8 @@
 
 #include "SessionPage.h"
 
-#include "ShellDockHost.h"
-#include "ShellLayoutPlanner.h"
+#include "TerminalDockHost.h"
+#include "TerminalLayoutPlanner.h"
 #include "core/session/Session.h"
 #include "core/settings/AppSettings.h"
 #include "core/util/Logging.h"
@@ -64,20 +64,20 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     overlayLayout->addWidget(m_reconnectButton, 0, Qt::AlignHCenter);
     overlayLayout->addStretch(1);
 
-    m_dockHost = new ShellDockHost(this);
+    m_dockHost = new TerminalDockHost(this);
     root->addWidget(m_overlay, 0);
     root->addWidget(m_dockHost, 1);
 
-    connect(m_dockHost, &ShellDockHost::shellFocused, this, &SessionPage::onDockShellFocused);
+    connect(m_dockHost, &TerminalDockHost::terminalFocused, this, &SessionPage::onDockTerminalFocused);
     connect(m_dockHost,
-            &ShellDockHost::shellCloseRequested,
+            &TerminalDockHost::terminalCloseRequested,
             this,
             &SessionPage::onDockShellCloseRequested);
     connect(m_dockHost,
-            &ShellDockHost::shellRenameRequested,
+            &TerminalDockHost::terminalRenameRequested,
             this,
-            &SessionPage::onDockShellRenameRequested);
-    connect(m_dockHost, &ShellDockHost::toolClosed, this, [this](const QString &toolId) {
+            &SessionPage::onDockTerminalRenameRequested);
+    connect(m_dockHost, &TerminalDockHost::toolClosed, this, [this](const QString &toolId) {
         if (toolId == QLatin1String("process")) {
             if (m_processPage) {
                 m_processPage->unbind();
@@ -104,7 +104,7 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
         }
     });
     connect(m_dockHost,
-            &ShellDockHost::toolContextMenuAboutToShow,
+            &TerminalDockHost::toolContextMenuAboutToShow,
             this,
             [this](const QString &toolId, QMenu *menu) {
                 if (toolId == QLatin1String("systeminfo") && m_systemInfoPage && menu) {
@@ -118,9 +118,9 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     connect(m_resizeDebounce, &QTimer::timeout, this, &SessionPage::syncPtySize);
 
     connect(m_session, &Session::stateChanged, this, &SessionPage::onSessionStateChanged);
-    connect(m_session, &Session::shellsChanged, this, &SessionPage::onShellsChanged);
-    connect(m_session, &Session::activeShellChanged, this, &SessionPage::onActiveShellChanged);
-    connect(m_session, &Session::shellData, this, &SessionPage::onShellData);
+    connect(m_session, &Session::terminalsChanged, this, &SessionPage::onTerminalsChanged);
+    connect(m_session, &Session::activeTerminalChanged, this, &SessionPage::onActiveTerminalChanged);
+    connect(m_session, &Session::shellData, this, &SessionPage::onTerminalData);
     connect(m_session,
             &Session::hostKeyPrompt,
             this,
@@ -133,7 +133,7 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
         emit statusMessage(msg, static_cast<ErrorNotifier::Level>(level));
     });
 
-    onShellsChanged();
+    onTerminalsChanged();
     onSessionStateChanged(m_session->state());
 }
 
@@ -155,7 +155,7 @@ void SessionPage::beginWorkspaceRestore(const WorkspaceSessionEntry &entry)
 {
     m_restoreEntry = entry;
     m_restoringWorkspace =
-        !entry.shells.isEmpty() || !entry.tools.isEmpty() || !entry.dockState.isEmpty();
+        !entry.terminals.isEmpty() || !entry.tools.isEmpty() || !entry.dockState.isEmpty();
 }
 
 WorkspaceSessionEntry SessionPage::captureWorkspaceEntry() const
@@ -165,15 +165,15 @@ WorkspaceSessionEntry SessionPage::captureWorkspaceEntry() const
         return entry;
     }
     entry.connectionId = m_session->connectionId();
-    entry.activeShellId = m_session->activeShellId();
-    for (const ShellChannelState &shell : m_session->shells()) {
+    entry.activeTerminalId = m_session->activeTerminalId();
+    for (const TerminalChannelState &shell : m_session->terminals()) {
         if (shell.auxiliary) {
             continue;
         }
-        WorkspaceShellEntry shellEntry;
-        shellEntry.id = shell.id;
-        shellEntry.title = shell.title;
-        entry.shells.append(shellEntry);
+        WorkspaceTerminalEntry terminalEntry;
+        terminalEntry.id = shell.id;
+        terminalEntry.title = shell.title;
+        entry.terminals.append(terminalEntry);
     }
     if (m_dockHost) {
         entry.tools = m_dockHost->pinnedToolIds();
@@ -197,14 +197,14 @@ void SessionPage::onSessionStateChanged(SessionState state)
         } else {
             // Initial shell is created while Connecting; pin it now so it always
             // appears on the main screen (smart layout on or off).
-            onActiveShellChanged(m_session->activeShellId());
+            onActiveTerminalChanged(m_session->activeTerminalId());
         }
         break;
     case SessionState::Disconnected:
         m_restoringWorkspace = false;
         m_workspaceRestoreBusy = false;
         m_restoreEntry = {};
-        m_closingShellIds.clear();
+        m_closingTerminalIds.clear();
         if (m_dockHost) {
             m_dockHost->clearLayout();
         }
@@ -214,7 +214,7 @@ void SessionPage::onSessionStateChanged(SessionState state)
         m_restoringWorkspace = false;
         m_workspaceRestoreBusy = false;
         m_restoreEntry = {};
-        m_closingShellIds.clear();
+        m_closingTerminalIds.clear();
         if (m_dockHost) {
             m_dockHost->clearLayout();
         }
@@ -223,14 +223,14 @@ void SessionPage::onSessionStateChanged(SessionState state)
     }
 }
 
-void SessionPage::onShellsChanged()
+void SessionPage::onTerminalsChanged()
 {
     const QSet<QUuid> previousPaneIds(m_panes.keyBegin(), m_panes.keyEnd());
 
-    const QList<ShellChannelState> shells = m_session->shells();
+    const QList<TerminalChannelState> terminals = m_session->terminals();
     QSet<QUuid> alive;
     QUuid newborn;
-    for (const ShellChannelState &shell : shells) {
+    for (const TerminalChannelState &shell : terminals) {
         alive.insert(shell.id);
         if (shell.auxiliary) {
             continue;
@@ -240,7 +240,7 @@ void SessionPage::onShellsChanged()
         }
         ensurePane(shell.id);
         if (m_dockHost && m_dockHost->isPinned(shell.id)) {
-            m_dockHost->setShellTitle(shell.id, shell.title);
+            m_dockHost->setTerminalTitle(shell.id, shell.title);
         }
     }
     bool removedPane = false;
@@ -260,16 +260,16 @@ void SessionPage::onShellsChanged()
     }
 
     // Only re-focus dock when a visible shell is born or a pane closes.
-    // Auxiliary shells (e.g. service logs dialog) must not steal focus from tool tabs.
+    // Auxiliary terminals (e.g. service logs dialog) must not steal focus from tool tabs.
     if (m_session->state() == SessionState::Connected && !newborn.isNull()) {
         m_pendingSmartPinId = newborn;
-        if (m_session->activeShellId() != newborn) {
-            m_session->setActiveShell(newborn);
+        if (m_session->activeTerminalId() != newborn) {
+            m_session->setActiveTerminal(newborn);
         } else {
-            onActiveShellChanged(newborn);
+            onActiveTerminalChanged(newborn);
         }
     } else if (removedPane) {
-        onActiveShellChanged(m_session->activeShellId());
+        onActiveTerminalChanged(m_session->activeTerminalId());
     }
 
     if (m_session->state() == SessionState::Connected) {
@@ -290,37 +290,37 @@ void SessionPage::continueWorkspaceRestore()
     m_workspaceRestoreBusy = true;
 
     QSet<QUuid> alive;
-    for (const ShellChannelState &shell : m_session->shells()) {
+    for (const TerminalChannelState &shell : m_session->terminals()) {
         alive.insert(shell.id);
     }
 
-    for (const WorkspaceShellEntry &spec : m_restoreEntry.shells) {
+    for (const WorkspaceTerminalEntry &spec : m_restoreEntry.terminals) {
         if (alive.contains(spec.id)) {
             continue;
         }
-        m_session->newShell(kDefaultCols, kDefaultRows, spec.id);
+        m_session->newTerminal(kDefaultCols, kDefaultRows, spec.id);
         alive.insert(spec.id);
     }
 
-    for (const WorkspaceShellEntry &spec : m_restoreEntry.shells) {
+    for (const WorkspaceTerminalEntry &spec : m_restoreEntry.terminals) {
         if (spec.title.isEmpty()) {
             continue;
         }
-        for (const ShellChannelState &shell : m_session->shells()) {
+        for (const TerminalChannelState &shell : m_session->terminals()) {
             if (shell.id == spec.id && shell.title != spec.title) {
-                m_session->renameShell(spec.id, spec.title);
+                m_session->renameTerminal(spec.id, spec.title);
                 break;
             }
         }
     }
 
-    for (const WorkspaceShellEntry &spec : m_restoreEntry.shells) {
+    for (const WorkspaceTerminalEntry &spec : m_restoreEntry.terminals) {
         ensurePane(spec.id);
         if (!m_dockHost->isPinned(spec.id)) {
-            pinShellToLayout(spec.id);
+            pinTerminalToLayout(spec.id);
         }
         if (!spec.title.isEmpty()) {
-            m_dockHost->setShellTitle(spec.id, spec.title);
+            m_dockHost->setTerminalTitle(spec.id, spec.title);
         }
     }
 
@@ -329,8 +329,8 @@ void SessionPage::continueWorkspaceRestore()
         openExplorerTool(toolId);
     }
 
-    if (m_restoreEntry.shells.isEmpty() && m_restoreEntry.tools.isEmpty()) {
-        onActiveShellChanged(m_session->activeShellId());
+    if (m_restoreEntry.terminals.isEmpty() && m_restoreEntry.tools.isEmpty()) {
+        onActiveTerminalChanged(m_session->activeTerminalId());
     } else if (!m_restoreEntry.dockState.isEmpty()) {
         if (!m_dockHost->restoreLayout(m_restoreEntry.dockState)) {
             qCWarning(lcGui) << "workspace dock restore failed for" << m_session->connectionId();
@@ -338,13 +338,13 @@ void SessionPage::continueWorkspaceRestore()
     }
 
     const QString focusTool = m_restoreEntry.activeToolId;
-    const QUuid focusShell = m_restoreEntry.activeShellId.isNull() ? m_session->activeShellId()
-                                                                   : m_restoreEntry.activeShellId;
+    const QUuid focusTerminal = m_restoreEntry.activeTerminalId.isNull() ? m_session->activeTerminalId()
+                                                                   : m_restoreEntry.activeTerminalId;
     if (!focusTool.isEmpty() && m_dockHost->isToolPinned(focusTool)) {
         m_dockHost->focusTool(focusTool);
-    } else if (!focusShell.isNull()) {
-        m_session->setActiveShell(focusShell);
-        m_dockHost->focusShell(focusShell);
+    } else if (!focusTerminal.isNull()) {
+        m_session->setActiveTerminal(focusTerminal);
+        m_dockHost->focusTerminal(focusTerminal);
     }
 
     m_restoringWorkspace = false;
@@ -354,38 +354,38 @@ void SessionPage::continueWorkspaceRestore()
     m_dockHost->show();
 }
 
-void SessionPage::activateShell(const QUuid &shellId)
+void SessionPage::activateTerminal(const QUuid &terminalId)
 {
-    if (!m_session || shellId.isNull() || m_closingShellIds.contains(shellId)) {
+    if (!m_session || terminalId.isNull() || m_closingTerminalIds.contains(terminalId)) {
         return;
     }
-    if (m_session->activeShellId() != shellId) {
-        m_session->setActiveShell(shellId);
+    if (m_session->activeTerminalId() != terminalId) {
+        m_session->setActiveTerminal(terminalId);
     } else {
-        // setActiveShell no-ops for the same id; still re-pin after clearLayout edge cases.
-        onActiveShellChanged(shellId);
+        // setActiveTerminal no-ops for the same id; still re-pin after clearLayout edge cases.
+        onActiveTerminalChanged(terminalId);
     }
 }
 
-void SessionPage::onActiveShellChanged(const QUuid &shellId)
+void SessionPage::onActiveTerminalChanged(const QUuid &terminalId)
 {
-    if (shellId.isNull() || !m_panes.contains(shellId) || !m_dockHost) {
+    if (terminalId.isNull() || !m_panes.contains(terminalId) || !m_dockHost) {
         return;
     }
-    if (m_closingShellIds.contains(shellId)) {
+    if (m_closingTerminalIds.contains(terminalId)) {
         return;
     }
     if (m_session->state() != SessionState::Connected) {
         return;
     }
-    if (m_dockHost->isPinned(shellId)) {
-        m_dockHost->focusShell(shellId);
-    } else if (shellId == m_pendingSmartPinId && AppSettings::instance().smartLayout()) {
-        pinShellWithSmartLayout(shellId);
+    if (m_dockHost->isPinned(terminalId)) {
+        m_dockHost->focusTerminal(terminalId);
+    } else if (terminalId == m_pendingSmartPinId && AppSettings::instance().smartLayout()) {
+        pinTerminalWithSmartLayout(terminalId);
     } else {
-        pinShellToLayout(shellId);
+        pinTerminalToLayout(terminalId);
     }
-    if (shellId == m_pendingSmartPinId) {
+    if (terminalId == m_pendingSmartPinId) {
         m_pendingSmartPinId = {};
     }
     if (Pane *pane = activePane()) {
@@ -394,43 +394,43 @@ void SessionPage::onActiveShellChanged(const QUuid &shellId)
     }
 }
 
-void SessionPage::onDockShellFocused(const QUuid &shellId)
+void SessionPage::onDockTerminalFocused(const QUuid &terminalId)
 {
-    if (!m_session || shellId.isNull() || shellId == m_session->activeShellId()) {
+    if (!m_session || terminalId.isNull() || terminalId == m_session->activeTerminalId()) {
         return;
     }
-    if (m_closingShellIds.contains(shellId)) {
+    if (m_closingTerminalIds.contains(terminalId)) {
         return;
     }
-    m_session->setActiveShell(shellId);
+    m_session->setActiveTerminal(terminalId);
 }
 
-void SessionPage::onDockShellCloseRequested(const QUuid &shellId)
+void SessionPage::onDockShellCloseRequested(const QUuid &terminalId)
 {
-    if (!m_session || shellId.isNull()) {
+    if (!m_session || terminalId.isNull()) {
         return;
     }
-    if (m_closingShellIds.contains(shellId)) {
+    if (m_closingTerminalIds.contains(terminalId)) {
         return;
     }
-    m_closingShellIds.insert(shellId);
-    m_session->closeShell(shellId);
+    m_closingTerminalIds.insert(terminalId);
+    m_session->closeTerminal(terminalId);
 }
 
-void SessionPage::onDockShellRenameRequested(const QUuid &shellId)
+void SessionPage::onDockTerminalRenameRequested(const QUuid &terminalId)
 {
-    if (!m_session || shellId.isNull() || m_closingShellIds.contains(shellId)) {
+    if (!m_session || terminalId.isNull() || m_closingTerminalIds.contains(terminalId)) {
         return;
     }
-    const QString current = shellTitle(shellId);
+    const QString current = terminalTitle(terminalId);
     bool ok = false;
-    const QString name = UiHelpers::getText(this, {tr("Rename Shell"), tr("Name:"), current}, &ok);
+    const QString name = UiHelpers::getText(this, {tr("Rename Terminal"), tr("Name:"), current}, &ok);
     if (!ok || name.trimmed().isEmpty()) {
         return;
     }
-    m_session->renameShell(shellId, name.trimmed());
+    m_session->renameTerminal(terminalId, name.trimmed());
     if (m_dockHost) {
-        m_dockHost->setShellTitle(shellId, name.trimmed());
+        m_dockHost->setTerminalTitle(terminalId, name.trimmed());
     }
 }
 
@@ -441,22 +441,22 @@ void SessionPage::onTermContextMenuRequested(const QPoint &pos)
         return;
     }
 
-    QUuid shellId;
+    QUuid terminalId;
     for (auto it = m_panes.constBegin(); it != m_panes.constEnd(); ++it) {
         if (it.value().term == term) {
-            shellId = it.key();
+            terminalId = it.key();
             break;
         }
     }
-    if (shellId.isNull()) {
+    if (terminalId.isNull()) {
         return;
     }
 
     if (m_session) {
-        m_session->setActiveShell(shellId);
+        m_session->setActiveTerminal(terminalId);
     }
     if (m_dockHost) {
-        m_dockHost->focusShell(shellId);
+        m_dockHost->focusTerminal(terminalId);
     }
 
     QMenu menu(this);
@@ -481,47 +481,47 @@ void SessionPage::onTermContextMenuRequested(const QPoint &pos)
     menu.exec(term->mapToGlobal(pos));
 }
 
-void SessionPage::pinShellToLayout(const QUuid &shellId, int dockArea, const QUuid &relativeTo)
+void SessionPage::pinTerminalToLayout(const QUuid &terminalId, int dockArea, const QUuid &relativeTo)
 {
-    if (m_closingShellIds.contains(shellId)) {
+    if (m_closingTerminalIds.contains(terminalId)) {
         return;
     }
-    auto it = m_panes.find(shellId);
+    auto it = m_panes.find(terminalId);
     if (it == m_panes.end() || !m_dockHost) {
         return;
     }
     Pane &pane = it.value();
     pane.term->show();
-    m_dockHost->pinShell(shellId, shellTitle(shellId), pane.term, dockArea, relativeTo);
+    m_dockHost->pinTerminal(terminalId, terminalTitle(terminalId), pane.term, dockArea, relativeTo);
     schedulePtySizeSync();
 }
 
-void SessionPage::pinShellWithSmartLayout(const QUuid &shellId)
+void SessionPage::pinTerminalWithSmartLayout(const QUuid &terminalId)
 {
-    ShellLayoutSnapshot snap;
-    snap.dockedIds = m_dockHost->dockedShellIds();
-    snap.focusedId = m_dockHost->focusedShellId();
-    const ShellPlacement placement =
-        ShellLayoutPlanner{}.decide(snap, ShellLayoutPlanner::Mode::AlternateFocus);
-    pinShellToLayout(shellId, placement.dockArea, placement.relativeTo);
+    TerminalLayoutSnapshot snap;
+    snap.dockedIds = m_dockHost->dockedTerminalIds();
+    snap.focusedId = m_dockHost->focusedTerminalId();
+    const TerminalPlacement placement =
+        TerminalLayoutPlanner{}.decide(snap, TerminalLayoutPlanner::Mode::AlternateFocus);
+    pinTerminalToLayout(terminalId, placement.dockArea, placement.relativeTo);
 }
 
-QString SessionPage::shellTitle(const QUuid &shellId) const
+QString SessionPage::terminalTitle(const QUuid &terminalId) const
 {
     if (!m_session) {
-        return tr("Shell");
+        return tr("Terminal");
     }
-    for (const ShellChannelState &shell : m_session->shells()) {
-        if (shell.id == shellId) {
+    for (const TerminalChannelState &shell : m_session->terminals()) {
+        if (shell.id == terminalId) {
             return shell.title;
         }
     }
-    return tr("Shell");
+    return tr("Terminal");
 }
 
-void SessionPage::ensurePane(const QUuid &shellId)
+void SessionPage::ensurePane(const QUuid &terminalId)
 {
-    if (m_panes.contains(shellId)) {
+    if (m_panes.contains(terminalId)) {
         return;
     }
     Pane pane;
@@ -538,26 +538,26 @@ void SessionPage::ensurePane(const QUuid &shellId)
     connect(
         pane.term, SIGNAL(sendData(const char *, int)), this, SLOT(onSendData(const char *, int)));
     applySettingsToTerm(pane.term);
-    m_panes.insert(shellId, pane);
+    m_panes.insert(terminalId, pane);
 
     if (m_session->state() == SessionState::Connected) {
-        Pane &p = m_panes[shellId];
+        Pane &p = m_panes[terminalId];
         p.term->startTerminalTeletype();
         p.teletypeStarted = true;
         p.bridge->start(p.term);
     }
 }
 
-void SessionPage::removePane(const QUuid &shellId)
+void SessionPage::removePane(const QUuid &terminalId)
 {
-    m_closingShellIds.remove(shellId);
-    if (!m_panes.contains(shellId)) {
+    m_closingTerminalIds.remove(terminalId);
+    if (!m_panes.contains(terminalId)) {
         return;
     }
     if (m_dockHost) {
-        m_dockHost->unpinShell(shellId);
+        m_dockHost->unpinTerminal(terminalId);
     }
-    Pane pane = m_panes.take(shellId);
+    Pane pane = m_panes.take(terminalId);
     if (pane.bridge) {
         pane.bridge->teardown();
     }
@@ -566,7 +566,7 @@ void SessionPage::removePane(const QUuid &shellId)
 
 SessionPage::Pane *SessionPage::activePane()
 {
-    const QUuid id = m_session ? m_session->activeShellId() : QUuid();
+    const QUuid id = m_session ? m_session->activeTerminalId() : QUuid();
     auto it = m_panes.find(id);
     return it == m_panes.end() ? nullptr : &it.value();
 }
@@ -577,9 +577,9 @@ QTermWidget *SessionPage::activeTerm()
     return p ? p->term : nullptr;
 }
 
-void SessionPage::onShellData(const QUuid &shellId, const QByteArray &data)
+void SessionPage::onTerminalData(const QUuid &terminalId, const QByteArray &data)
 {
-    auto it = m_panes.find(shellId);
+    auto it = m_panes.find(terminalId);
     if (it == m_panes.end() || data.isEmpty()) {
         return;
     }
@@ -601,7 +601,7 @@ void SessionPage::onSendData(const char *data, int length)
     QObject *senderObj = sender();
     for (auto it = m_panes.begin(); it != m_panes.end(); ++it) {
         if (it.value().term == senderObj) {
-            m_session->writeToShell(it.key(), QByteArray(data, length));
+            m_session->writeToTerminal(it.key(), QByteArray(data, length));
             return;
         }
     }
@@ -768,17 +768,17 @@ void SessionPage::syncPtySize()
         return;
     }
 
-    const QList<QUuid> pinned = m_dockHost->pinnedShellIds();
+    const QList<QUuid> pinned = m_dockHost->pinnedTerminalIds();
     QList<QUuid> targets = pinned;
     if (targets.isEmpty()) {
-        const QUuid active = m_session->activeShellId();
+        const QUuid active = m_session->activeTerminalId();
         if (!active.isNull()) {
             targets.append(active);
         }
     }
 
-    for (const QUuid &shellId : targets) {
-        auto it = m_panes.find(shellId);
+    for (const QUuid &terminalId : targets) {
+        auto it = m_panes.find(terminalId);
         if (it == m_panes.end()) {
             continue;
         }
@@ -798,7 +798,7 @@ void SessionPage::syncPtySize()
         if (pane.bridge) {
             pane.bridge->syncSize(sz.width(), sz.height());
         }
-        m_session->changePtySize(shellId, sz.width(), sz.height());
+        m_session->changePtySize(terminalId, sz.width(), sz.height());
     }
 }
 

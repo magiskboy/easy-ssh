@@ -529,7 +529,7 @@ void TerminalSessionWidget::beginConnect()
 
     connect(m_worker, &SshWorker::connected, this, &TerminalSessionWidget::onConnected);
     connect(m_worker, &SshWorker::dataReceived, this, &TerminalSessionWidget::onDataReceived);
-    connect(m_worker, &SshWorker::shellClosed, this, &TerminalSessionWidget::onShellClosed);
+    connect(m_worker, &SshWorker::terminalClosed, this, &TerminalSessionWidget::onTerminalClosed);
     connect(m_worker,
             &SshWorker::hostKeyPrompt,
             this,
@@ -574,21 +574,21 @@ void TerminalSessionWidget::beginConnect()
     cols = termSize.width();
     rows = termSize.height();
 
-    m_primaryShellId = QUuid::createUuid();
+    m_primaryTerminalId = QUuid::createUuid();
     const Connection connection = m_connection;
     const SessionCredentials credentials = m_credentials;
-    const QUuid shellId = m_primaryShellId;
+    const QUuid terminalId = m_primaryTerminalId;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, connection, credentials, shellId, cols, rows]() {
-            worker->connectToHost(connection, credentials, shellId, cols, rows);
+        [worker = m_worker, connection, credentials, terminalId, cols, rows]() {
+            worker->connectToHost(connection, credentials, terminalId, cols, rows);
         },
         Qt::QueuedConnection);
 }
 
-void TerminalSessionWidget::onConnected(const QUuid &initialShellId)
+void TerminalSessionWidget::onConnected(const QUuid &initialTerminalId)
 {
-    m_primaryShellId = initialShellId;
+    m_primaryTerminalId = initialTerminalId;
     // Assume SFTP works until sftpUnavailable arrives (emitted right after connected).
     m_sftpAvailable = true;
     m_sftpUnavailableReason.clear();
@@ -616,26 +616,26 @@ void TerminalSessionWidget::onConnected(const QUuid &initialShellId)
     startEnabledTunnels();
 }
 
-void TerminalSessionWidget::onDataReceived(const QUuid &shellId, const QByteArray &data)
+void TerminalSessionWidget::onDataReceived(const QUuid &terminalId, const QByteArray &data)
 {
-    if (shellId != m_primaryShellId || !m_teletypeStarted || data.isEmpty() || !m_ioBridge) {
+    if (terminalId != m_primaryTerminalId || !m_teletypeStarted || data.isEmpty() || !m_ioBridge) {
         return;
     }
     m_ioBridge->feed(data);
 }
 
-void TerminalSessionWidget::onShellClosed(const QUuid &shellId)
+void TerminalSessionWidget::onTerminalClosed(const QUuid &terminalId)
 {
-    if (shellId != m_primaryShellId || m_shuttingDown) {
+    if (terminalId != m_primaryTerminalId || m_shuttingDown) {
         return;
     }
     // Channel EOF must not tear down transport (SFTP/tunnels stay up).
     if (m_ioBridge) {
         m_ioBridge->teardown();
     }
-    m_primaryShellId = QUuid();
-    showOverlay(tr("Shell closed. Use Reconnect to open a new shell on this session."), true);
-    emit statusMessage(tr("Shell closed: %1").arg(m_displayName), ErrorNotifier::Level::Warning);
+    m_primaryTerminalId = QUuid();
+    showOverlay(tr("Terminal closed. Use Reconnect to open a new terminal on this session."), true);
+    emit statusMessage(tr("Terminal closed: %1").arg(m_displayName), ErrorNotifier::Level::Warning);
 }
 
 void TerminalSessionWidget::onHostKeyPrompt(const QString &fingerprint,
@@ -766,10 +766,10 @@ void TerminalSessionWidget::onSendData(const char *data, int length)
     }
 
     const QByteArray bytes(data, length);
-    const QUuid shellId = m_primaryShellId;
+    const QUuid terminalId = m_primaryTerminalId;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, shellId, bytes]() { worker->writeToChannel(shellId, bytes); },
+        [worker = m_worker, terminalId, bytes]() { worker->writeToChannel(terminalId, bytes); },
         Qt::QueuedConnection);
 }
 
@@ -805,10 +805,10 @@ void TerminalSessionWidget::syncPtySize()
         m_ioBridge->syncSize(cols, rows);
     }
 
-    const QUuid shellId = m_primaryShellId;
+    const QUuid terminalId = m_primaryTerminalId;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, shellId, cols, rows]() { worker->changePtySize(shellId, cols, rows); },
+        [worker = m_worker, terminalId, cols, rows]() { worker->changePtySize(terminalId, cols, rows); },
         Qt::QueuedConnection);
 }
 

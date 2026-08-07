@@ -37,25 +37,25 @@ QByteArray WorkspaceState::toJson() const
         }
         QJsonObject obj;
         obj.insert(QStringLiteral("connectionId"), uuidToString(session.connectionId));
-        if (!session.activeShellId.isNull()) {
-            obj.insert(QStringLiteral("activeShellId"), uuidToString(session.activeShellId));
+        if (!session.activeTerminalId.isNull()) {
+            obj.insert(QStringLiteral("activeTerminalId"), uuidToString(session.activeTerminalId));
         }
         if (!session.activeToolId.isEmpty()) {
             obj.insert(QStringLiteral("activeToolId"), session.activeToolId);
         }
-        QJsonArray shellsJson;
-        for (const WorkspaceShellEntry &shell : session.shells) {
+        QJsonArray terminalsJson;
+        for (const WorkspaceTerminalEntry &shell : session.terminals) {
             if (shell.id.isNull()) {
                 continue;
             }
-            QJsonObject shellObj;
-            shellObj.insert(QStringLiteral("id"), uuidToString(shell.id));
+            QJsonObject terminalObj;
+            terminalObj.insert(QStringLiteral("id"), uuidToString(shell.id));
             if (!shell.title.isEmpty()) {
-                shellObj.insert(QStringLiteral("title"), shell.title);
+                terminalObj.insert(QStringLiteral("title"), shell.title);
             }
-            shellsJson.append(shellObj);
+            terminalsJson.append(terminalObj);
         }
-        obj.insert(QStringLiteral("shells"), shellsJson);
+        obj.insert(QStringLiteral("terminals"), terminalsJson);
         if (!session.tools.isEmpty()) {
             QJsonArray toolsJson;
             for (const QString &toolId : session.tools) {
@@ -115,22 +115,22 @@ WorkspaceState WorkspaceState::fromJson(const QByteArray &json, bool *ok)
         if (session.connectionId.isNull()) {
             continue;
         }
-        session.activeShellId =
-            uuidFromString(obj.value(QStringLiteral("activeShellId")).toString());
+        session.activeTerminalId =
+            uuidFromString(obj.value(QStringLiteral("activeTerminalId")).toString());
         session.activeToolId = obj.value(QStringLiteral("activeToolId")).toString();
-        const QJsonArray shellsJson = obj.value(QStringLiteral("shells")).toArray();
-        for (const QJsonValue &shellValue : shellsJson) {
-            if (!shellValue.isObject()) {
+        const QJsonArray terminalsJson = obj.value(QStringLiteral("terminals")).toArray();
+        for (const QJsonValue &terminalValue : terminalsJson) {
+            if (!terminalValue.isObject()) {
                 continue;
             }
-            const QJsonObject shellObj = shellValue.toObject();
-            WorkspaceShellEntry shell;
-            shell.id = uuidFromString(shellObj.value(QStringLiteral("id")).toString());
+            const QJsonObject terminalObj = terminalValue.toObject();
+            WorkspaceTerminalEntry shell;
+            shell.id = uuidFromString(terminalObj.value(QStringLiteral("id")).toString());
             if (shell.id.isNull()) {
                 continue;
             }
-            shell.title = shellObj.value(QStringLiteral("title")).toString();
-            session.shells.append(shell);
+            shell.title = terminalObj.value(QStringLiteral("title")).toString();
+            session.terminals.append(shell);
         }
         const QJsonArray toolsJson = obj.value(QStringLiteral("tools")).toArray();
         for (const QJsonValue &toolValue : toolsJson) {

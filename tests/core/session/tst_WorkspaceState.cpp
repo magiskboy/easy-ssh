@@ -23,11 +23,11 @@ void WorkspaceStateTest::roundTripPreservesFields()
 
     WorkspaceSessionEntry session;
     session.connectionId = state.activeConnectionId;
-    session.activeShellId = QUuid::createUuid();
+    session.activeTerminalId = QUuid::createUuid();
     session.activeToolId = QStringLiteral("process");
     session.dockState = QByteArrayLiteral("dock-bytes");
-    session.shells.append(WorkspaceShellEntry{session.activeShellId, QStringLiteral("Shell 1")});
-    session.shells.append(WorkspaceShellEntry{QUuid{}, QStringLiteral("ignored")});
+    session.terminals.append(WorkspaceTerminalEntry{session.activeTerminalId, QStringLiteral("Terminal 1")});
+    session.terminals.append(WorkspaceTerminalEntry{QUuid{}, QStringLiteral("ignored")});
     session.tools.append(QStringLiteral("process"));
     session.tools.append(QStringLiteral("service"));
     session.tools.append(QString());
@@ -43,8 +43,8 @@ void WorkspaceStateTest::roundTripPreservesFields()
     QCOMPARE(loaded.version, WorkspaceState::kCurrentVersion);
     QCOMPARE(loaded.activeConnectionId, state.activeConnectionId);
     QCOMPARE(loaded.sessions.size(), 1);
-    QCOMPARE(loaded.sessions.first().shells.size(), 1);
-    QCOMPARE(loaded.sessions.first().shells.first().title, QStringLiteral("Shell 1"));
+    QCOMPARE(loaded.sessions.first().terminals.size(), 1);
+    QCOMPARE(loaded.sessions.first().terminals.first().title, QStringLiteral("Terminal 1"));
     QCOMPARE(loaded.sessions.first().activeToolId, QStringLiteral("process"));
     QCOMPARE(loaded.sessions.first().tools.size(), 2);
     QCOMPARE(loaded.sessions.first().tools.at(0), QStringLiteral("process"));

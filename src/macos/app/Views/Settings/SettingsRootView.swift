@@ -20,9 +20,9 @@ struct SettingsRootView: View {
                     .tabItem { Label("File Explorer", systemImage: "folder") }
                     .tag(SettingsTab.fileExplorer)
 
-                ShellSettingsView()
-                    .tabItem { Label("Shell", systemImage: "terminal") }
-                    .tag(SettingsTab.shell)
+                TerminalSettingsView()
+                    .tabItem { Label("Terminal", systemImage: "terminal") }
+                    .tag(SettingsTab.terminal)
 
                 ShortcutsSettingsView()
                     .tabItem { Label("Shortcuts", systemImage: "command") }

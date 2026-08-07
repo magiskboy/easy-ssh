@@ -11,16 +11,16 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface ESSWorkspaceShellEntry : NSObject
-@property(nonatomic, copy) NSUUID *shellId;
+@interface ESSWorkspaceTerminalEntry : NSObject
+@property(nonatomic, copy) NSUUID *terminalId;
 @property(nonatomic, copy) NSString *title;
 @end
 
 @interface ESSWorkspaceSessionEntry : NSObject
 @property(nonatomic, copy) NSUUID *connectionId;
-@property(nonatomic, copy, nullable) NSUUID *activeShellId;
+@property(nonatomic, copy, nullable) NSUUID *activeTerminalId;
 @property(nonatomic, copy) NSString *activeToolId;
-@property(nonatomic, copy) NSArray<ESSWorkspaceShellEntry *> *shells;
+@property(nonatomic, copy) NSArray<ESSWorkspaceTerminalEntry *> *terminals;
 @property(nonatomic, copy) NSArray<NSString *> *tools;
 @property(nonatomic, copy, nullable) NSData *dockState;
 @end

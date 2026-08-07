@@ -16,7 +16,7 @@
 /**
  * Interactive shell channel over an established ssh_session (PTY + shell).
  */
-class SshShell
+class SshTerminal
 {
 public:
     enum class PollStatus
@@ -32,22 +32,22 @@ public:
     /// Return false to abort.
     using AgainPump = std::function<bool()>;
 
-    SshShell() = default;
-    ~SshShell();
+    SshTerminal() = default;
+    ~SshTerminal();
 
-    SshShell(const SshShell &) = delete;
-    SshShell &operator=(const SshShell &) = delete;
+    SshTerminal(const SshTerminal &) = delete;
+    SshTerminal &operator=(const SshTerminal &) = delete;
 
     /// Optional hook after open+PTY and before request_shell (e.g. ForwardAgent).
     /// Return false to abort open (errorOut may be filled by the hook).
-    using BeforeShellHook = std::function<bool(ssh_channel channel, QString *errorOut)>;
+    using BeforeTerminalHook = std::function<bool(ssh_channel channel, QString *errorOut)>;
 
     bool open(ssh_session session,
               int cols,
               int rows,
               QString *errorOut = nullptr,
               const AgainPump &againPump = {},
-              const BeforeShellHook &beforeShell = {});
+              const BeforeTerminalHook &beforeTerminal = {});
     void cleanup();
 
     bool isOpen() const;

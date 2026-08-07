@@ -106,8 +106,8 @@ set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionFilesModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionExplorersModel.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionTunnelsModel.swift"
-    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellViewModel.swift"
-    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellLayout.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/TerminalViewModel.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/TerminalLayout.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionDraft.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionLibrary.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionFormState.swift"
@@ -123,7 +123,7 @@ set(EASY_SSH_NATIVE_SWIFT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/SettingsRootView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/GeneralSettingsView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/FileExplorerSettingsView.swift"
-    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShellSettingsView.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/TerminalSettingsView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShortcutsSettingsView.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/ConnectionEditorForm.swift"
     "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Connections/ConnectionManagerView.swift"
@@ -169,6 +169,11 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_FW_DIR}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_RESOURCES_DIR}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${EASY_SSH_NATIVE_APP_DIR}/Contents"
+    # Drop renamed leftovers so SPM does not compile duplicate types (e.g. SplitAxis).
+    COMMAND ${CMAKE_COMMAND} -E rm -f
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellLayout.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellViewModel.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellSettingsView.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/Info.plist"
         "${EASY_SSH_NATIVE_APP_DIR}/Contents/Info.plist"
@@ -233,11 +238,11 @@ add_custom_command(
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/SessionTunnelsModel.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/SessionTunnelsModel.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellViewModel.swift"
-        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellViewModel.swift"
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/TerminalViewModel.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/TerminalViewModel.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ShellLayout.swift"
-        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellLayout.swift"
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/TerminalLayout.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/TerminalLayout.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Models/ConnectionDraft.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ConnectionDraft.swift"
@@ -284,8 +289,8 @@ add_custom_command(
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/FileExplorerSettingsView.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/FileExplorerSettingsView.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShellSettingsView.swift"
-        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShellSettingsView.swift"
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/TerminalSettingsView.swift"
+        "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/TerminalSettingsView.swift"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/app/Views/Settings/ShortcutsSettingsView.swift"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ShortcutsSettingsView.swift"

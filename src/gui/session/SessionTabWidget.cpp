@@ -87,14 +87,14 @@ void SessionTabWidget::openSshSession(const Connection &connection,
     const int index = addTab(page, session->displayName());
     setCurrentIndex(index);
 
-    QUuid initialShellId;
+    QUuid initialTerminalId;
     if (restore) {
         page->beginWorkspaceRestore(*restore);
-        if (!restore->shells.isEmpty()) {
-            initialShellId = restore->shells.first().id;
+        if (!restore->terminals.isEmpty()) {
+            initialTerminalId = restore->terminals.first().id;
         }
     }
-    session->connectTransport(80, 24, initialShellId);
+    session->connectTransport(80, 24, initialTerminalId);
     updateTabPresentation(page);
     emit sessionOpened(session->displayName());
 }
@@ -239,7 +239,7 @@ void SessionTabWidget::onTabContextMenu(const QPoint &pos)
     Session *session = page->session();
 
     QMenu menu(this);
-    menu.addAction(tr("New shell"), session, [session]() { session->newShell(); });
+    menu.addAction(tr("New terminal"), session, [session]() { session->newTerminal(); });
     menu.addSeparator();
     if (session->state() == SessionState::Connected) {
         menu.addAction(tr("Disconnect"), session, &Session::disconnectTransport);

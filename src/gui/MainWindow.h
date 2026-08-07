@@ -107,11 +107,11 @@ private:
     void openConnectionManager(const QUuid &selectId = {});
     void openCommandPalette();
     void openQuickConnect();
-    void openGoToShell();
+    void openGoToTerminal();
     void ensureCommandPalette();
     void populatePaletteActions();
     void populatePaletteConnections();
-    void populatePaletteShells();
+    void populatePaletteTerminals();
     void createConnectionFromQuery(const QString &query);
     void connectAfterCreating(const Connection &connection,
                               const QString &password,
@@ -120,7 +120,7 @@ private:
                               bool gatewayPasswordProvided,
                               const QString &gatewayPassphrase,
                               bool gatewayPassphraseProvided);
-    void focusShell(const QUuid &connectionId, const QUuid &shellId);
+    void focusTerminal(const QUuid &connectionId, const QUuid &terminalId);
     void applyAppSettings();
     void rebindShortcuts();
     QAction *registerAction(const QString &actionId, QAction *action);

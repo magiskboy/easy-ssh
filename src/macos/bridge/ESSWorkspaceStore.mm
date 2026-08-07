@@ -53,17 +53,17 @@ ESSWorkspaceState *toInfo(const WorkspaceState &state)
     for (const WorkspaceSessionEntry &session : state.sessions) {
         ESSWorkspaceSessionEntry *entry = [[ESSWorkspaceSessionEntry alloc] init];
         entry.connectionId = uuidToNS(session.connectionId);
-        entry.activeShellId = uuidToNS(session.activeShellId);
+        entry.activeTerminalId = uuidToNS(session.activeTerminalId);
         entry.activeToolId = qToNS(session.activeToolId);
-        NSMutableArray<ESSWorkspaceShellEntry *> *shells =
-            [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(session.shells.size())];
-        for (const WorkspaceShellEntry &shell : session.shells) {
-            ESSWorkspaceShellEntry *shellInfo = [[ESSWorkspaceShellEntry alloc] init];
-            shellInfo.shellId = uuidToNS(shell.id);
-            shellInfo.title = qToNS(shell.title);
-            [shells addObject:shellInfo];
+        NSMutableArray<ESSWorkspaceTerminalEntry *> *terminals =
+            [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(session.terminals.size())];
+        for (const WorkspaceTerminalEntry &shell : session.terminals) {
+            ESSWorkspaceTerminalEntry *terminalInfo = [[ESSWorkspaceTerminalEntry alloc] init];
+            terminalInfo.terminalId = uuidToNS(shell.id);
+            terminalInfo.title = qToNS(shell.title);
+            [terminals addObject:terminalInfo];
         }
-        entry.shells = shells;
+        entry.terminals = terminals;
         NSMutableArray<NSString *> *tools =
             [NSMutableArray arrayWithCapacity:static_cast<NSUInteger>(session.tools.size())];
         for (const QString &tool : session.tools) {
@@ -91,13 +91,13 @@ WorkspaceState fromInfo(ESSWorkspaceState *info)
     for (ESSWorkspaceSessionEntry *entry in info.sessions) {
         WorkspaceSessionEntry session;
         session.connectionId = nsToUuid(entry.connectionId);
-        session.activeShellId = nsToUuid(entry.activeShellId);
+        session.activeTerminalId = nsToUuid(entry.activeTerminalId);
         session.activeToolId = nsToQ(entry.activeToolId);
-        for (ESSWorkspaceShellEntry *shell in entry.shells) {
-            WorkspaceShellEntry shellEntry;
-            shellEntry.id = nsToUuid(shell.shellId);
-            shellEntry.title = nsToQ(shell.title);
-            session.shells.append(shellEntry);
+        for (ESSWorkspaceTerminalEntry *shell in entry.terminals) {
+            WorkspaceTerminalEntry terminalEntry;
+            terminalEntry.id = nsToUuid(shell.terminalId);
+            terminalEntry.title = nsToQ(shell.title);
+            session.terminals.append(terminalEntry);
         }
         for (NSString *tool in entry.tools) {
             session.tools.append(nsToQ(tool));
@@ -113,12 +113,12 @@ WorkspaceState fromInfo(ESSWorkspaceState *info)
 
 } // namespace
 
-@implementation ESSWorkspaceShellEntry
+@implementation ESSWorkspaceTerminalEntry
 - (instancetype)init
 {
     self = [super init];
     if (self) {
-        _shellId = [NSUUID UUID];
+        _terminalId = [NSUUID UUID];
         _title = @"";
     }
     return self;
@@ -132,7 +132,7 @@ WorkspaceState fromInfo(ESSWorkspaceState *info)
     if (self) {
         _connectionId = [NSUUID UUID];
         _activeToolId = @"";
-        _shells = @[];
+        _terminals = @[];
         _tools = @[];
     }
     return self;

@@ -62,7 +62,7 @@ SshWorker::~SshWorker()
 
 void SshWorker::connectToHost(const Connection &connection,
                               const SessionCredentials &credentials,
-                              const QUuid &initialShellId,
+                              const QUuid &initialTerminalId,
                               int cols,
                               int rows)
 {
@@ -71,8 +71,8 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
-    if (initialShellId.isNull()) {
-        emit errorOccurred(tr("Initial shell id is required"));
+    if (initialTerminalId.isNull()) {
+        emit errorOccurred(tr("Initial terminal id is required"));
         return;
     }
 
@@ -105,7 +105,7 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
-    if (!openShellLocked(initialShellId, cols, rows, &error)) {
+    if (!openTerminalLocked(initialTerminalId, cols, rows, &error)) {
         if (m_cancelRequested.load()) {
             cleanup();
             return;
@@ -138,8 +138,8 @@ void SshWorker::connectToHost(const Connection &connection,
     m_running = true;
     qCWarning(lcSsh) << "Connected to" << connection.host << "fs:"
                      << (fsReady ? (m_fs.backend() == FsBackend::Scp ? "scp" : "sftp") : "no");
-    emit connected(initialShellId);
-    emit shellOpened(initialShellId);
+    emit connected(initialTerminalId);
+    emit terminalOpened(initialTerminalId);
 
     if (fsReady) {
         emit remoteFsOpened(static_cast<int>(m_fs.backend()));
@@ -156,38 +156,38 @@ void SshWorker::connectToHost(const Connection &connection,
     m_ioLoop.run();
 }
 
-void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
+void SshWorker::openTerminal(const QUuid &terminalId, int cols, int rows)
 {
     if (!m_running || !m_session.isConnected()) {
-        emit shellOpenFailed(shellId, tr("SSH session is not connected"));
+        emit terminalOpenFailed(terminalId, tr("SSH session is not connected"));
         return;
     }
-    if (shellId.isNull()) {
-        emit shellOpenFailed(shellId, tr("Invalid shell id"));
+    if (terminalId.isNull()) {
+        emit terminalOpenFailed(terminalId, tr("Invalid terminal id"));
         return;
     }
-    if (m_shellHandlers.contains(shellId)) {
-        emit shellOpenFailed(shellId, tr("Shell already open"));
+    if (m_terminalHandlers.contains(terminalId)) {
+        emit terminalOpenFailed(terminalId, tr("Terminal already open"));
         return;
     }
-    if (m_shellHandlers.size() >= kMaxShells) {
-        emit shellOpenFailed(shellId, tr("Maximum of %1 shells per session").arg(kMaxShells));
+    if (m_terminalHandlers.size() >= kMaxTerminals) {
+        emit terminalOpenFailed(terminalId, tr("Maximum of %1 terminals per session").arg(kMaxTerminals));
         return;
     }
 
     QString error;
-    if (!openShellLocked(shellId, cols, rows, &error)) {
-        emit shellOpenFailed(shellId, error.isEmpty() ? tr("Failed to open shell") : error);
+    if (!openTerminalLocked(terminalId, cols, rows, &error)) {
+        emit terminalOpenFailed(terminalId, error.isEmpty() ? tr("Failed to open terminal") : error);
         return;
     }
 
-    emit shellOpened(shellId);
+    emit terminalOpened(terminalId);
     m_ioLoop.wake();
 }
 
-ShellIoHandler::Hooks SshWorker::makeShellHooks()
+TerminalIoHandler::Hooks SshWorker::makeTerminalHooks()
 {
-    ShellIoHandler::Hooks hooks;
+    TerminalIoHandler::Hooks hooks;
     hooks.dataReady = [this](const QUuid &id, const QByteArray &data) {
         if (!data.isEmpty()) {
             m_session.resetKeepAliveClock();
@@ -197,10 +197,10 @@ ShellIoHandler::Hooks SshWorker::makeShellHooks()
     hooks.closed = [this](const QUuid &id) {
         // Defer so we do not destroy the handler during its own onIdle.
         QMetaObject::invokeMethod(
-            this, [this, id]() { retireShell(id, true); }, Qt::QueuedConnection);
+            this, [this, id]() { retireTerminal(id, true); }, Qt::QueuedConnection);
     };
     hooks.failed = [this](const QUuid &id, const QString &message) {
-        emit shellFailed(id, message);
+        emit terminalFailed(id, message);
     };
     hooks.againPump = [this]() {
         if (m_cancelRequested.load()) {
@@ -209,7 +209,7 @@ ShellIoHandler::Hooks SshWorker::makeShellHooks()
         return m_ioLoop.pollOnce(50);
     };
     // Must run before request_shell so remote gets SSH_AUTH_SOCK (RFC 9987).
-    hooks.beforeShell = [this](ssh_channel channel, QString *errorOut) {
+    hooks.beforeTerminal = [this](ssh_channel channel, QString *errorOut) {
         Q_UNUSED(errorOut);
         tryRequestAgentForwarding(channel);
         return true; // soft warnings only — never block the shell
@@ -217,18 +217,18 @@ ShellIoHandler::Hooks SshWorker::makeShellHooks()
     return hooks;
 }
 
-bool SshWorker::openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut)
+bool SshWorker::openTerminalLocked(const QUuid &terminalId, int cols, int rows, QString *errorOut)
 {
     // PTY/shell request_exec-style opens are simpler in blocking mode; IoLoop
     // keeps the session non-blocking afterward for channel callbacks.
     return withBlockingSession([&]() -> bool {
-        auto handler = std::make_unique<ShellIoHandler>(
-            shellId, m_session.handle(), cols, rows, makeShellHooks());
-        ShellIoHandler *raw = handler.get();
+        auto handler = std::make_unique<TerminalIoHandler>(
+            terminalId, m_session.handle(), cols, rows, makeTerminalHooks());
+        TerminalIoHandler *raw = handler.get();
         if (!m_ioLoop.addHandler(std::move(handler), errorOut)) {
             return false;
         }
-        m_shellHandlers.insert(shellId, raw);
+        m_terminalHandlers.insert(terminalId, raw);
         return true;
     });
 }
@@ -271,42 +271,42 @@ void SshWorker::tryRequestAgentForwarding(ssh_channel shellChannel)
     m_agentForwardHost = host;
 }
 
-void SshWorker::closeShell(const QUuid &shellId)
+void SshWorker::closeTerminal(const QUuid &terminalId)
 {
-    retireShell(shellId, true);
+    retireTerminal(terminalId, true);
 }
 
-void SshWorker::retireShell(const QUuid &shellId, bool emitClosed)
+void SshWorker::retireTerminal(const QUuid &terminalId, bool emitClosed)
 {
-    if (!m_shellHandlers.contains(shellId)) {
+    if (!m_terminalHandlers.contains(terminalId)) {
         return;
     }
-    m_shellHandlers.remove(shellId);
-    m_ioLoop.removeHandler(shellId.toString(QUuid::WithoutBraces));
+    m_terminalHandlers.remove(terminalId);
+    m_ioLoop.removeHandler(terminalId.toString(QUuid::WithoutBraces));
     if (emitClosed) {
-        emit shellClosed(shellId);
+        emit terminalClosed(terminalId);
     }
 }
 
-void SshWorker::writeToChannel(const QUuid &shellId, const QByteArray &data)
+void SshWorker::writeToChannel(const QUuid &terminalId, const QByteArray &data)
 {
     if (!m_running) {
         return;
     }
 
-    ShellIoHandler *handler = m_shellHandlers.value(shellId, nullptr);
+    TerminalIoHandler *handler = m_terminalHandlers.value(terminalId, nullptr);
     if (handler == nullptr) {
         return;
     }
     handler->enqueueWrite(data);
 }
 
-void SshWorker::changePtySize(const QUuid &shellId, int cols, int rows)
+void SshWorker::changePtySize(const QUuid &terminalId, int cols, int rows)
 {
     if (!m_running) {
         return;
     }
-    ShellIoHandler *handler = m_shellHandlers.value(shellId, nullptr);
+    TerminalIoHandler *handler = m_terminalHandlers.value(terminalId, nullptr);
     if (handler == nullptr) {
         return;
     }
@@ -936,9 +936,9 @@ void SshWorker::cleanup()
     failPendingExecCommands(tr("SSH session is not connected"));
     m_execInFlight = 0;
 
-    const QList<QUuid> shellIds = m_shellHandlers.keys();
+    const QList<QUuid> shellIds = m_terminalHandlers.keys();
     for (const QUuid &id : shellIds) {
-        m_shellHandlers.remove(id);
+        m_terminalHandlers.remove(id);
         m_ioLoop.removeHandler(id.toString(QUuid::WithoutBraces));
     }
     m_ioLoop.removeHandler(TunnelHostIoHandler::handlerId());

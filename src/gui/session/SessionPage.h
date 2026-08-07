@@ -22,7 +22,7 @@ class QTermWidget;
 class QTimer;
 class ExplorerPageWidget;
 class Session;
-class ShellDockHost;
+class TerminalDockHost;
 class SystemInfoWidget;
 class TerminalIoBridge;
 
@@ -44,8 +44,8 @@ public:
     void saveLog();
     void saveScreenshot();
     void setLayoutActive(bool active);
-    /// Focus/pin shell in the dock (e.g. Go to Shell). No-ops while the shell is closing.
-    void activateShell(const QUuid &shellId);
+    /// Focus/pin terminal in the dock (e.g. Go to Terminal). No-ops while the terminal is closing.
+    void activateTerminal(const QUuid &terminalId);
     void toggleProcessExplorer();
     void toggleContainerExplorer();
     void toggleServiceExplorer();
@@ -67,18 +67,18 @@ protected:
 
 private slots:
     void onSessionStateChanged(SessionState state);
-    void onShellsChanged();
-    void onActiveShellChanged(const QUuid &shellId);
-    void onShellData(const QUuid &shellId, const QByteArray &data);
+    void onTerminalsChanged();
+    void onActiveTerminalChanged(const QUuid &terminalId);
+    void onTerminalData(const QUuid &terminalId, const QByteArray &data);
     void onHostKeyPrompt(const QString &fingerprint,
                          SshWorker::HostKeyPrompt reason,
                          const QString &contextLabel);
     void onSendData(const char *data, int length);
     void syncPtySize();
     void disconnectOrReconnect();
-    void onDockShellFocused(const QUuid &shellId);
-    void onDockShellCloseRequested(const QUuid &shellId);
-    void onDockShellRenameRequested(const QUuid &shellId);
+    void onDockTerminalFocused(const QUuid &terminalId);
+    void onDockShellCloseRequested(const QUuid &terminalId);
+    void onDockTerminalRenameRequested(const QUuid &terminalId);
     void onTermContextMenuRequested(const QPoint &pos);
 
 private:
@@ -91,17 +91,17 @@ private:
         int lastRows = 0;
     };
 
-    void ensurePane(const QUuid &shellId);
-    void removePane(const QUuid &shellId);
-    void pinShellToLayout(const QUuid &shellId, int dockArea = 0x10, const QUuid &relativeTo = {});
-    void pinShellWithSmartLayout(const QUuid &shellId);
+    void ensurePane(const QUuid &terminalId);
+    void removePane(const QUuid &terminalId);
+    void pinTerminalToLayout(const QUuid &terminalId, int dockArea = 0x10, const QUuid &relativeTo = {});
+    void pinTerminalWithSmartLayout(const QUuid &terminalId);
     void applySettingsToTerm(QTermWidget *term);
     Pane *activePane();
     QTermWidget *activeTerm();
     void showOverlay(const QString &message, bool showReconnect);
     void schedulePtySizeSync();
     QSize readTerminalSize(QTermWidget *term) const;
-    QString shellTitle(const QUuid &shellId) const;
+    QString terminalTitle(const QUuid &terminalId) const;
     void continueWorkspaceRestore();
     void openExplorerTool(const QString &toolId);
     void openProcessExplorer();
@@ -114,7 +114,7 @@ private:
     void closeSystemInfo();
 
     Session *m_session = nullptr;
-    ShellDockHost *m_dockHost = nullptr;
+    TerminalDockHost *m_dockHost = nullptr;
     ExplorerPageWidget *m_processPage = nullptr;
     ExplorerPageWidget *m_containerPage = nullptr;
     ExplorerPageWidget *m_servicePage = nullptr;
@@ -123,9 +123,9 @@ private:
     QLabel *m_overlayLabel = nullptr;
     QPushButton *m_reconnectButton = nullptr;
     QHash<QUuid, Pane> m_panes;
-    QSet<QUuid> m_closingShellIds;
+    QSet<QUuid> m_closingTerminalIds;
     QTimer *m_resizeDebounce = nullptr;
-    /// Shell created in the latest shellsChanged; may use smart layout when activated.
+    /// Terminal created in the latest terminalsChanged; may use smart layout when activated.
     QUuid m_pendingSmartPinId;
     bool m_restoringWorkspace = false;
     bool m_workspaceRestoreBusy = false;

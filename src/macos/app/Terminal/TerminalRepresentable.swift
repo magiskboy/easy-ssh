@@ -23,50 +23,50 @@ final class HostedTerminalView: TerminalView {
 
 struct TerminalRepresentable: NSViewRepresentable {
     @ObservedObject var session: SessionViewModel
-    @ObservedObject var shell: ShellViewModel
+    @ObservedObject var terminal: TerminalViewModel
 
     func makeCoordinator() -> TerminalCoordinator {
-        TerminalCoordinator(session: session, shell: shell)
+        TerminalCoordinator(session: session, terminal: terminal)
     }
 
     func makeNSView(context: Context) -> HostedTerminalView {
-        // Reuse the shell-owned TerminalView so scrollback survives layout swaps
+        // Reuse the model-owned TerminalView so scrollback survives layout swaps
         // (SwiftUI tears down NSViewRepresentable when a leaf leaves the tree).
-        let terminal: HostedTerminalView
-        if let existing = shell.terminalView as? HostedTerminalView {
+        let hosted: HostedTerminalView
+        if let existing = terminal.terminalView as? HostedTerminalView {
             existing.removeFromSuperview()
-            terminal = existing
+            hosted = existing
         } else {
-            terminal = HostedTerminalView(frame: .zero)
-            terminal.wantsLayer = true
-            terminal.layer?.masksToBounds = true
-            shell.terminalView = terminal
+            hosted = HostedTerminalView(frame: .zero)
+            hosted.wantsLayer = true
+            hosted.layer?.masksToBounds = true
+            terminal.terminalView = hosted
         }
-        terminal.terminalDelegate = context.coordinator
-        terminal.onActivated = { [weak coordinator = context.coordinator] in
+        hosted.terminalDelegate = context.coordinator
+        hosted.onActivated = { [weak coordinator = context.coordinator] in
             guard let coordinator else { return }
-            coordinator.session.focusShell(coordinator.shell.id, activateTerminal: false)
+            coordinator.session.focusTerminal(coordinator.terminal.id, activateTerminal: false)
         }
-        let isActive = session.focusedShellId == shell.id
-        TerminalAppearance.apply(to: terminal, active: isActive)
+        let isActive = session.focusedTerminalId == terminal.id
+        TerminalAppearance.apply(to: hosted, active: isActive)
         context.coordinator.lastCursorActive = isActive
-        context.coordinator.attach(terminal: terminal)
-        installContextMenu(on: terminal, coordinator: context.coordinator)
-        return terminal
+        context.coordinator.attach(hosted: hosted)
+        installContextMenu(on: hosted, coordinator: context.coordinator)
+        return hosted
     }
 
     func updateNSView(_ nsView: HostedTerminalView, context: Context) {
         context.coordinator.session = session
-        context.coordinator.shell = shell
+        context.coordinator.terminal = terminal
         nsView.onActivated = { [weak coordinator = context.coordinator] in
             guard let coordinator else { return }
-            coordinator.session.focusShell(coordinator.shell.id, activateTerminal: false)
+            coordinator.session.focusTerminal(coordinator.terminal.id, activateTerminal: false)
         }
-        if shell.terminalView !== nsView {
-            shell.terminalView = nsView
+        if terminal.terminalView !== nsView {
+            terminal.terminalView = nsView
         }
 
-        let isActive = session.focusedShellId == shell.id
+        let isActive = session.focusedTerminalId == terminal.id
         if context.coordinator.lastAppearanceEpoch != session.appearanceEpoch {
             TerminalAppearance.apply(to: nsView, active: isActive)
             context.coordinator.lastAppearanceEpoch = session.appearanceEpoch
@@ -77,21 +77,21 @@ struct TerminalRepresentable: NSViewRepresentable {
 
         // Drain any bytes queued before the NSView existed. Clear first to avoid
         // re-entrant updateNSView while feed() triggers layout.
-        if let data = shell.pendingData, !data.isEmpty {
-            shell.pendingData = nil
+        if let data = terminal.pendingData, !data.isEmpty {
+            terminal.pendingData = nil
             let bytes = [UInt8](data)
             nsView.feed(byteArray: ArraySlice(bytes))
         }
 
         // Complete a deferred activation after layout swap / first attach.
-        if session.pendingTerminalActivationId == shell.id {
+        if session.pendingTerminalActivationId == terminal.id {
             _ = session.flushPendingTerminalActivation()
         }
     }
 
     @MainActor
     static func dismantleNSView(_ nsView: HostedTerminalView, coordinator: TerminalCoordinator) {
-        // Keep the TerminalView (and its buffer) owned by ShellViewModel across
+        // Keep the TerminalView (and its buffer) owned by TerminalViewModel across
         // temporary removals from the SwiftUI hierarchy. Only clear the activation
         // callback so a detached view cannot retarget focus.
         nsView.onActivated = nil
@@ -115,9 +115,9 @@ struct TerminalRepresentable: NSViewRepresentable {
             keyEquivalent: ""
         )
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "New Shell", action: #selector(TerminalCoordinator.contextNewShell(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Close Shell", action: #selector(TerminalCoordinator.contextCloseShell(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Rename Shell…", action: #selector(TerminalCoordinator.contextRenameShell(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "New Terminal", action: #selector(TerminalCoordinator.contextNewTerminal(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Close Terminal", action: #selector(TerminalCoordinator.contextCloseTerminal(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Rename Terminal…", action: #selector(TerminalCoordinator.contextRenameTerminal(_:)), keyEquivalent: "")
         for item in menu.items {
             item.target = coordinator
         }
@@ -128,37 +128,37 @@ struct TerminalRepresentable: NSViewRepresentable {
 @MainActor
 final class TerminalCoordinator: NSObject, @preconcurrency TerminalViewDelegate {
     var session: SessionViewModel
-    var shell: ShellViewModel
-    private weak var terminal: TerminalView?
+    var terminal: TerminalViewModel
+    private weak var hostedView: TerminalView?
     var lastAppearanceEpoch: UInt64 = 0
     var lastCursorActive: Bool?
 
-    init(session: SessionViewModel, shell: ShellViewModel) {
+    init(session: SessionViewModel, terminal: TerminalViewModel) {
         self.session = session
-        self.shell = shell
+        self.terminal = terminal
         super.init()
     }
 
-    func attach(terminal: TerminalView) {
-        self.terminal = terminal
-        shell.terminalView = terminal
+    func attach(hosted: TerminalView) {
+        hostedView = hosted
+        terminal.terminalView = hosted
     }
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         let cols = max(newCols, 2)
         let rows = max(newRows, 2)
-        guard cols != shell.cols || rows != shell.rows else { return }
-        session.resizeTerminal(cols: cols, rows: rows, shellId: shell.id)
+        guard cols != terminal.cols || rows != terminal.rows else { return }
+        session.resizeTerminal(cols: cols, rows: rows, terminalId: terminal.id)
     }
 
     func setTerminalTitle(source: TerminalView, title: String) {
-        shell.setRemoteTitle(title)
+        terminal.setRemoteTitle(title)
     }
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
-        session.sendTerminalData(Data(data), shellId: shell.id)
+        session.sendTerminalData(Data(data), terminalId: terminal.id)
     }
 
     func scrolled(source: TerminalView, position: Double) {}
@@ -175,45 +175,45 @@ final class TerminalCoordinator: NSObject, @preconcurrency TerminalViewDelegate 
     // MARK: - Context menu
 
     @objc func contextCopy(_ sender: Any?) {
-        session.focusShell(shell.id)
-        shell.copySelection()
+        session.focusTerminal(terminal.id)
+        terminal.copySelection()
     }
 
     @objc func contextPaste(_ sender: Any?) {
-        session.focusShell(shell.id)
+        session.focusTerminal(terminal.id)
         session.pasteClipboard()
     }
 
     @objc func contextFind(_ sender: Any?) {
-        session.focusShell(shell.id, activateTerminal: false)
+        session.focusTerminal(terminal.id, activateTerminal: false)
         session.showFindBar = true
-        shell.showFindBar = true
+        terminal.showFindBar = true
     }
 
     @objc func contextClear(_ sender: Any?) {
-        session.focusShell(shell.id)
-        shell.clearScreen()
+        session.focusTerminal(terminal.id)
+        terminal.clearScreen()
     }
 
     @objc func contextSaveLog(_ sender: Any?) {
-        session.focusShell(shell.id)
-        session.saveLogForFocusedShell()
+        session.focusTerminal(terminal.id)
+        session.saveLogForFocusedTerminal()
     }
 
     @objc func contextSaveScreenshot(_ sender: Any?) {
-        session.focusShell(shell.id)
-        session.saveScreenshotForFocusedShell()
+        session.focusTerminal(terminal.id)
+        session.saveScreenshotForFocusedTerminal()
     }
 
-    @objc func contextNewShell(_ sender: Any?) {
-        session.openShell()
+    @objc func contextNewTerminal(_ sender: Any?) {
+        session.openTerminal()
     }
 
-    @objc func contextCloseShell(_ sender: Any?) {
-        session.closeShell(shell.id)
+    @objc func contextCloseTerminal(_ sender: Any?) {
+        session.closeTerminal(terminal.id)
     }
 
-    @objc func contextRenameShell(_ sender: Any?) {
-        session.beginRenameShell(shell.id)
+    @objc func contextRenameTerminal(_ sender: Any?) {
+        session.beginRenameTerminal(terminal.id)
     }
 }

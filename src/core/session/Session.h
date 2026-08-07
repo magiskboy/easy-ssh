@@ -49,23 +49,23 @@ public:
     FsBackend fileBackend() const { return m_file.backend; }
     QString sftpUnavailableReason() const { return m_file.unavailableReason; }
 
-    QList<ShellChannelState> shells() const;
-    QUuid activeShellId() const { return m_activeShellId; }
+    QList<TerminalChannelState> terminals() const;
+    QUuid activeTerminalId() const { return m_activeTerminalId; }
     FileChannelState file() const { return m_file; }
     QList<TunnelChannelState> tunnels() const;
 
-    void connectTransport(int cols = 80, int rows = 24, const QUuid &initialShellId = {});
+    void connectTransport(int cols = 80, int rows = 24, const QUuid &initialTerminalId = {});
     void disconnectTransport();
     void reconnect(int cols = 80, int rows = 24);
     void shutdown();
 
-    QUuid newShell(int cols = 80, int rows = 24, const QUuid &shellId = {}, bool auxiliary = false);
-    void closeShell(const QUuid &shellId);
-    void setActiveShell(const QUuid &shellId);
-    void renameShell(const QUuid &shellId, const QString &title);
+    QUuid newTerminal(int cols = 80, int rows = 24, const QUuid &terminalId = {}, bool auxiliary = false);
+    void closeTerminal(const QUuid &terminalId);
+    void setActiveTerminal(const QUuid &terminalId);
+    void renameTerminal(const QUuid &terminalId, const QString &title);
     void writeToActiveShell(const QByteArray &data);
-    void writeToShell(const QUuid &shellId, const QByteArray &data);
-    void changePtySize(const QUuid &shellId, int cols, int rows);
+    void writeToTerminal(const QUuid &terminalId, const QByteArray &data);
+    void changePtySize(const QUuid &terminalId, int cols, int rows);
 
     void listDirectory(const QString &path);
     void createDirectory(const QString &path);
@@ -97,11 +97,11 @@ public:
 
 signals:
     void stateChanged(SessionState state);
-    void shellsChanged();
-    void activeShellChanged(const QUuid &shellId);
+    void terminalsChanged();
+    void activeTerminalChanged(const QUuid &terminalId);
     void fileChanged();
     void tunnelsChanged();
-    void shellData(const QUuid &shellId, const QByteArray &data);
+    void shellData(const QUuid &terminalId, const QByteArray &data);
     void hostKeyPrompt(SshWorker::HostKeyPrompt reason,
                        const QString &fingerprintSha256,
                        const QString &contextLabel);
@@ -135,18 +135,18 @@ private:
     /// Cancel + quit worker thread without blocking the GUI thread.
     void releaseWorkerAsync();
     void wireWorker();
-    int nextShellSerial();
-    ShellChannelState *findShell(const QUuid &shellId);
+    int nextTerminalSerial();
+    TerminalChannelState *findTerminal(const QUuid &terminalId);
     void updateTunnelStatus(const QUuid &tunnelId, TunnelRunStatus status, const QString &detail);
-    void onWorkerConnected(const QUuid &initialShellId);
+    void onWorkerConnected(const QUuid &initialTerminalId);
     void onWorkerDisconnected();
     void onWorkerError(const QString &message);
     void scheduleAutoReconnect();
     void tryAutoResumeTransfer();
-    void onShellOpened(const QUuid &shellId);
-    void onShellClosed(const QUuid &shellId);
-    void onShellFailed(const QUuid &shellId, const QString &message);
-    void onShellOpenFailed(const QUuid &shellId, const QString &message);
+    void onTerminalOpened(const QUuid &terminalId);
+    void onTerminalClosed(const QUuid &terminalId);
+    void onTerminalFailed(const QUuid &terminalId, const QString &message);
+    void onTerminalOpenFailed(const QUuid &terminalId, const QString &message);
 
     Connection m_connection;
     SessionCredentials m_credentials;
@@ -154,9 +154,9 @@ private:
     QDateTime m_connectedAt;
     QString m_lastError;
 
-    QList<ShellChannelState> m_shells;
-    QUuid m_activeShellId;
-    int m_nextShellSerial = 1;
+    QList<TerminalChannelState> m_terminals;
+    QUuid m_activeTerminalId;
+    int m_nextTerminalSerial = 1;
     FileChannelState m_file;
     QHash<QUuid, TunnelChannelState> m_tunnels;
 

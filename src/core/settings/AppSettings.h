@@ -62,7 +62,7 @@ public:
     bool confirmMultilinePaste() const;
     void setConfirmMultilinePaste(bool confirm);
 
-    /// When true, newly created shells are tiled with AlternateFocus instead of center-tab.
+    /// When true, newly created terminals are tiled with AlternateFocus instead of center-tab.
     bool smartLayout() const;
     void setSmartLayout(bool enabled);
 
@@ -70,7 +70,7 @@ public:
     bool autoReconnect() const;
     void setAutoReconnect(bool enabled);
 
-    /// When true, reopen the previous workspace (sessions + shell docks) on launch.
+    /// When true, reopen the previous workspace (sessions + terminal docks) on launch.
     bool restoreWorkspace() const;
     void setRestoreWorkspace(bool enabled);
 
