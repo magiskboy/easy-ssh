@@ -5,21 +5,21 @@
 #include "ServiceSource.h"
 
 #include "core/explorer/service/ServiceParser.h"
-#include "core/session/Session.h"
+#include "core/explorer/IRemoteExec.h"
 
 #include <QTimer>
 #include <QUuid>
 
-ServiceSource::ServiceSource(Session *session, QObject *parent)
-    : IExplorerSource(parent), m_session(session)
+ServiceSource::ServiceSource(IRemoteExec *exec, QObject *parent)
+    : IExplorerSource(parent), m_exec(exec)
 {
     m_timer = new QTimer(this);
     m_timer->setInterval(m_pollIntervalMs);
     connect(m_timer, &QTimer::timeout, this, &ServiceSource::onPollTick);
 
-    if (m_session) {
-        connect(m_session,
-                &Session::commandFinished,
+    if (m_exec) {
+        connect(m_exec,
+                &IRemoteExec::commandFinished,
                 this,
                 [this](const QString &requestId,
                        int exitStatus,
@@ -89,7 +89,7 @@ void ServiceSource::onPollTick()
 
 void ServiceSource::requestList()
 {
-    if (!m_session) {
+    if (!m_exec) {
         setCapability(ExplorerCapability::Error, tr("No session"));
         setBusy(false);
         return;
@@ -98,7 +98,7 @@ void ServiceSource::requestList()
     m_activeRequestId = makeRequestId();
     m_requestInFlight = true;
     setBusy(true);
-    m_session->execCommand(m_activeRequestId, ServiceParser::listCommand());
+    m_exec->execCommand(m_activeRequestId, ServiceParser::listCommand());
 }
 
 void ServiceSource::onCommandFinished(const QString &requestId,

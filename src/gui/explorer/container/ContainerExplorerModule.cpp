@@ -6,6 +6,7 @@
 
 #include "core/explorer/container/ContainerInfo.h"
 #include "core/explorer/container/ContainerSource.h"
+#include "core/session/SessionRemoteExec.h"
 #include "gui/explorer/container/ContainerDetailFactory.h"
 #include "gui/explorer/container/ContainerFilterBar.h"
 #include "gui/explorer/container/ContainerTableModel.h"
@@ -61,7 +62,8 @@ ExplorerTableModel *ContainerExplorerModule::createModel(QObject *parent)
 IExplorerSource *ContainerExplorerModule::createSource(Session *session, QObject *parent)
 {
     m_session = session;
-    return new ContainerSource(session, parent);
+    auto *exec = new SessionRemoteExec(session, parent);
+    return new ContainerSource(exec, parent);
 }
 
 QWidget *ContainerExplorerModule::createFilterBar(ExplorerFilterProxy *proxy, QWidget *parent)

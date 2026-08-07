@@ -7,6 +7,7 @@
 #pragma once
 
 #include "core/explorer/IExplorerSource.h"
+#include "core/explorer/IRemoteExec.h"
 #include "core/explorer/systeminfo/SystemInfo.h"
 
 #include <QElapsedTimer>
@@ -14,9 +15,8 @@
 #include <optional>
 
 class QTimer;
-class Session;
 
-/// Polls remote /proc metrics via Session::execCommand and emits typed snapshots.
+/// Polls remote /proc metrics via IRemoteExec and emits typed snapshots.
 class SystemInfoSource final : public IExplorerSource
 {
     Q_OBJECT
@@ -24,7 +24,7 @@ class SystemInfoSource final : public IExplorerSource
 public:
     static constexpr int kDefaultPollIntervalMs = 2000;
 
-    explicit SystemInfoSource(Session *session, QObject *parent = nullptr);
+    explicit SystemInfoSource(IRemoteExec *exec, QObject *parent = nullptr);
     ~SystemInfoSource() override;
 
     void start() override;
@@ -59,7 +59,7 @@ private:
     QString makeRequestId();
     void applyClientDeltas(SystemInfo *info);
 
-    QPointer<Session> m_session;
+    QPointer<IRemoteExec> m_exec;
     QTimer *m_timer = nullptr;
     ExplorerCapability m_capability = ExplorerCapability::Checking;
     QString m_capabilityMessage;

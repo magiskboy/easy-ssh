@@ -138,7 +138,7 @@ else()
 endif()
 
 # Existing aqt trees may predate qtsvg; install the module into the same prefix.
-if(EXISTS "${_qt_marker}" AND NOT EXISTS "${_qt_svg_marker}")
+if(EASY_SSH_BUILD_QT_WIDGETS AND EXISTS "${_qt_marker}" AND NOT EXISTS "${_qt_svg_marker}")
     message(STATUS "EasySshDeps: installing Qt Svg into ${EASY_SSH_QT_PREFIX}")
     set(_easy_ssh_venv_hints
         "${CMAKE_SOURCE_DIR}/.deps/venv/Scripts"
@@ -194,14 +194,12 @@ endif()
 
 message(STATUS "EasySshDeps: CMAKE_PREFIX_PATH includes ${EASY_SSH_QT_PREFIX}")
 
-find_package(Qt6 ${EASY_SSH_QT_VERSION} REQUIRED COMPONENTS
-    Core
-    Gui
-    Widgets
-    Concurrent
-    Network
-    Svg
-)
+set(_easy_ssh_qt_components Core Gui Network)
+if(EASY_SSH_BUILD_QT_WIDGETS)
+    list(APPEND _easy_ssh_qt_components Widgets Concurrent Svg)
+endif()
+find_package(Qt6 ${EASY_SSH_QT_VERSION} REQUIRED COMPONENTS ${_easy_ssh_qt_components})
+unset(_easy_ssh_qt_components)
 
 # Refuse distro / Homebrew Qt — both presets must use aqt under .deps/qt.
 if(NOT Qt6_DIR MATCHES "/\\.deps/qt/")
@@ -345,37 +343,38 @@ if(WIN32 AND TARGET qt6keychain)
 endif()
 message(STATUS "EasySshDeps: QtKeychain from FetchContent (${EASY_SSH_QTKEYCHAIN_GIT_TAG})")
 
-# --- lxqt-build-tools (vendored; build-only for QTermWidget) ---
-set(_lxqt_bt_src "${CMAKE_SOURCE_DIR}/third_party/lxqt-build-tools")
-if(NOT EXISTS "${_lxqt_bt_src}/CMakeLists.txt")
-    message(FATAL_ERROR "EasySshDeps: missing vendored lxqt-build-tools at ${_lxqt_bt_src}")
-endif()
-FetchContent_Declare(
-    lxqt-build-tools
-    SOURCE_DIR ${_lxqt_bt_src}
-    EXCLUDE_FROM_ALL
-)
-FetchContent_MakeAvailable(lxqt-build-tools)
-FetchContent_GetProperties(lxqt-build-tools BINARY_DIR _lxqt_bt_binary_dir)
-if(NOT _lxqt_bt_binary_dir)
-    message(FATAL_ERROR "FetchContent lxqt-build-tools has no BINARY_DIR")
-endif()
-# FetchContent keeps CMAKE_PROJECT_NAME from the top-level project (easy-ssh), so
-# lxqt-build-tools writes easy-ssh-config.cmake — shim lxqt2-build-tools-config.cmake.
-set(_lxqt_modules "${_lxqt_bt_binary_dir}/CMakeFiles/${PROJECT_NAME}/cmake/modules")
-set(_lxqt_find_modules "${_lxqt_bt_binary_dir}/CMakeFiles/${PROJECT_NAME}/cmake/find-modules")
-if(NOT IS_DIRECTORY "${_lxqt_modules}")
-    message(FATAL_ERROR "EasySshDeps: lxqt modules dir not found at ${_lxqt_modules}")
-endif()
-set(_lxqt_shim "${_lxqt_bt_binary_dir}/lxqt2-build-tools-config.cmake")
-set(_lxqt_version "${_lxqt_bt_binary_dir}/lxqt2-build-tools-config-version.cmake")
-file(WRITE "${_lxqt_shim}" "
+if(EASY_SSH_BUILD_QT_WIDGETS)
+    # --- lxqt-build-tools (vendored; build-only for QTermWidget) ---
+    set(_lxqt_bt_src "${CMAKE_SOURCE_DIR}/third_party/lxqt-build-tools")
+    if(NOT EXISTS "${_lxqt_bt_src}/CMakeLists.txt")
+        message(FATAL_ERROR "EasySshDeps: missing vendored lxqt-build-tools at ${_lxqt_bt_src}")
+    endif()
+    FetchContent_Declare(
+        lxqt-build-tools
+        SOURCE_DIR ${_lxqt_bt_src}
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(lxqt-build-tools)
+    FetchContent_GetProperties(lxqt-build-tools BINARY_DIR _lxqt_bt_binary_dir)
+    if(NOT _lxqt_bt_binary_dir)
+        message(FATAL_ERROR "FetchContent lxqt-build-tools has no BINARY_DIR")
+    endif()
+    # FetchContent keeps CMAKE_PROJECT_NAME from the top-level project (easy-ssh), so
+    # lxqt-build-tools writes easy-ssh-config.cmake — shim lxqt2-build-tools-config.cmake.
+    set(_lxqt_modules "${_lxqt_bt_binary_dir}/CMakeFiles/${PROJECT_NAME}/cmake/modules")
+    set(_lxqt_find_modules "${_lxqt_bt_binary_dir}/CMakeFiles/${PROJECT_NAME}/cmake/find-modules")
+    if(NOT IS_DIRECTORY "${_lxqt_modules}")
+        message(FATAL_ERROR "EasySshDeps: lxqt modules dir not found at ${_lxqt_modules}")
+    endif()
+    set(_lxqt_shim "${_lxqt_bt_binary_dir}/lxqt2-build-tools-config.cmake")
+    set(_lxqt_version "${_lxqt_bt_binary_dir}/lxqt2-build-tools-config-version.cmake")
+    file(WRITE "${_lxqt_shim}" "
 set(LXQT_CMAKE_MODULES_DIR \"${_lxqt_modules}\")
 set(LXQT_CMAKE_FIND_MODULES_DIR \"${_lxqt_find_modules}\")
 list(APPEND CMAKE_MODULE_PATH \"\${LXQT_CMAKE_MODULES_DIR}\" \"\${LXQT_CMAKE_FIND_MODULES_DIR}\")
 set(lxqt2-build-tools_FOUND TRUE)
 ")
-file(WRITE "${_lxqt_version}" "
+    file(WRITE "${_lxqt_version}" "
 set(PACKAGE_VERSION \"${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG}\")
 if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION)
   set(PACKAGE_VERSION_COMPATIBLE FALSE)
@@ -386,88 +385,91 @@ else()
   endif()
 endif()
 ")
-set(lxqt2-build-tools_DIR "${_lxqt_bt_binary_dir}" CACHE PATH "" FORCE)
-list(APPEND CMAKE_PREFIX_PATH "${_lxqt_bt_binary_dir}")
-set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
-message(STATUS "EasySshDeps: lxqt-build-tools from third_party (upstream ${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG})")
+    set(lxqt2-build-tools_DIR "${_lxqt_bt_binary_dir}" CACHE PATH "" FORCE)
+    list(APPEND CMAKE_PREFIX_PATH "${_lxqt_bt_binary_dir}")
+    set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
+    message(STATUS "EasySshDeps: lxqt-build-tools from third_party (upstream ${EASY_SSH_LXQT_BUILD_TOOLS_GIT_TAG})")
 
-# --- QTermWidget (vendored under third_party/qtermwidget; based on tag above) ---
-set(_qtw_src "${CMAKE_SOURCE_DIR}/third_party/qtermwidget")
-if(NOT EXISTS "${_qtw_src}/CMakeLists.txt")
-    message(FATAL_ERROR "EasySshDeps: missing vendored QTermWidget at ${_qtw_src}")
-endif()
-FetchContent_Declare(
-    qtermwidget
-    SOURCE_DIR ${_qtw_src}
-    EXCLUDE_FROM_ALL
-)
-set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
-set(USE_UTF8PROC OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(qtermwidget)
-if(NOT TARGET qtermwidget6)
-    message(FATAL_ERROR "FetchContent qtermwidget did not create target 'qtermwidget6'")
-endif()
-message(STATUS "EasySshDeps: QTermWidget from third_party (upstream ${EASY_SSH_QTERMWIDGET_GIT_TAG})")
-
-# Bundle QTermWidget color schemes + kb-layouts next to the build/install prefix so
-# the app finds them via ../share/easy-ssh from bin/ (see third_party/qtermwidget/EASY_SSH.md).
-set(EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC "${_qtw_src}/lib/color-schemes")
-set(EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC "${_qtw_src}/lib/kb-layouts")
-set(EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR "${CMAKE_BINARY_DIR}/share/easy-ssh")
-if(NOT EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
-    message(FATAL_ERROR "EasySshDeps: missing QTermWidget color-schemes at ${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
-endif()
-if(NOT EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
-    message(FATAL_ERROR "EasySshDeps: missing QTermWidget kb-layouts at ${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
-endif()
-file(MAKE_DIRECTORY "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes")
-file(MAKE_DIRECTORY "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
-file(GLOB _easy_ssh_qtw_schemes "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/*.colorscheme")
-file(COPY ${_easy_ssh_qtw_schemes} DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes")
-file(GLOB _easy_ssh_qtw_keytabs "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/*.keytab")
-file(COPY ${_easy_ssh_qtw_keytabs} DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
-if(EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/historic")
-    file(COPY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/historic"
-         DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
-endif()
-message(STATUS "EasySshDeps: QTermWidget data → ${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}")
-
-# --- Qt Advanced Docking System ---
-set(ADS_VERSION "${EASY_SSH_ADS_VERSION}" CACHE STRING "" FORCE)
-set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(BUILD_STATIC OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-    qtads
-    GIT_REPOSITORY https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System.git
-    GIT_TAG        ${EASY_SSH_ADS_GIT_TAG}
-    GIT_SHALLOW    TRUE
-    GIT_PROGRESS   TRUE
-    EXCLUDE_FROM_ALL
-)
-FetchContent_MakeAvailable(qtads)
-if(NOT TARGET qtadvanceddocking-qt6 AND NOT TARGET ads::qtadvanceddocking-qt6)
-    message(FATAL_ERROR "FetchContent qtads did not create qtadvanceddocking-qt6")
-endif()
-# ADS defaults to ${CMAKE_BINARY_DIR}/x64/{lib,bin}; align with project layout.
-if(TARGET qtadvanceddocking-qt6)
-    if(WIN32)
-        set_target_properties(qtadvanceddocking-qt6 PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        )
-    else()
-        set_target_properties(qtadvanceddocking-qt6 PROPERTIES
-            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        )
+    # --- QTermWidget (vendored under third_party/qtermwidget; based on tag above) ---
+    set(_qtw_src "${CMAKE_SOURCE_DIR}/third_party/qtermwidget")
+    if(NOT EXISTS "${_qtw_src}/CMakeLists.txt")
+        message(FATAL_ERROR "EasySshDeps: missing vendored QTermWidget at ${_qtw_src}")
     endif()
+    FetchContent_Declare(
+        qtermwidget
+        SOURCE_DIR ${_qtw_src}
+        EXCLUDE_FROM_ALL
+    )
+    set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
+    set(USE_UTF8PROC OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(qtermwidget)
+    if(NOT TARGET qtermwidget6)
+        message(FATAL_ERROR "FetchContent qtermwidget did not create target 'qtermwidget6'")
+    endif()
+    message(STATUS "EasySshDeps: QTermWidget from third_party (upstream ${EASY_SSH_QTERMWIDGET_GIT_TAG})")
+
+    # Bundle QTermWidget color schemes + kb-layouts next to the build/install prefix so
+    # the app finds them via ../share/easy-ssh from bin/ (see third_party/qtermwidget/EASY_SSH.md).
+    set(EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC "${_qtw_src}/lib/color-schemes")
+    set(EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC "${_qtw_src}/lib/kb-layouts")
+    set(EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR "${CMAKE_BINARY_DIR}/share/easy-ssh")
+    if(NOT EXISTS "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
+        message(FATAL_ERROR "EasySshDeps: missing QTermWidget color-schemes at ${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}")
+    endif()
+    if(NOT EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
+        message(FATAL_ERROR "EasySshDeps: missing QTermWidget kb-layouts at ${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}")
+    endif()
+    file(MAKE_DIRECTORY "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes")
+    file(MAKE_DIRECTORY "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
+    file(GLOB _easy_ssh_qtw_schemes "${EASY_SSH_QTERMWIDGET_COLORSCHEMES_SRC}/*.colorscheme")
+    file(COPY ${_easy_ssh_qtw_schemes} DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes")
+    file(GLOB _easy_ssh_qtw_keytabs "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/*.keytab")
+    file(COPY ${_easy_ssh_qtw_keytabs} DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
+    if(EXISTS "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/historic")
+        file(COPY "${EASY_SSH_QTERMWIDGET_KB_LAYOUTS_SRC}/historic"
+             DESTINATION "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts")
+    endif()
+    message(STATUS "EasySshDeps: QTermWidget data → ${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}")
+
+    # --- Qt Advanced Docking System ---
+    set(ADS_VERSION "${EASY_SSH_ADS_VERSION}" CACHE STRING "" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(BUILD_STATIC OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        qtads
+        GIT_REPOSITORY https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System.git
+        GIT_TAG        ${EASY_SSH_ADS_GIT_TAG}
+        GIT_SHALLOW    TRUE
+        GIT_PROGRESS   TRUE
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(qtads)
+    if(NOT TARGET qtadvanceddocking-qt6 AND NOT TARGET ads::qtadvanceddocking-qt6)
+        message(FATAL_ERROR "FetchContent qtads did not create qtadvanceddocking-qt6")
+    endif()
+    # ADS defaults to ${CMAKE_BINARY_DIR}/x64/{lib,bin}; align with project layout.
+    if(TARGET qtadvanceddocking-qt6)
+        if(WIN32)
+            set_target_properties(qtadvanceddocking-qt6 PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+                ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+                LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+            )
+        else()
+            set_target_properties(qtadvanceddocking-qt6 PROPERTIES
+                LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+                ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+            )
+        endif()
+    endif()
+    if(TARGET qtadvanceddocking-qt6 AND NOT TARGET ads::qtadvanceddocking-qt6)
+        add_library(ads::qtadvanceddocking-qt6 ALIAS qtadvanceddocking-qt6)
+    endif()
+    message(STATUS "EasySshDeps: Qt ADS from FetchContent (${EASY_SSH_ADS_GIT_TAG})")
+else()
+    message(STATUS "EasySshDeps: skipping QTermWidget / Qt ADS (Qt Widgets UI disabled)")
 endif()
-if(TARGET qtadvanceddocking-qt6 AND NOT TARGET ads::qtadvanceddocking-qt6)
-    add_library(ads::qtadvanceddocking-qt6 ALIAS qtadvanceddocking-qt6)
-endif()
-message(STATUS "EasySshDeps: Qt ADS from FetchContent (${EASY_SSH_ADS_GIT_TAG})")
 
 message(STATUS "EasySshDeps: third-party libraries built from source (FetchContent)")
 

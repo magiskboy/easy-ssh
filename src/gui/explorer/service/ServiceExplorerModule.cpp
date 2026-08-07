@@ -6,6 +6,7 @@
 
 #include "core/explorer/service/ServiceInfo.h"
 #include "core/explorer/service/ServiceSource.h"
+#include "core/session/SessionRemoteExec.h"
 #include "gui/explorer/service/ServiceDetailFactory.h"
 #include "gui/explorer/service/ServiceFilterBar.h"
 #include "gui/explorer/service/ServiceTableModel.h"
@@ -58,7 +59,8 @@ ExplorerTableModel *ServiceExplorerModule::createModel(QObject *parent)
 IExplorerSource *ServiceExplorerModule::createSource(Session *session, QObject *parent)
 {
     m_session = session;
-    return new ServiceSource(session, parent);
+    auto *exec = new SessionRemoteExec(session, parent);
+    return new ServiceSource(exec, parent);
 }
 
 QWidget *ServiceExplorerModule::createFilterBar(ExplorerFilterProxy *proxy, QWidget *parent)

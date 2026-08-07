@@ -30,6 +30,8 @@ set(EASY_SSH_CORE_SOURCES
     core/session/SessionTypes.h
     core/session/Session.cpp
     core/session/Session.h
+    core/session/SessionRemoteExec.cpp
+    core/session/SessionRemoteExec.h
     core/session/SessionManager.cpp
     core/session/SessionManager.h
     core/session/WorkspaceState.cpp
@@ -55,6 +57,7 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/SftpTypes.h
     core/explorer/ExplorerTypes.h
     core/explorer/IExplorerSource.h
+    core/explorer/IRemoteExec.h
     core/explorer/process/ProcessInfo.h
     core/explorer/process/ProcessParser.cpp
     core/explorer/process/ProcessParser.h
@@ -217,7 +220,7 @@ else()
 endif()
 
 set(EASY_SSH_PLATFORM_SOURCES)
-if(WIN32)
+if(EASY_SSH_BUILD_QT_WIDGETS AND WIN32)
     enable_language(RC)
     # Absolute path so the generated .rc (in the build tree) can find the icon.
     file(TO_CMAKE_PATH
@@ -234,7 +237,7 @@ if(WIN32)
     )
 endif()
 
-if(APPLE)
+if(EASY_SSH_BUILD_QT_WIDGETS AND APPLE)
     set(MACOSX_BUNDLE_ICON_FILE easy-ssh.icns)
     set(EASY_SSH_MACOS_ICON "${CMAKE_SOURCE_DIR}/resources/macos/easy-ssh.icns")
     set_source_files_properties("${EASY_SSH_MACOS_ICON}" PROPERTIES
@@ -257,62 +260,68 @@ target_link_libraries(easy-ssh-core
         Qt6Keychain::Qt6Keychain
 )
 
-add_library(easy-ssh-gui STATIC ${EASY_SSH_GUI_SOURCES})
-target_link_libraries(easy-ssh-gui
-    PUBLIC
-        easy-ssh-core
-        Qt6::Widgets
-        Qt6::Svg
-        qtermwidget6
-        ads::qtadvanceddocking-qt6
-)
-target_compile_definitions(easy-ssh-gui
-    PUBLIC
-        APP_VERSION="${PROJECT_VERSION}"
-)
+if(EASY_SSH_BUILD_QT_WIDGETS)
+    add_library(easy-ssh-gui STATIC ${EASY_SSH_GUI_SOURCES})
+    target_link_libraries(easy-ssh-gui
+        PUBLIC
+            easy-ssh-core
+            Qt6::Widgets
+            Qt6::Svg
+            qtermwidget6
+            ads::qtadvanceddocking-qt6
+    )
+    target_compile_definitions(easy-ssh-gui
+        PUBLIC
+            APP_VERSION="${PROJECT_VERSION}"
+    )
 
-qt_add_executable(easy-ssh
-    app/main.cpp
-    ${EASY_SSH_PLATFORM_SOURCES}
-)
+    qt_add_executable(easy-ssh
+        app/main.cpp
+        ${EASY_SSH_PLATFORM_SOURCES}
+    )
 
-set_target_properties(easy-ssh PROPERTIES
-    WIN32_EXECUTABLE TRUE
-    MACOSX_BUNDLE TRUE
-    OUTPUT_NAME easy-ssh
-    MACOSX_BUNDLE_BUNDLE_NAME "Easy SSH"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.magiskboy.easy-ssh"
-    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_COPYRIGHT "Copyright (C) Easy SSH contributors"
-)
+    set_target_properties(easy-ssh PROPERTIES
+        WIN32_EXECUTABLE TRUE
+        MACOSX_BUNDLE TRUE
+        OUTPUT_NAME easy-ssh
+        MACOSX_BUNDLE_BUNDLE_NAME "Easy SSH"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.magiskboy.easy-ssh"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_COPYRIGHT "Copyright (C) Easy SSH contributors"
+    )
 
-target_link_libraries(easy-ssh
-    PRIVATE
-        easy-ssh-gui
-)
+    target_link_libraries(easy-ssh
+        PRIVATE
+            easy-ssh-gui
+    )
 
-# Dev builds: keep QTermWidget data next to the binary layout (bin/../share/easy-ssh).
-# On macOS also mirror into the .app Resources tree that qtermwidget searches.
-if(DEFINED EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR)
-    if(APPLE)
-        add_custom_command(TARGET easy-ssh POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/themes"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes"
-                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts"
-                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_BINARY_DIR}/share/easy-ssh/themes"
-                "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/themes"
-            COMMENT "Copy QTermWidget data and themes into app bundle Resources"
-        )
+    # Dev builds: keep QTermWidget data next to the binary layout (bin/../share/easy-ssh).
+    # On macOS also mirror into the .app Resources tree that qtermwidget searches.
+    if(DEFINED EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR)
+        if(APPLE)
+            add_custom_command(TARGET easy-ssh POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/themes"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/color-schemes"
+                    "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/color-schemes"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${EASY_SSH_QTERMWIDGET_DATA_BUILD_DIR}/kb-layouts"
+                    "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/kb-layouts"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${CMAKE_BINARY_DIR}/share/easy-ssh/themes"
+                    "$<TARGET_BUNDLE_CONTENT_DIR:easy-ssh>/Resources/themes"
+                COMMENT "Copy QTermWidget data and themes into app bundle Resources"
+            )
+        endif()
     endif()
+endif()
+
+if(EASY_SSH_NATIVE_MACOS)
+    add_subdirectory(macos)
 endif()

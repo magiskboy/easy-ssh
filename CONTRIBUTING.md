@@ -99,7 +99,7 @@ python -m pip install -r requirements/requirements-dev.txt
 
 ### Build
 
-Three CMake presets (all use local aqt Qt + FetchContent deps):
+CMake presets (all use local aqt Qt + FetchContent deps):
 
 | Preset | Purpose | Binary dir |
 |--------|---------|------------|
@@ -112,6 +112,7 @@ Three CMake presets (all use local aqt Qt + FetchContent deps):
 cmake --preset debug
 cmake --build --preset debug
 ./build/bin/easy-ssh
+# On Apple, also: open ./build/bin/easy-ssh-native.app
 
 # Release
 cmake --preset release
@@ -119,7 +120,19 @@ cmake --build --preset release
 ./build-release/bin/easy-ssh
 ```
 
-The first configure downloads Qt (currently **6.10.3**) into `.deps/qt` and builds FetchContent deps (libssh, QTermWidget, QtKeychain). That can take several minutes.
+On Apple, both UIs are enabled by default (`EASY_SSH_BUILD_QT_WIDGETS` + `EASY_SSH_NATIVE_MACOS`). CI builds them as **separate** packages via the same `release` preset with option overrides:
+
+- Qt Widgets: `-DEASY_SSH_NATIVE_MACOS=OFF` → `easy-ssh-macos-{arm64,amd64}.dmg`
+- SwiftUI: `-DEASY_SSH_BUILD_QT_WIDGETS=OFF -DEASY_SSH_NATIVE_MACOS=ON` → `easy-ssh-macos-{arm64,amd64}-native.dmg`
+
+Options:
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `EASY_SSH_BUILD_QT_WIDGETS` | `ON` | Build `easy-ssh` (Qt Widgets) |
+| `EASY_SSH_NATIVE_MACOS` | `ON` (Apple) | Build `easy-ssh-native` (SwiftUI + SwiftTerm) |
+
+The first configure downloads Qt (currently **6.10.3**) into `.deps/qt` and builds FetchContent deps (libssh, QtKeychain; plus QTermWidget / Qt ADS when the Widgets UI is enabled). That can take several minutes.
 
 ### Unit tests
 

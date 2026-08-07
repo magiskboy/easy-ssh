@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- macOS SwiftUI Tunnels sidebar: local / remote / dynamic tunnel CRUD, TCP + Unix socket endpoints, SOCKS5 auth via Keychain, runtime status, and auto-start for enabled tunnels
 - System tray enhancements: live status tooltip and icon, Sessions/Recent tray menus, notifications when the window is hidden, minimize-to-tray and start-in-tray settings
 - Workspace restore: reopen last sessions and shell dock layouts on launch (Settings → General)
 - Workspace restore also reopens explorer tabs (Processes, Containers, Services, System Info)
