@@ -20,7 +20,6 @@ class ConnectionModel;
 class Session;
 class SessionManager;
 class SessionPage;
-class WelcomeWidget;
 
 class SessionTabWidget final : public QTabWidget
 {
@@ -31,7 +30,6 @@ public:
 
     void setConnectionModel(ConnectionModel *model);
     void setSessionManager(SessionManager *manager);
-    void refreshWelcome();
 
     void openSshSession(const Connection &connection,
                         const SessionCredentials &credentials,
@@ -55,9 +53,6 @@ signals:
     void sessionClosed(const QString &displayName);
     void activeSessionChanged(const QString &displayName);
     void statusMessage(const QString &message, ErrorNotifier::Level level);
-    void openConnectionRequested(const QUuid &id);
-    void createConnectionRequested();
-    void showConnectionsRequested();
     void editConnectionRequested(const QUuid &id);
     void deleteConnectionRequested(const QUuid &id);
 
@@ -67,16 +62,11 @@ private slots:
     void onTabContextMenu(const QPoint &pos);
 
 private:
-    void ensureWelcomeTab();
-    void removeWelcomeTabIfPresent();
-    bool isWelcomeTab(int index) const;
-    WelcomeWidget *welcomeWidget() const;
     SessionPage *pageAt(int index) const;
     void updateTabPresentation(SessionPage *page);
     int indexForConnection(const QUuid &connectionId) const;
 
     ConnectionModel *m_connectionModel = nullptr;
     SessionManager *m_sessionManager = nullptr;
-    int m_welcomeIndex = -1;
     QHash<QUuid, SessionPage *> m_pagesByConnection;
 };

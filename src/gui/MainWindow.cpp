@@ -17,6 +17,7 @@
 #include "gui/connection/ConnectionListWidget.h"
 #include "gui/connection/ConnectionManagerDialog.h"
 #include "gui/connection/ConnectionSecretHelper.h"
+#include "gui/connection/WelcomeWidget.h"
 #include "gui/dialogs/AboutDialog.h"
 #include "gui/dialogs/CommandPaletteDialog.h"
 #include "gui/dialogs/SettingsDialog.h"
@@ -52,6 +53,7 @@
 #include <QScreen>
 #include <QSizePolicy>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QSystemTrayIcon>
 #include <QTimer>
@@ -518,6 +520,9 @@ void MainWindow::setupUi()
     m_connectionList->setSecretStore(m_secretStore);
     m_connectionList->hide();
 
+    m_welcome = new WelcomeWidget(this);
+    m_welcome->setConnectionModel(m_connectionModel);
+
     m_sideBar = new SessionSideBar(this);
     m_fileExplorer = new FileExplorerWidget(m_sideBar->fileContainer());
     m_tunnelList = new TunnelListWidget(m_sideBar->tunnelContainer());
@@ -545,7 +550,12 @@ void MainWindow::setupUi()
     sideSeparator->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     sideLayout->addWidget(sideSeparator);
 
-    auto *rootSplitter = new QSplitter(Qt::Horizontal, this);
+    auto *workspace = new QWidget(this);
+    auto *workspaceLayout = new QHBoxLayout(workspace);
+    workspaceLayout->setContentsMargins(0, 0, 0, 0);
+    workspaceLayout->setSpacing(0);
+
+    auto *rootSplitter = new QSplitter(Qt::Horizontal, workspace);
     rootSplitter->setChildrenCollapsible(false);
     rootSplitter->setHandleWidth(2);
     rootSplitter->addWidget(sidePanel);
@@ -564,12 +574,18 @@ void MainWindow::setupUi()
         qCDebug(lcGui) << "splitterMoved sizes" << sizes;
         AppSettings::instance().setSidebarWidth(sizes.value(0));
     });
+    workspaceLayout->addWidget(rootSplitter);
+
+    m_contentStack = new QStackedWidget(this);
+    m_contentStack->addWidget(m_welcome);
+    m_contentStack->addWidget(workspace);
+    m_contentStack->setCurrentWidget(m_welcome);
 
     auto *central = new QWidget(this);
     auto *rootLayout = new QVBoxLayout(central);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
-    rootLayout->addWidget(rootSplitter, 1);
+    rootLayout->addWidget(m_contentStack, 1);
 
     // Horizontal rule above the status bar so the bottom region is clearly separated.
     auto *statusSeparator = new QFrame(central);
@@ -593,15 +609,13 @@ void MainWindow::setupUi()
     connect(m_sessionInfoTimer, &QTimer::timeout, this, &MainWindow::updateSessionStatusInfo);
     updateSessionStatusInfo();
 
-    connect(m_sessionTabs,
-            &SessionTabWidget::openConnectionRequested,
-            this,
-            &MainWindow::openConnectionById);
-    connect(m_sessionTabs,
-            &SessionTabWidget::createConnectionRequested,
+    connect(
+        m_welcome, &WelcomeWidget::openConnectionRequested, this, &MainWindow::openConnectionById);
+    connect(m_welcome,
+            &WelcomeWidget::createConnectionRequested,
             m_connectionList,
             &ConnectionListWidget::createConnection);
-    connect(m_sessionTabs, &SessionTabWidget::showConnectionsRequested, this, [this]() {
+    connect(m_welcome, &WelcomeWidget::showConnectionsRequested, this, [this]() {
         rebuildConnectionsListMenu();
         if (m_connectionsListMenu) {
             m_connectionsListMenu->popup(QCursor::pos());
@@ -702,9 +716,7 @@ void MainWindow::setupUi()
             &ConnectionListWidget::statusMessage,
             this,
             [this](const QString &, ErrorNotifier::Level) {
-                if (m_sessionTabs) {
-                    m_sessionTabs->refreshWelcome();
-                }
+                refreshWelcome();
                 rebuildConnectionsListMenu();
             });
     connect(m_connectionModel,
@@ -732,6 +744,7 @@ void MainWindow::setupUi()
 
     connect(m_sessionTabs, &SessionTabWidget::sessionClosed, this, [this](const QString &name) {
         setStatusText(tr("Closed session: %1").arg(name), ErrorNotifier::Level::Warning);
+        updateWorkspaceVisibility();
         updateTerminalActionsEnabled();
         syncSidePanelsToActiveSession();
         updateSessionStatusInfo();
@@ -739,6 +752,7 @@ void MainWindow::setupUi()
     });
 
     connect(m_sessionTabs, &SessionTabWidget::sessionOpened, this, [this](const QString &) {
+        showSessionWorkspace();
         updateTerminalActionsEnabled();
         updateSessionStatusInfo();
         syncSidePanelsToActiveSession();
@@ -751,7 +765,7 @@ void MainWindow::setupUi()
             syncSidePanelsToActiveSession();
             updateSessionStatusInfo();
 
-            if (name.isEmpty() || name == tr("Welcome")) {
+            if (name.isEmpty()) {
                 setStatusText(tr("Ready"), ErrorNotifier::Level::Status);
                 return;
             }
@@ -1024,9 +1038,7 @@ void MainWindow::openConnectionManager(const QUuid &selectId)
                 &MainWindow::setStatusText);
         connect(m_connectionManager, &QObject::destroyed, this, [this]() {
             rebuildConnectionsListMenu();
-            if (m_sessionTabs) {
-                m_sessionTabs->refreshWelcome();
-            }
+            refreshWelcome();
         });
     }
     if (!selectId.isNull()) {
@@ -1237,9 +1249,7 @@ void MainWindow::createConnectionFromQuery(const QString &query)
                                                gatewayPassphraseProvided);
 
         rebuildConnectionsListMenu();
-        if (m_sessionTabs) {
-            m_sessionTabs->refreshWelcome();
-        }
+        refreshWelcome();
         setStatusText(tr("Created connection: %1").arg(connection.name),
                       ErrorNotifier::Level::Success);
 
@@ -1457,7 +1467,7 @@ void MainWindow::finishConnect(const Connection &connection, const SessionCreden
     const auto restore = takePendingRestoreEntry(connection.id);
     m_sessionTabs->openSshSession(connection, credentials, restore);
     AppSettings::instance().recordRecentConnection(connection.id);
-    m_sessionTabs->refreshWelcome();
+    refreshWelcome();
     clearPendingConnect();
     if (m_restoringWorkspace) {
         advanceWorkspaceRestore();
@@ -1604,6 +1614,42 @@ QString MainWindow::formatSessionTtl(qint64 seconds)
         .arg(secs, 2, 10, QLatin1Char('0'));
 }
 
+void MainWindow::showWelcomeScreen()
+{
+    if (!m_contentStack || !m_welcome) {
+        return;
+    }
+    refreshWelcome();
+    m_contentStack->setCurrentWidget(m_welcome);
+}
+
+void MainWindow::showSessionWorkspace()
+{
+    if (!m_contentStack || m_contentStack->count() < 2) {
+        return;
+    }
+    m_contentStack->setCurrentIndex(1);
+}
+
+void MainWindow::refreshWelcome()
+{
+    if (m_welcome) {
+        m_welcome->refresh();
+    }
+}
+
+void MainWindow::updateWorkspaceVisibility()
+{
+    if (!m_sessionTabs) {
+        return;
+    }
+    if (m_sessionTabs->count() == 0) {
+        showWelcomeScreen();
+    } else {
+        showSessionWorkspace();
+    }
+}
+
 void MainWindow::syncSidePanelsToActiveSession()
 {
     Session *session = m_sessionTabs ? m_sessionTabs->activeSession() : nullptr;
@@ -1693,8 +1739,8 @@ void MainWindow::onConnectionEdited(const QUuid &id,
     }
     if (m_sessionTabs) {
         m_sessionTabs->refreshConnectionPresentation(id);
-        m_sessionTabs->refreshWelcome();
     }
+    refreshWelcome();
     rebuildConnectionsListMenu();
     updateSessionStatusInfo();
 }
@@ -1731,5 +1777,5 @@ void MainWindow::deleteConnection(const QUuid &id)
     }
     m_connectionModel->removeById(id);
     rebuildConnectionsListMenu();
-    m_sessionTabs->refreshWelcome();
+    refreshWelcome();
 }

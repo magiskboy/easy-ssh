@@ -7,7 +7,6 @@
 #include "SessionPage.h"
 #include "core/session/Session.h"
 #include "core/session/SessionManager.h"
-#include "gui/connection/WelcomeWidget.h"
 #include "gui/models/ConnectionModel.h"
 
 #include <QAction>
@@ -27,28 +26,16 @@ SessionTabWidget::SessionTabWidget(QWidget *parent) : QTabWidget(parent)
     connect(this, &QTabWidget::currentChanged, this, &SessionTabWidget::onCurrentChanged);
     connect(
         tabBar(), &QWidget::customContextMenuRequested, this, &SessionTabWidget::onTabContextMenu);
-
-    ensureWelcomeTab();
 }
 
 void SessionTabWidget::setConnectionModel(ConnectionModel *model)
 {
     m_connectionModel = model;
-    if (auto *welcome = welcomeWidget()) {
-        welcome->setConnectionModel(m_connectionModel);
-    }
 }
 
 void SessionTabWidget::setSessionManager(SessionManager *manager)
 {
     m_sessionManager = manager;
-}
-
-void SessionTabWidget::refreshWelcome()
-{
-    if (auto *welcome = welcomeWidget()) {
-        welcome->refresh();
-    }
 }
 
 void SessionTabWidget::openSshSession(const Connection &connection,
@@ -72,8 +59,6 @@ void SessionTabWidget::openSshSession(const Connection &connection,
         }
         return;
     }
-
-    removeWelcomeTabIfPresent();
 
     Session *session = m_sessionManager->open(connection, credentials);
     auto *page = new SessionPage(session, this);
@@ -134,7 +119,7 @@ void SessionTabWidget::reconnectCurrentSession()
 void SessionTabWidget::closeCurrentSession()
 {
     const int index = currentIndex();
-    if (index < 0 || isWelcomeTab(index)) {
+    if (index < 0) {
         return;
     }
     onTabCloseRequested(index);
@@ -195,9 +180,6 @@ WorkspaceState SessionTabWidget::captureWorkspaceState() const
     }
 
     for (int i = 0; i < count(); ++i) {
-        if (isWelcomeTab(i)) {
-            continue;
-        }
         SessionPage *page = pageAt(i);
         if (!page || !page->session()) {
             continue;
@@ -214,9 +196,6 @@ QList<SessionPage *> SessionTabWidget::allSessionPages() const
 
 void SessionTabWidget::onTabCloseRequested(int index)
 {
-    if (isWelcomeTab(index)) {
-        return;
-    }
     SessionPage *page = pageAt(index);
     if (!page) {
         return;
@@ -231,9 +210,6 @@ void SessionTabWidget::onTabCloseRequested(int index)
         m_sessionManager->close(id);
     }
     emit sessionClosed(name);
-    if (count() == 0) {
-        ensureWelcomeTab();
-    }
 }
 
 void SessionTabWidget::onCurrentChanged(int index)
@@ -253,7 +229,7 @@ void SessionTabWidget::onCurrentChanged(int index)
 void SessionTabWidget::onTabContextMenu(const QPoint &pos)
 {
     const int index = tabBar()->tabAt(pos);
-    if (index < 0 || isWelcomeTab(index)) {
+    if (index < 0) {
         return;
     }
     SessionPage *page = pageAt(index);
@@ -288,58 +264,9 @@ void SessionTabWidget::onTabContextMenu(const QPoint &pos)
     menu.exec(tabBar()->mapToGlobal(pos));
 }
 
-void SessionTabWidget::ensureWelcomeTab()
-{
-    if (m_welcomeIndex >= 0) {
-        return;
-    }
-    auto *welcome = new WelcomeWidget(this);
-    welcome->setConnectionModel(m_connectionModel);
-    connect(welcome,
-            &WelcomeWidget::openConnectionRequested,
-            this,
-            &SessionTabWidget::openConnectionRequested);
-    connect(welcome,
-            &WelcomeWidget::createConnectionRequested,
-            this,
-            &SessionTabWidget::createConnectionRequested);
-    connect(welcome,
-            &WelcomeWidget::showConnectionsRequested,
-            this,
-            &SessionTabWidget::showConnectionsRequested);
-    m_welcomeIndex = addTab(welcome, tr("Welcome"));
-    setTabsClosable(false);
-    tabBar()->setTabButton(m_welcomeIndex, QTabBar::RightSide, nullptr);
-    setTabsClosable(true);
-}
-
-void SessionTabWidget::removeWelcomeTabIfPresent()
-{
-    if (m_welcomeIndex < 0) {
-        return;
-    }
-    QWidget *w = widget(m_welcomeIndex);
-    removeTab(m_welcomeIndex);
-    delete w;
-    m_welcomeIndex = -1;
-}
-
-bool SessionTabWidget::isWelcomeTab(int index) const
-{
-    return index == m_welcomeIndex;
-}
-
-WelcomeWidget *SessionTabWidget::welcomeWidget() const
-{
-    if (m_welcomeIndex < 0) {
-        return nullptr;
-    }
-    return qobject_cast<WelcomeWidget *>(widget(m_welcomeIndex));
-}
-
 SessionPage *SessionTabWidget::pageAt(int index) const
 {
-    if (index < 0 || isWelcomeTab(index)) {
+    if (index < 0) {
         return nullptr;
     }
     return qobject_cast<SessionPage *>(widget(index));

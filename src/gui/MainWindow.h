@@ -23,6 +23,7 @@ class QAction;
 class QEvent;
 class QLabel;
 class QMenu;
+class QStackedWidget;
 class QTimer;
 class QCloseEvent;
 class AboutDialog;
@@ -39,6 +40,7 @@ class SessionTabWidget;
 class SettingsDialog;
 class TrayController;
 class TunnelListWidget;
+class WelcomeWidget;
 
 class MainWindow final : public QMainWindow
 {
@@ -86,6 +88,10 @@ private:
     void advanceWorkspaceRestore();
     std::optional<WorkspaceSessionEntry> takePendingRestoreEntry(const QUuid &connectionId);
     void wireActiveSessionStateSync(Session *session);
+    void showWelcomeScreen();
+    void showSessionWorkspace();
+    void refreshWelcome();
+    void updateWorkspaceVisibility();
     void editConnection(const QUuid &id);
     void onConnectionEdited(const QUuid &id,
                             bool connectivityChanged,
@@ -124,6 +130,8 @@ private:
     SecretStore *m_secretStore = nullptr;
     SessionManager *m_sessionManager = nullptr;
     ConnectionListWidget *m_connectionList = nullptr;
+    QStackedWidget *m_contentStack = nullptr;
+    WelcomeWidget *m_welcome = nullptr;
     SessionTabWidget *m_sessionTabs = nullptr;
     SessionSideBar *m_sideBar = nullptr;
     FileExplorerWidget *m_fileExplorer = nullptr;
