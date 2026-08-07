@@ -34,7 +34,7 @@
 | | |
 |:---:|:---:|
 | ![MacOS Native with SwiftUI (experimental!!!)](./screenshots/MacOS-Native.png)<br>macOS Native (SwiftUI) | ![MacOS with Qt UI](./screenshots/MacOS-Qt.png)<br>macOS (Qt) |
-| ![Linux](./screenshots/Linux.png)<br>Linux | |
+| ![Linux](./screenshots/Linux.png)<br>Linux | ![Windows](./screenshots/Windows.png)<br>Windows |
 
 ## Install
 
