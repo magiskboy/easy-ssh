@@ -396,6 +396,21 @@ if(TARGET ssh)
     )
 endif()
 
+if(TARGET qt6keychain)
+    add_custom_command(TARGET easy-ssh-native POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:qt6keychain>"
+            "${EASY_SSH_NATIVE_FW_DIR}/"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "$<TARGET_FILE_NAME:qt6keychain>"
+            "${EASY_SSH_NATIVE_FW_DIR}/$<TARGET_SONAME_FILE_NAME:qt6keychain>"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "$<TARGET_FILE_NAME:qt6keychain>"
+            "${EASY_SSH_NATIVE_FW_DIR}/libqt6keychain.dylib"
+        VERBATIM
+    )
+endif()
+
 if(DEFINED EASY_SSH_QT_PREFIX)
     set(_qt_lib "${EASY_SSH_QT_PREFIX}/lib")
     foreach(_fwname QtCore QtGui QtNetwork QtDBus)
@@ -410,14 +425,23 @@ if(DEFINED EASY_SSH_QT_PREFIX)
     endforeach()
 endif()
 
+# Sign nested code inside-out (TN2206). Do not use --deep on the .app: Qt
+# framework layout breaks. Skip dylib symlinks; sign the real Mach-O only.
+# Fail loudly — swallowing codesign errors left Intel CI with unsigned
+# libqt6keychain (ARM often still worked via linker auto ad-hoc sign).
 add_custom_command(TARGET easy-ssh-native POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/bin/libqt6keychain.1.dylib"
-        "${EASY_SSH_NATIVE_FW_DIR}/libqt6keychain.1.dylib"
-    # Sign nested frameworks first; --deep on the .app fails with Qt framework layout.
-    COMMAND /bin/bash -c "for f in '${EASY_SSH_NATIVE_FW_DIR}'/*.framework '${EASY_SSH_NATIVE_FW_DIR}'/*.dylib; do [ -e \"$$f\" ] && codesign --force --sign - \"$$f\" || true; done"
-    COMMAND codesign --force --sign - "${EASY_SSH_NATIVE_EXE}"
-    COMMAND codesign --force --sign - "${EASY_SSH_NATIVE_APP_DIR}"
+    COMMAND /bin/bash -c "set -euo pipefail; \
+fw='${EASY_SSH_NATIVE_FW_DIR}'; \
+for f in \"$$fw\"/*.dylib; do \
+  if [ ! -e \"$$f\" ] || [ -L \"$$f\" ]; then continue; fi; \
+  codesign --force --sign - \"$$f\"; \
+done; \
+for f in \"$$fw\"/*.framework; do \
+  if [ ! -e \"$$f\" ]; then continue; fi; \
+  codesign --force --sign - \"$$f\"; \
+done; \
+codesign --force --sign - '${EASY_SSH_NATIVE_EXE}'; \
+codesign --force --sign - '${EASY_SSH_NATIVE_APP_DIR}'"
     COMMENT "Bundle deps + codesign easy-ssh-native.app"
     VERBATIM
 )
