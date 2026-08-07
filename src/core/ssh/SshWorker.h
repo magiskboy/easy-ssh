@@ -10,6 +10,7 @@
 #include "core/fs/FsRemote.h"
 #include "core/fs/SftpTypes.h"
 #include "core/fs/TransferTypes.h"
+#include "core/ssh/ExecIoHandler.h"
 #include "core/ssh/SftpMetaIoHandler.h"
 #include "core/ssh/SftpTransferIoHandler.h"
 #include "core/ssh/ShellIoHandler.h"
@@ -145,8 +146,9 @@ private:
     bool verifyKnownHostForSession(ssh_session session, const QString &contextLabel);
     void cleanup();
     void pollTunnels();
-    void pumpIoDuringBlockingOp();
-    void runExecCommand(const QString &requestId, const QString &command);
+    void startExecHandler(const QString &requestId, const QString &command);
+    void onExecHandlerFinished(const QString &handlerId);
+    void failPendingExecCommands(const QString &error);
     void wireTunnelSession(ITunnelSession *session);
     void retireShell(const QUuid &shellId, bool emitClosed);
     bool openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut);
@@ -185,7 +187,8 @@ private:
     bool m_agentForwardRequested = false;
     class QTimer *m_ioTimer = nullptr;
     bool m_running = false;
-    bool m_execBusy = false;
+    int m_execInFlight = 0;
+    static constexpr int kMaxConcurrentExec = 4;
     bool m_fsBusy = false;
     QVector<std::function<void()>> m_pendingFsOps;
     struct PendingExecCommand

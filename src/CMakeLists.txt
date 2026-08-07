@@ -20,6 +20,8 @@ set(EASY_SSH_CORE_SOURCES
     core/ssh/SshIoHandler.h
     core/ssh/ShellIoHandler.cpp
     core/ssh/ShellIoHandler.h
+    core/ssh/ExecIoHandler.cpp
+    core/ssh/ExecIoHandler.h
     core/ssh/SftpMetaIoHandler.cpp
     core/ssh/SftpMetaIoHandler.h
     core/ssh/SftpTransferIoHandler.cpp

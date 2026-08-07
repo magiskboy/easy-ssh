@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QHash>
+#include <QMenu>
 #include <QString>
 #include <QStringList>
 #include <QUuid>
@@ -68,6 +69,8 @@ signals:
     void shellCloseRequested(const QUuid &shellId);
     void shellRenameRequested(const QUuid &shellId);
     void toolClosed(const QString &toolId);
+    /// Emitted while building a tool dock-tab context menu; listeners may append actions.
+    void toolContextMenuAboutToShow(const QString &toolId, QMenu *menu);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

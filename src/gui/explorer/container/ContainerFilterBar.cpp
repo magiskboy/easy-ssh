@@ -16,11 +16,8 @@ ContainerFilterBar::ContainerFilterBar(ExplorerFilterProxy *proxy, QWidget *pare
     : QWidget(parent), m_proxy(proxy)
 {
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(UiMetrics::relatedSpacing,
-                               UiMetrics::tightSpacing,
-                               UiMetrics::relatedSpacing,
-                               UiMetrics::tightSpacing);
-    layout->setSpacing(UiMetrics::relatedSpacing);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(UiMetrics::tightSpacing);
 
     layout->addWidget(new QLabel(tr("Runtime:"), this));
     m_runtimeCombo = new QComboBox(this);
@@ -39,8 +36,6 @@ ContainerFilterBar::ContainerFilterBar(ExplorerFilterProxy *proxy, QWidget *pare
     m_stateCombo->addItem(tr("Paused"), QStringLiteral("Paused"));
     m_stateCombo->addItem(tr("Unknown"), QStringLiteral("Unknown"));
     layout->addWidget(m_stateCombo);
-
-    layout->addStretch(1);
 
     connect(
         m_runtimeCombo, &QComboBox::currentIndexChanged, this, &ContainerFilterBar::applyFilters);

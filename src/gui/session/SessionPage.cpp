@@ -103,6 +103,14 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
             }
         }
     });
+    connect(m_dockHost,
+            &ShellDockHost::toolContextMenuAboutToShow,
+            this,
+            [this](const QString &toolId, QMenu *menu) {
+                if (toolId == QLatin1String("systeminfo") && m_systemInfoPage && menu) {
+                    m_systemInfoPage->appendCopyActions(menu);
+                }
+            });
 
     m_resizeDebounce = new QTimer(this);
     m_resizeDebounce->setSingleShot(true);

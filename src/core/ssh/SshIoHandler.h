@@ -49,4 +49,7 @@ public:
     onData(ssh_session session, ssh_channel channel, void *data, uint32_t len, int isStderr) = 0;
     virtual void onEof(ssh_session session, ssh_channel channel) {}
     virtual void onClose(ssh_session session, ssh_channel channel) {}
+    virtual void onExitStatus(ssh_session /*session*/, ssh_channel /*channel*/, int /*exitStatus*/)
+    {
+    }
 };

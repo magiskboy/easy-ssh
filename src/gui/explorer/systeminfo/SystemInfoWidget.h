@@ -13,10 +13,12 @@
 #include <QWidget>
 #include <optional>
 
+class QHideEvent;
 class QLabel;
+class QMenu;
 class QProgressBar;
-class QPushButton;
 class QScrollArea;
+class QShowEvent;
 class QTableWidget;
 class QTabWidget;
 class Session;
@@ -31,13 +33,21 @@ public:
     explicit SystemInfoWidget(Session *session, QWidget *parent = nullptr);
     ~SystemInfoWidget() override;
 
+    bool hasSnapshot() const { return m_lastSnapshot.has_value(); }
+    void copyAsText();
+    void copyAsJson();
+    /// Adds Copy as text / JSON actions to a dock-tab context menu.
+    void appendCopyActions(QMenu *menu);
+
+protected:
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
+
 private slots:
     void onSnapshotReady(const SystemInfo &info);
     void onCapabilityChanged(ExplorerCapability capability);
     void onSessionStateChanged();
     void onSourceFailed(const QString &message);
-    void copyAsText();
-    void copyAsJson();
 
 private:
     void buildUi();
@@ -51,7 +61,6 @@ private:
     void setLabel(QLabel *label, const QString &text);
     void setStatus(const QString &text, bool errorStyle);
     void clearStatus();
-    void updateCopyEnabled();
     static void configureTable(QTableWidget *table);
     static QString yesNo(bool value);
 
@@ -61,7 +70,6 @@ private:
 
     QLabel *m_statusLabel = nullptr;
     QTabWidget *m_tabs = nullptr;
-    QPushButton *m_copyButton = nullptr;
 
     // Overview
     QLabel *m_osLabel = nullptr;

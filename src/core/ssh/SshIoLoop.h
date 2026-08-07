@@ -55,7 +55,7 @@ public:
     /// Uses a short dopoll timeout so Qt timers / processEvents can run while idle.
     void run();
     /// One dopoll + onIdle. For nested pump while run() is blocked in processEvents
-    /// (e.g. sync exec). Does not call processEvents (caller may). Same thread only.
+    /// (e.g. leftover sync SCP). Does not call processEvents (caller may). Same thread only.
     bool pollOnce(int timeoutMs);
     /// Thread-safe: set stop flag and wake dopoll.
     void stop();
@@ -114,6 +114,10 @@ private:
                                      void *userdata);
     static void channelEofTrampoline(ssh_session session, ssh_channel channel, void *userdata);
     static void channelCloseTrampoline(ssh_session session, ssh_channel channel, void *userdata);
+    static void channelExitStatusTrampoline(ssh_session session,
+                                            ssh_channel channel,
+                                            int exitStatus,
+                                            void *userdata);
 
     ssh_event m_event = nullptr;
     ssh_session m_session = nullptr;

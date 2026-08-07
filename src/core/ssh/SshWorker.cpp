@@ -4,17 +4,15 @@
 
 #include "SshWorker.h"
 
-#include "core/fs/ShellExecRunner.h"
 #include "core/fs/TransferJobStore.h"
 #include "core/settings/AppSettings.h"
 #include "core/ssh/AgentForwardHost.h"
+#include "core/ssh/ExecIoHandler.h"
 #include "core/ssh/SftpMetaIoHandler.h"
 #include "core/ssh/SftpTransferIoHandler.h"
 #include "core/tunnel/RemoteTunnelSession.h"
 #include "core/util/Logging.h"
 
-#include <QCoreApplication>
-#include <QEventLoop>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QScopeGuard>
@@ -893,6 +891,9 @@ void SshWorker::cleanup()
 
     m_fs.close();
 
+    failPendingExecCommands(tr("SSH session is not connected"));
+    m_execInFlight = 0;
+
     const QList<QUuid> shellIds = m_shellHandlers.keys();
     for (const QUuid &id : shellIds) {
         m_shellHandlers.remove(id);
@@ -903,6 +904,85 @@ void SshWorker::cleanup()
 
     delete m_agentForwardHost;
     m_agentForwardHost = nullptr;
+}
+
+void SshWorker::failPendingExecCommands(const QString &error)
+{
+    if (m_pendingExecCommands.isEmpty()) {
+        return;
+    }
+    const QVector<PendingExecCommand> dropped = std::move(m_pendingExecCommands);
+    m_pendingExecCommands.clear();
+    for (const PendingExecCommand &pending : dropped) {
+        emit commandFinished(pending.requestId, -1, {}, {}, error);
+    }
+}
+
+void SshWorker::execCommand(QStringView requestId, const QString &command)
+{
+    const QString id(requestId);
+    if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
+        emit commandFinished(id, -1, {}, {}, tr("SSH session is not connected"));
+        return;
+    }
+    if (command.trimmed().isEmpty()) {
+        emit commandFinished(id, -1, {}, {}, tr("Empty remote command"));
+        return;
+    }
+
+    if (m_execInFlight >= kMaxConcurrentExec) {
+        m_pendingExecCommands.push_back(PendingExecCommand{id, command});
+        return;
+    }
+
+    startExecHandler(id, command);
+}
+
+void SshWorker::startExecHandler(const QString &requestId, const QString &command)
+{
+    ExecIoHandler::Hooks hooks;
+    hooks.finished = [this](const QString &id,
+                            int exitStatus,
+                            const QByteArray &stdoutBytes,
+                            const QByteArray &stderrBytes,
+                            const QString &errorMessage) {
+        emit commandFinished(id, exitStatus, stdoutBytes, stderrBytes, errorMessage);
+    };
+
+    auto handler =
+        std::make_unique<ExecIoHandler>(m_session.handle(), requestId, command, std::move(hooks));
+    const QString handlerId = handler->id();
+    handler->setCompletedHook([this, handlerId]() { onExecHandlerFinished(handlerId); });
+
+    QString error;
+    if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+        emit commandFinished(
+            requestId, -1, {}, {}, error.isEmpty() ? tr("Failed to start remote command") : error);
+        return;
+    }
+    ++m_execInFlight;
+    m_ioLoop.wake();
+}
+
+void SshWorker::onExecHandlerFinished(const QString &handlerId)
+{
+    QMetaObject::invokeMethod(
+        this,
+        [this, handlerId]() {
+            m_ioLoop.removeHandler(handlerId);
+            if (m_execInFlight > 0) {
+                --m_execInFlight;
+            }
+            while (m_execInFlight < kMaxConcurrentExec && !m_pendingExecCommands.isEmpty()) {
+                if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
+                    failPendingExecCommands(tr("SSH session is not connected"));
+                    return;
+                }
+                const PendingExecCommand pending = m_pendingExecCommands.takeFirst();
+                startExecHandler(pending.requestId, pending.command);
+            }
+        },
+        Qt::QueuedConnection);
 }
 
 void SshWorker::startTunnel(const TunnelDefinition &def)
@@ -968,81 +1048,4 @@ void SshWorker::stopAllTunnels()
             session->deleteLater();
         }
     }
-}
-
-void SshWorker::pumpIoDuringBlockingOp()
-{
-    if (!m_running || !m_session.isConnected()) {
-        return;
-    }
-
-    // Keep interactive shell / tunnels responsive while a one-shot exec blocks.
-    // Shell data arrives via channel callbacks during pollOnce.
-    pollTunnels();
-    if (m_agentForwardHost) {
-        m_agentForwardHost->poll();
-    }
-    m_ioLoop.pollOnce(0);
-
-    // Drain queued writes / other worker slots without starting nested user input.
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-}
-
-void SshWorker::execCommand(QStringView requestId, const QString &command)
-{
-    const QString id(requestId);
-    if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
-        emit commandFinished(id, -1, {}, {}, tr("SSH session is not connected"));
-        return;
-    }
-    if (command.trimmed().isEmpty()) {
-        emit commandFinished(id, -1, {}, {}, tr("Empty remote command"));
-        return;
-    }
-
-    if (m_execBusy) {
-        m_pendingExecCommands.push_back(PendingExecCommand{id, command});
-        return;
-    }
-
-    runExecCommand(id, command);
-
-    while (!m_pendingExecCommands.isEmpty()) {
-        if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
-            const QVector<PendingExecCommand> dropped = std::move(m_pendingExecCommands);
-            m_pendingExecCommands.clear();
-            for (const PendingExecCommand &pending : dropped) {
-                emit commandFinished(
-                    pending.requestId, -1, {}, {}, tr("SSH session is not connected"));
-            }
-            return;
-        }
-        const PendingExecCommand pending = m_pendingExecCommands.takeFirst();
-        runExecCommand(pending.requestId, pending.command);
-    }
-}
-
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-void SshWorker::runExecCommand(const QString &id, const QString &command)
-{
-    m_execBusy = true;
-
-    ShellExecRunner runner(m_session.handle());
-    runner.setPump([this]() { pumpIoDuringBlockingOp(); });
-    ShellExecRunner::Result result;
-    QString error;
-    const bool ok = runner.run(command, &result, &error);
-
-    m_execBusy = false;
-
-    if (!ok) {
-        emit commandFinished(id,
-                             result.exitStatus,
-                             result.stdoutBytes,
-                             result.stderrBytes,
-                             error.isEmpty() ? result.errorMessage : error);
-        return;
-    }
-
-    emit commandFinished(id, result.exitStatus, result.stdoutBytes, result.stderrBytes, QString());
 }

@@ -51,7 +51,10 @@ void ContainerSource::start()
         return;
     }
     m_running = true;
-    setCapability(ExplorerCapability::Checking, tr("Checking…"));
+    // Resume keeps last snapshot visible; Checking only on cold start.
+    if (m_capability != ExplorerCapability::Available) {
+        setCapability(ExplorerCapability::Checking, tr("Checking…"));
+    }
     requestList();
     m_timer->start();
 }

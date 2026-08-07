@@ -79,7 +79,10 @@ void SystemInfoSource::start()
     }
     m_running = true;
     m_prev.reset();
-    setCapability(ExplorerCapability::Checking, tr("Checking…"));
+    // Resume keeps last snapshot visible; Checking only on cold start.
+    if (m_capability != ExplorerCapability::Available) {
+        setCapability(ExplorerCapability::Checking, tr("Checking…"));
+    }
     requestFetch();
     m_timer->start();
 }

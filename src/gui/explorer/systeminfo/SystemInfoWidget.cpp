@@ -11,6 +11,7 @@
 #include "gui/widgets/UiMetrics.h"
 
 #include <QAbstractItemView>
+#include <QAction>
 #include <QApplication>
 #include <QClipboard>
 #include <QColor>
@@ -20,12 +21,13 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QHideEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QPalette>
 #include <QProgressBar>
-#include <QPushButton>
 #include <QScrollArea>
+#include <QShowEvent>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -95,7 +97,6 @@ SystemInfoWidget::SystemInfoWidget(Session *session, QWidget *parent)
     if (!m_session || m_session->state() != SessionState::Connected) {
         setStatus(tr("No connected session."), true);
         m_tabs->setEnabled(false);
-        updateCopyEnabled();
         return;
     }
 
@@ -109,11 +110,29 @@ SystemInfoWidget::SystemInfoWidget(Session *session, QWidget *parent)
     connect(m_session, &Session::stateChanged, this, &SystemInfoWidget::onSessionStateChanged);
 
     setStatus(tr("Checking…"), false);
-    m_source->start();
+    if (isVisible()) {
+        m_source->start();
+    }
 }
 
 SystemInfoWidget::~SystemInfoWidget()
 {
+    if (m_source) {
+        m_source->stop();
+    }
+}
+
+void SystemInfoWidget::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    if (m_source) {
+        m_source->start();
+    }
+}
+
+void SystemInfoWidget::hideEvent(QHideEvent *event)
+{
+    QWidget::hideEvent(event);
     if (m_source) {
         m_source->stop();
     }
@@ -142,18 +161,6 @@ void SystemInfoWidget::buildUi()
     m_tabs->addTab(buildGpuPage(), tr("GPU"));
     m_tabs->addTab(buildVirtPage(), tr("Virtualization"));
     root->addWidget(m_tabs, 1);
-
-    auto *toolbar = new QHBoxLayout();
-    toolbar->setContentsMargins(0, 0, 0, 0);
-    toolbar->addStretch(1);
-    m_copyButton = new QPushButton(tr("Copy"), this);
-    auto *copyMenu = new QMenu(m_copyButton);
-    copyMenu->addAction(tr("Copy as text"), this, &SystemInfoWidget::copyAsText);
-    copyMenu->addAction(tr("Copy as JSON"), this, &SystemInfoWidget::copyAsJson);
-    m_copyButton->setMenu(copyMenu);
-    updateCopyEnabled();
-    toolbar->addWidget(m_copyButton);
-    root->addLayout(toolbar);
 }
 
 QWidget *SystemInfoWidget::buildOverviewPage()
@@ -232,9 +239,11 @@ QWidget *SystemInfoWidget::buildCpuMemPage()
     m_coreTable = new QTableWidget(0, 3, cpu);
     configureTable(m_coreTable);
     m_coreTable->setHorizontalHeaderLabels({tr("Core"), tr("Usage"), tr("Frequency")});
-    m_coreTable->setMaximumHeight(200);
-    cpuLayout->addWidget(m_coreTable);
-    layout->addWidget(cpu);
+    m_coreTable->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_coreTable->setMinimumHeight(80);
+    cpuLayout->addWidget(m_coreTable, 1);
+    cpu->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    layout->addWidget(cpu, 1);
 
     auto *mem = makeGroupFrame(tr("Memory"), page);
     auto *memLayout = qobject_cast<QVBoxLayout *>(mem->layout());
@@ -256,9 +265,8 @@ QWidget *SystemInfoWidget::buildCpuMemPage()
     memLayout->addWidget(m_memBar);
     memLayout->addWidget(m_swapSummaryLabel);
     memLayout->addWidget(m_swapBar);
+    mem->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     layout->addWidget(mem);
-
-    layout->addStretch(1);
     return page;
 }
 
@@ -498,11 +506,17 @@ void SystemInfoWidget::clearStatus()
     m_statusLabel->hide();
 }
 
-void SystemInfoWidget::updateCopyEnabled()
+void SystemInfoWidget::appendCopyActions(QMenu *menu)
 {
-    if (m_copyButton) {
-        m_copyButton->setEnabled(m_lastSnapshot.has_value());
+    if (menu == nullptr) {
+        return;
     }
+    menu->addSeparator();
+    QAction *asText = menu->addAction(tr("Copy as text"), this, &SystemInfoWidget::copyAsText);
+    QAction *asJson = menu->addAction(tr("Copy as JSON"), this, &SystemInfoWidget::copyAsJson);
+    const bool enabled = hasSnapshot();
+    asText->setEnabled(enabled);
+    asJson->setEnabled(enabled);
 }
 
 QString SystemInfoWidget::yesNo(bool value)
@@ -814,7 +828,6 @@ void SystemInfoWidget::applySnapshot(const SystemInfo &info)
 void SystemInfoWidget::onSnapshotReady(const SystemInfo &info)
 {
     m_lastSnapshot = info;
-    updateCopyEnabled();
     clearStatus();
     m_tabs->setEnabled(true);
     applySnapshot(info);
@@ -829,7 +842,10 @@ void SystemInfoWidget::onCapabilityChanged(ExplorerCapability capability)
     const QString message = m_source->capabilityMessage();
     switch (capability) {
     case ExplorerCapability::Checking:
-        setStatus(message.isEmpty() ? tr("Checking…") : message, false);
+        // Keep last metrics on screen while a background refresh runs.
+        if (!m_lastSnapshot.has_value()) {
+            setStatus(message.isEmpty() ? tr("Checking…") : message, false);
+        }
         break;
     case ExplorerCapability::Available:
         clearStatus();
@@ -858,7 +874,6 @@ void SystemInfoWidget::onSessionStateChanged()
         m_tabs->setEnabled(false);
         setStatus(tr("Session disconnected."), true);
         m_lastSnapshot.reset();
-        updateCopyEnabled();
     }
 }
 

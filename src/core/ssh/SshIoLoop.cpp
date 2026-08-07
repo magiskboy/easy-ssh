@@ -340,6 +340,7 @@ bool SshIoLoop::registerChannel(ssh_channel channel, SshChannelCallbacks *sink, 
     reg->cbs.channel_data_function = &SshIoLoop::channelDataTrampoline;
     reg->cbs.channel_eof_function = &SshIoLoop::channelEofTrampoline;
     reg->cbs.channel_close_function = &SshIoLoop::channelCloseTrampoline;
+    reg->cbs.channel_exit_status_function = &SshIoLoop::channelExitStatusTrampoline;
 
     if (ssh_set_channel_callbacks(channel, &reg->cbs) != SSH_OK) {
         delete reg;
@@ -634,4 +635,16 @@ void SshIoLoop::channelCloseTrampoline(ssh_session session, ssh_channel channel,
         return;
     }
     reg->sink->onClose(session, channel);
+}
+
+void SshIoLoop::channelExitStatusTrampoline(ssh_session session,
+                                            ssh_channel channel,
+                                            int exitStatus,
+                                            void *userdata)
+{
+    auto *reg = static_cast<ChannelRegistration *>(userdata);
+    if (reg == nullptr || reg->sink == nullptr) {
+        return;
+    }
+    reg->sink->onExitStatus(session, channel, exitStatus);
 }
