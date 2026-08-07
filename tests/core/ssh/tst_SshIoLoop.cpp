@@ -333,5 +333,5 @@ void SshIoLoopTest::addFdRoundtrip()
     closeSock(peer);
 }
 
-QTEST_MAIN(SshIoLoopTest)
+QTEST_GUILESS_MAIN(SshIoLoopTest)
 #include "tst_SshIoLoop.moc"

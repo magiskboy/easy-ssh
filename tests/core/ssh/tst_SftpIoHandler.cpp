@@ -91,5 +91,5 @@ void SftpIoHandlerTest::aioTransferDefaultInactive()
     QVERIFY(!xfer.isActive());
 }
 
-QTEST_MAIN(SftpIoHandlerTest)
+QTEST_GUILESS_MAIN(SftpIoHandlerTest)
 #include "tst_SftpIoHandler.moc"

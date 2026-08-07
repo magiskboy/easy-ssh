@@ -45,7 +45,9 @@ QString ShellExecRunner::buildExecCommand(const QString &command) const
     return wrapCommand(m_shellPath, command);
 }
 
-QString ShellExecRunner::wrapCommand(const QString &shellPath, const QString &command)
+QString ShellExecRunner::wrapCommand(
+    const QString &shellPath, // NOLINT(bugprone-easily-swappable-parameters)
+    const QString &command)   // NOLINT(bugprone-easily-swappable-parameters)
 {
     const QString shell = shellPath.trimmed();
     if (shell.isEmpty()) {

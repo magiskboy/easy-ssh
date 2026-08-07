@@ -185,8 +185,11 @@ void ExecIoHandler::onIdle()
     }
 }
 
-int ExecIoHandler::onData(
-    ssh_session session, ssh_channel channel, void *data, uint32_t len, int isStderr)
+int ExecIoHandler::onData(ssh_session session,
+                          ssh_channel channel,
+                          void *data,
+                          uint32_t len, // NOLINT(bugprone-easily-swappable-parameters)
+                          int isStderr)
 {
     Q_UNUSED(session);
     Q_UNUSED(channel);

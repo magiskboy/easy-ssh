@@ -37,5 +37,5 @@ void ScpPhase5HelpersTest::tunnelHostHandlerId()
     QCOMPARE(handler.id(), TunnelHostIoHandler::handlerId());
 }
 
-QTEST_MAIN(ScpPhase5HelpersTest)
+QTEST_GUILESS_MAIN(ScpPhase5HelpersTest)
 #include "tst_ScpPhase5Helpers.moc"

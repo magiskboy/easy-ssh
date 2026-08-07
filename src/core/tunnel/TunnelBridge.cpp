@@ -20,8 +20,11 @@ class TunnelBridgeChannelSink final : public SshChannelCallbacks
 public:
     explicit TunnelBridgeChannelSink(TunnelBridge *bridge) : m_bridge(bridge) {}
 
-    int onData(
-        ssh_session session, ssh_channel channel, void *data, uint32_t len, int isStderr) override
+    int onData(ssh_session session,
+               ssh_channel channel,
+               void *data,
+               uint32_t len,          // NOLINT(bugprone-easily-swappable-parameters)
+               int isStderr) override // NOLINT(bugprone-easily-swappable-parameters)
     {
         Q_UNUSED(session);
         Q_UNUSED(channel);

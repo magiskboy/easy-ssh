@@ -101,5 +101,5 @@ void ShellIoHandlerTest::pollOnceInvokesOnIdle()
     // handler destroyed by removeHandler; do not touch raw
 }
 
-QTEST_MAIN(ShellIoHandlerTest)
+QTEST_GUILESS_MAIN(ShellIoHandlerTest)
 #include "tst_ShellIoHandler.moc"

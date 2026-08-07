@@ -64,5 +64,5 @@ void ExecIoHandlerTest::startFailsWithoutSession()
     QCOMPARE(loop.handler(id), nullptr);
 }
 
-QTEST_MAIN(ExecIoHandlerTest)
+QTEST_GUILESS_MAIN(ExecIoHandlerTest)
 #include "tst_ExecIoHandler.moc"
