@@ -9,6 +9,7 @@
 #include <QByteArray>
 #include <QString>
 
+#include <functional>
 #include <libssh/libssh.h>
 
 /**
@@ -31,6 +32,10 @@ public:
     void setShellPath(const QString &shellPath);
     QString shellPath() const { return m_shellPath; }
 
+    /// Optional hook invoked while waiting for remote output so the caller can
+    /// keep polling other SSH channels (shell / tunnels) on the same session.
+    void setPump(std::function<void()> pump) { m_pump = std::move(pump); }
+
     bool run(const QString &command, Result *out, QString *error = nullptr);
 
     static QString stdoutText(const Result &result);
@@ -39,7 +44,9 @@ public:
 private:
     QString buildExecCommand(const QString &command) const;
     QString sessionError() const;
+    void pump() const;
 
     ssh_session m_session = nullptr;
     QString m_shellPath;
+    std::function<void()> m_pump;
 };

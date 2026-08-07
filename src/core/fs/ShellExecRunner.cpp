@@ -58,6 +58,13 @@ QString ShellExecRunner::stderrText(const Result &result)
     return QString::fromUtf8(result.stderrBytes);
 }
 
+void ShellExecRunner::pump() const
+{
+    if (m_pump) {
+        m_pump();
+    }
+}
+
 bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
 {
     Result local;
@@ -118,6 +125,7 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         const int nout = ssh_channel_read_timeout(channel, buffer, sizeof(buffer), 0, kPollSleepMs);
         if (nout > 0) {
             result->stdoutBytes.append(buffer, nout);
+            pump();
             continue;
         }
         if (nout == SSH_ERROR) {
@@ -132,6 +140,7 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         const int nerr = ssh_channel_read_timeout(channel, buffer, sizeof(buffer), 1, kPollSleepMs);
         if (nerr > 0) {
             result->stderrBytes.append(buffer, nerr);
+            pump();
             continue;
         }
         if (nerr == SSH_ERROR) {
@@ -147,7 +156,11 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
             eof = true;
             break;
         }
-        QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
+        // Keep sibling channels (shell PTY, tunnels) alive while this exec waits.
+        pump();
+        if (!m_pump) {
+            QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
+        }
         waitedMs += kPollSleepMs;
     }
 

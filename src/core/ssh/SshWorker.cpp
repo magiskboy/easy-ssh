@@ -11,6 +11,8 @@
 #include "core/tunnel/RemoteTunnelSession.h"
 #include "core/util/Logging.h"
 
+#include <QCoreApplication>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QTimer>
 
@@ -779,6 +781,58 @@ void SshWorker::stopAllTunnels()
     }
 }
 
+void SshWorker::pumpIoDuringBlockingOp()
+{
+    if (!m_running || !m_session.isConnected()) {
+        return;
+    }
+
+    // Keep interactive shell / tunnels responsive while a one-shot exec blocks.
+    pollTunnels();
+    if (m_agentForwardHost) {
+        m_agentForwardHost->poll();
+    }
+
+    const QList<QUuid> shellIds = m_shells.keys();
+    for (const QUuid &shellId : shellIds) {
+        SshShell *shell = m_shells.value(shellId, nullptr);
+        if (shell == nullptr) {
+            continue;
+        }
+
+        QByteArray data;
+        QString error;
+        const SshShell::PollStatus status = shell->poll(&data, &error);
+        switch (status) {
+        case SshShell::PollStatus::Data:
+            if (!data.isEmpty()) {
+                emit dataReceived(shellId, data);
+            }
+            break;
+        case SshShell::PollStatus::Idle:
+            break;
+        case SshShell::PollStatus::ChannelClosed:
+            retireShell(shellId, true);
+            break;
+        case SshShell::PollStatus::Error:
+            if (!m_session.isConnected() ||
+                (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
+                if (!error.isEmpty()) {
+                    emit errorOccurred(error);
+                }
+                disconnectSession();
+                return;
+            }
+            emit shellFailed(shellId, error.isEmpty() ? tr("Shell read error") : error);
+            retireShell(shellId, true);
+            break;
+        }
+    }
+
+    // Drain queued writes / other worker slots without starting nested user input.
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
 void SshWorker::execCommand(QStringView requestId, const QString &command)
 {
     const QString id(requestId);
@@ -791,10 +845,41 @@ void SshWorker::execCommand(QStringView requestId, const QString &command)
         return;
     }
 
+    if (m_execBusy) {
+        m_pendingExecCommands.push_back(PendingExecCommand{id, command});
+        return;
+    }
+
+    runExecCommand(id, command);
+
+    while (!m_pendingExecCommands.isEmpty()) {
+        if (!m_running || !m_session.isConnected() || m_session.handle() == nullptr) {
+            const QVector<PendingExecCommand> dropped = std::move(m_pendingExecCommands);
+            m_pendingExecCommands.clear();
+            for (const PendingExecCommand &pending : dropped) {
+                emit commandFinished(
+                    pending.requestId, -1, {}, {}, tr("SSH session is not connected"));
+            }
+            return;
+        }
+        const PendingExecCommand pending = m_pendingExecCommands.takeFirst();
+        runExecCommand(pending.requestId, pending.command);
+    }
+}
+
+void SshWorker::runExecCommand(const QString &id, const QString &command)
+{
+    m_execBusy = true;
+
     ShellExecRunner runner(m_session.handle());
+    runner.setPump([this]() { pumpIoDuringBlockingOp(); });
     ShellExecRunner::Result result;
     QString error;
-    if (!runner.run(command, &result, &error)) {
+    const bool ok = runner.run(command, &result, &error);
+
+    m_execBusy = false;
+
+    if (!ok) {
         emit commandFinished(id,
                              result.exitStatus,
                              result.stdoutBytes,

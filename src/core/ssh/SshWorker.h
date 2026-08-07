@@ -140,6 +140,8 @@ private:
     bool verifyKnownHostForSession(ssh_session session, const QString &contextLabel);
     void cleanup();
     void pollTunnels();
+    void pumpIoDuringBlockingOp();
+    void runExecCommand(const QString &requestId, const QString &command);
     void wireTunnelSession(ITunnelSession *session);
     void retireShell(const QUuid &shellId, bool emitClosed);
     bool openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut);
@@ -155,6 +157,13 @@ private:
     bool m_agentForwardRequested = false;
     class QTimer *m_ioTimer = nullptr;
     bool m_running = false;
+    bool m_execBusy = false;
+    struct PendingExecCommand
+    {
+        QString requestId;
+        QString command;
+    };
+    QVector<PendingExecCommand> m_pendingExecCommands;
     std::atomic<bool> m_cancelRequested{false};
 
     QMutex m_hostKeyMutex;
