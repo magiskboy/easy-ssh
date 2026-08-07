@@ -332,12 +332,15 @@ add_custom_command(
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ESSAppSettings.h"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ESSWorkspaceStore.h"
         "${EASY_SSH_NATIVE_PACKAGE_DIR}/Sources/EasySshNative/ESSSshConfigParser.h"
+    # -disable-bridging-pch: Swift 6 / SPM may re-parse the generated binary .pch
+    # as text ("source file is not valid UTF-8") when using -import-objc-header.
     COMMAND ${EASY_SSH_SWIFT} build
         --package-path "${EASY_SSH_NATIVE_PACKAGE_DIR}"
         --configuration ${_easy_ssh_swift_config}
         --scratch-path "${EASY_SSH_NATIVE_SWIFT_BUILD_DIR}"
         -Xswiftc -import-objc-header
         -Xswiftc "${CMAKE_CURRENT_SOURCE_DIR}/bridge/EasySsh-Bridging-Header.h"
+        -Xswiftc -disable-bridging-pch
         -Xlinker -L${_bridge_lib_dir}
         -Xlinker -lEasySshBridge
         -Xlinker -rpath

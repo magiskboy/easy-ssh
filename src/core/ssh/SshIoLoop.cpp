@@ -430,25 +430,32 @@ bool SshIoLoop::openWakeFd(QString *error)
     m_wakeWrite = m_wakeRead; // same fd for read/write
     return true;
 #else
+    // macOS / BSD: pipe2() is not portable; use pipe() + fcntl.
     int fds[2] = {-1, -1};
-#ifdef O_CLOEXEC
-    if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC) != 0) {
-#else
     if (::pipe(fds) != 0) {
-#endif
         setError(error,
                  QStringLiteral("pipe failed: %1").arg(QString::fromLocal8Bit(strerror(errno))));
         return false;
     }
-#ifndef O_CLOEXEC
-    if (!setSocketNonBlocking(static_cast<socket_t>(fds[0])) ||
-        !setSocketNonBlocking(static_cast<socket_t>(fds[1]))) {
+
+    auto setPipeFlags = [](int fd) -> bool {
+        const int statusFlags = fcntl(fd, F_GETFL, 0);
+        if (statusFlags < 0 || fcntl(fd, F_SETFL, statusFlags | O_NONBLOCK) != 0) {
+            return false;
+        }
+        const int fdFlags = fcntl(fd, F_GETFD, 0);
+        if (fdFlags < 0 || fcntl(fd, F_SETFD, fdFlags | FD_CLOEXEC) != 0) {
+            return false;
+        }
+        return true;
+    };
+
+    if (!setPipeFlags(fds[0]) || !setPipeFlags(fds[1])) {
         ::close(fds[0]);
         ::close(fds[1]);
-        setError(error, QStringLiteral("pipe set nonblocking failed"));
+        setError(error, QStringLiteral("pipe set flags failed"));
         return false;
     }
-#endif
     m_wakeRead = static_cast<socket_t>(fds[0]);
     m_wakeWrite = static_cast<socket_t>(fds[1]);
     return true;

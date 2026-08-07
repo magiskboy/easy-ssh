@@ -20,17 +20,6 @@ let package = Package(
                 .product(name: "SwiftTerm", package: "@swiftterm_PACKAGE_IDENTITY@")
             ],
             path: "Sources/EasySshNative",
-            exclude: [
-                "EasySsh-Bridging-Header.h",
-                "EasySshRuntime.h",
-                "ESSSessionController.h",
-                "ESSConnectionStore.h",
-                "ESSSecretStore.h",
-                "ESSTunnelStore.h",
-                "ESSAppSettings.h",
-                "ESSWorkspaceStore.h",
-                "ESSSshConfigParser.h"
-            ],
             linkerSettings: [
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("AppKit"),
