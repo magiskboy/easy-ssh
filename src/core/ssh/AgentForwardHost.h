@@ -37,7 +37,13 @@ public:
 
     void setIoLoop(SshIoLoop *loop) { m_loop = loop; }
 
-    bool start(ssh_session session, ssh_channel firstShellChannel, QString *errorOut = nullptr);
+    /// Register session callbacks and send auth-agent-req on @p shellChannel.
+    /// Must be called after channel open (+ optional PTY) and before request_shell.
+    bool start(ssh_session session, ssh_channel shellChannel, QString *errorOut = nullptr);
+
+    /// Send auth-agent-req on an additional shell channel (after start()).
+    bool requestOnChannel(ssh_channel shellChannel, QString *errorOut = nullptr);
+
     void stop();
 
 private slots:

@@ -62,8 +62,12 @@ bool SshShell::pumpAgain(const AgainPump &againPump, QString *errorOut, const ch
     return true;
 }
 
-bool SshShell::open(
-    ssh_session session, int cols, int rows, QString *errorOut, const AgainPump &againPump)
+bool SshShell::open(ssh_session session,
+                    int cols,
+                    int rows,
+                    QString *errorOut,
+                    const AgainPump &againPump,
+                    const BeforeShellHook &beforeShell)
 {
     cleanup();
     m_session = session;
@@ -112,6 +116,13 @@ bool SshShell::open(
     if (!retry(
             [&]() { return ssh_channel_request_pty_size(m_channel, "xterm-256color", cols, rows); },
             "request PTY")) {
+        cleanup();
+        return false;
+    }
+
+    // RFC 9987 / OpenSSH: auth-agent-req must be sent before shell/exec/subsystem
+    // so sshd can inject SSH_AUTH_SOCK into the remote environment.
+    if (beforeShell && !beforeShell(m_channel, errorOut)) {
         cleanup();
         return false;
     }

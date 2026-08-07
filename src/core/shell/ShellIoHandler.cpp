@@ -45,7 +45,12 @@ bool ShellIoHandler::start(SshIoLoop *loop, QString *error)
         pump = m_hooks.againPump;
     }
 
-    if (!m_shell.open(m_session, m_cols, m_rows, error, pump)) {
+    SshShell::BeforeShellHook beforeShell;
+    if (m_hooks.beforeShell) {
+        beforeShell = m_hooks.beforeShell;
+    }
+
+    if (!m_shell.open(m_session, m_cols, m_rows, error, pump, beforeShell)) {
         return false;
     }
 

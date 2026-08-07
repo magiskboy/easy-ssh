@@ -33,12 +33,12 @@ bool AgentForwardHost::isLocalAgentPresent()
     return QFileInfo::exists(path);
 }
 
-bool AgentForwardHost::start(ssh_session session, ssh_channel firstShellChannel, QString *errorOut)
+bool AgentForwardHost::start(ssh_session session, ssh_channel shellChannel, QString *errorOut)
 {
     if (m_started) {
-        return true;
+        return requestOnChannel(shellChannel, errorOut);
     }
-    if (session == nullptr || firstShellChannel == nullptr) {
+    if (session == nullptr || shellChannel == nullptr) {
         if (errorOut) {
             *errorOut = tr("SSH session or shell channel is missing");
         }
@@ -62,17 +62,38 @@ bool AgentForwardHost::start(ssh_session session, ssh_channel firstShellChannel,
         return false;
     }
 
-    if (ssh_channel_request_auth_agent(firstShellChannel) != SSH_OK) {
-        if (errorOut) {
-            const char *err = ssh_get_error(session);
-            *errorOut = err ? QString::fromUtf8(err) : tr("Failed to request agent forwarding");
-        }
+    if (!requestOnChannel(shellChannel, errorOut)) {
         m_session = nullptr;
         return false;
     }
 
     m_started = true;
     qCWarning(lcSsh) << "Agent forwarding requested on session";
+    return true;
+}
+
+bool AgentForwardHost::requestOnChannel(ssh_channel shellChannel, QString *errorOut)
+{
+    if (shellChannel == nullptr) {
+        if (errorOut) {
+            *errorOut = tr("SSH shell channel is missing");
+        }
+        return false;
+    }
+    if (m_session == nullptr && !m_started) {
+        if (errorOut) {
+            *errorOut = tr("Agent forwarding is not started");
+        }
+        return false;
+    }
+
+    if (ssh_channel_request_auth_agent(shellChannel) != SSH_OK) {
+        if (errorOut) {
+            const char *err = m_session ? ssh_get_error(m_session) : nullptr;
+            *errorOut = err ? QString::fromUtf8(err) : tr("Failed to request agent forwarding");
+        }
+        return false;
+    }
     return true;
 }
 

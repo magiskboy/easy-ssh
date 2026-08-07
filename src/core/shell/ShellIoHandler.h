@@ -31,6 +31,9 @@ public:
         std::function<void(const QUuid &shellId, const QString &message)> failed;
         /// Return false to abort SSH_AGAIN waits during open.
         std::function<bool()> againPump;
+        /// After open+PTY, before request_shell. Return false to abort open.
+        /// Soft failures (e.g. agent forward warn) should return true.
+        std::function<bool(ssh_channel channel, QString *errorOut)> beforeShell;
     };
 
     ShellIoHandler(const QUuid &shellId, ssh_session session, int cols, int rows, Hooks hooks);

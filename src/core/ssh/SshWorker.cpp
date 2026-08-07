@@ -208,6 +208,12 @@ ShellIoHandler::Hooks SshWorker::makeShellHooks()
         }
         return m_ioLoop.pollOnce(50);
     };
+    // Must run before request_shell so remote gets SSH_AUTH_SOCK (RFC 9987).
+    hooks.beforeShell = [this](ssh_channel channel, QString *errorOut) {
+        Q_UNUSED(errorOut);
+        tryRequestAgentForwarding(channel);
+        return true; // soft warnings only — never block the shell
+    };
     return hooks;
 }
 
@@ -223,33 +229,40 @@ bool SshWorker::openShellLocked(const QUuid &shellId, int cols, int rows, QStrin
             return false;
         }
         m_shellHandlers.insert(shellId, raw);
-        tryRequestAgentForwarding(raw->channel());
         return true;
     });
 }
 
-void SshWorker::tryRequestAgentForwarding(ssh_channel firstShellChannel)
+void SshWorker::tryRequestAgentForwarding(ssh_channel shellChannel)
 {
-    if (m_agentForwardRequested) {
-        return;
-    }
-    m_agentForwardRequested = true;
-
-    if (!m_agentForwarding || firstShellChannel == nullptr) {
+    if (!m_agentForwarding || shellChannel == nullptr) {
         return;
     }
 
     if (!AgentForwardHost::isLocalAgentPresent()) {
-        emit agentForwardingWarning(
-            tr("Agent forwarding is enabled but no local ssh-agent is available "
-               "(SSH_AUTH_SOCK). The session remains connected."));
+        if (!m_agentForwardRequested) {
+            m_agentForwardRequested = true;
+            emit agentForwardingWarning(
+                tr("Agent forwarding is enabled but no local ssh-agent is available "
+                   "(SSH_AUTH_SOCK). The session remains connected."));
+        }
         return;
     }
 
+    if (m_agentForwardHost) {
+        QString error;
+        if (!m_agentForwardHost->requestOnChannel(shellChannel, &error)) {
+            emit agentForwardingWarning(error.isEmpty() ? tr("Failed to enable agent forwarding")
+                                                        : error);
+        }
+        return;
+    }
+
+    m_agentForwardRequested = true;
     auto *host = new AgentForwardHost(this);
     host->setIoLoop(&m_ioLoop);
     QString error;
-    if (!host->start(m_session.handle(), firstShellChannel, &error)) {
+    if (!host->start(m_session.handle(), shellChannel, &error)) {
         emit agentForwardingWarning(error.isEmpty() ? tr("Failed to enable agent forwarding")
                                                     : error);
         delete host;

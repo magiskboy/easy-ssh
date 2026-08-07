@@ -38,11 +38,16 @@ public:
     SshShell(const SshShell &) = delete;
     SshShell &operator=(const SshShell &) = delete;
 
+    /// Optional hook after open+PTY and before request_shell (e.g. ForwardAgent).
+    /// Return false to abort open (errorOut may be filled by the hook).
+    using BeforeShellHook = std::function<bool(ssh_channel channel, QString *errorOut)>;
+
     bool open(ssh_session session,
               int cols,
               int rows,
               QString *errorOut = nullptr,
-              const AgainPump &againPump = {});
+              const AgainPump &againPump = {},
+              const BeforeShellHook &beforeShell = {});
     void cleanup();
 
     bool isOpen() const;
