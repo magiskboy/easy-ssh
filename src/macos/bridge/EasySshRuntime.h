@@ -17,7 +17,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// Phase 0 smoke checklist (manual):
 /// 1. ESSConnectionStore load/save round-trip preserves proxy + shellCommands + source/configAlias
 /// 2. ESSSecretStore store then read password for a UUID (keychain / qt6keychain)
-/// 3. ESSSessionController connectWithConnection:credentials: compiles; reconnect keeps full Connection
+/// 3. ESSSessionController connectWithConnection:credentials: compiles; reconnect keeps full
+/// Connection
 /// 4. ESSAppSettings / ESSWorkspaceStore.loadState / ESSSshConfigParser callable from Swift
 @interface EasySshRuntime : NSObject
 

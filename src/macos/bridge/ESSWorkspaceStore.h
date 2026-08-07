@@ -12,24 +12,24 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface ESSWorkspaceShellEntry : NSObject
-@property (nonatomic, copy) NSUUID *shellId;
-@property (nonatomic, copy) NSString *title;
+@property(nonatomic, copy) NSUUID *shellId;
+@property(nonatomic, copy) NSString *title;
 @end
 
 @interface ESSWorkspaceSessionEntry : NSObject
-@property (nonatomic, copy) NSUUID *connectionId;
-@property (nonatomic, copy, nullable) NSUUID *activeShellId;
-@property (nonatomic, copy) NSString *activeToolId;
-@property (nonatomic, copy) NSArray<ESSWorkspaceShellEntry *> *shells;
-@property (nonatomic, copy) NSArray<NSString *> *tools;
-@property (nonatomic, copy, nullable) NSData *dockState;
+@property(nonatomic, copy) NSUUID *connectionId;
+@property(nonatomic, copy, nullable) NSUUID *activeShellId;
+@property(nonatomic, copy) NSString *activeToolId;
+@property(nonatomic, copy) NSArray<ESSWorkspaceShellEntry *> *shells;
+@property(nonatomic, copy) NSArray<NSString *> *tools;
+@property(nonatomic, copy, nullable) NSData *dockState;
 @end
 
 @interface ESSWorkspaceState : NSObject
-@property (nonatomic, assign) NSInteger version;
-@property (nonatomic, copy, nullable) NSUUID *activeConnectionId;
-@property (nonatomic, copy) NSArray<ESSWorkspaceSessionEntry *> *sessions;
-@property (nonatomic, readonly, getter=isEmpty) BOOL empty;
+@property(nonatomic, assign) NSInteger version;
+@property(nonatomic, copy, nullable) NSUUID *activeConnectionId;
+@property(nonatomic, copy) NSArray<ESSWorkspaceSessionEntry *> *sessions;
+@property(nonatomic, readonly, getter=isEmpty) BOOL empty;
 @end
 
 @interface ESSWorkspaceStore : NSObject

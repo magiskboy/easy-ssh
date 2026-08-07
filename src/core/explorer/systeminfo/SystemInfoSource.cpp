@@ -4,8 +4,8 @@
 
 #include "SystemInfoSource.h"
 
-#include "core/explorer/systeminfo/SystemInfoParser.h"
 #include "core/explorer/IRemoteExec.h"
+#include "core/explorer/systeminfo/SystemInfoParser.h"
 
 #include <QHash>
 #include <QTimer>

@@ -39,11 +39,12 @@ void ESSRemoteExecHost::wireWorker()
         m_worker,
         &SshWorker::commandFinished,
         m_worker,
-        [this](const QString &requestId,
+        // By-value params: GCD blocks capture C++ refs as dangling; owned copies outlive the hop.
+        [this](QString requestId,
                int exitStatus,
-               const QByteArray &stdoutBytes, // NOLINT(bugprone-easily-swappable-parameters)
-               const QByteArray &stderrBytes, // NOLINT(bugprone-easily-swappable-parameters)
-               const QString &errorMessage) {
+               QByteArray stdoutBytes, // NOLINT(bugprone-easily-swappable-parameters)
+               QByteArray stderrBytes, // NOLINT(bugprone-easily-swappable-parameters)
+               QString errorMessage) {
             QPointer<ESSRemoteExecHost> self(this);
             dispatch_async(dispatch_get_main_queue(), ^{
               if (!self) {

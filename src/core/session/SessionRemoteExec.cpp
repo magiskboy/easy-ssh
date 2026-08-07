@@ -10,10 +10,7 @@ SessionRemoteExec::SessionRemoteExec(Session *session, QObject *parent)
     : IRemoteExec(parent), m_session(session)
 {
     if (m_session) {
-        connect(m_session,
-                &Session::commandFinished,
-                this,
-                &IRemoteExec::commandFinished);
+        connect(m_session, &Session::commandFinished, this, &IRemoteExec::commandFinished);
     }
 }
 

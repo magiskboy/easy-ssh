@@ -24,17 +24,16 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 /// Threading: all callback blocks are invoked on the main queue.
 @interface ESSSessionController : NSObject
 
-@property (nonatomic, copy, nullable) void (^onConnected)(NSUUID *shellId);
-@property (nonatomic, copy, nullable) void (^onData)(NSUUID *shellId, NSData *data);
-@property (nonatomic, copy, nullable) void (^onShellOpened)(NSUUID *shellId);
-@property (nonatomic, copy, nullable) void (^onShellClosed)(NSUUID *shellId);
-@property (nonatomic, copy, nullable) void (^onShellFailed)(NSUUID *shellId, NSString *message);
-@property (nonatomic, copy, nullable) void (^onHostKeyPrompt)(ESSHostKeyPromptReason reason,
-                                                              NSString *fingerprint,
-                                                              NSString *contextLabel);
-@property (nonatomic, copy, nullable) void (^onError)(NSString *message);
-@property (nonatomic, copy, nullable) void (^onDisconnected)(void);
-@property (nonatomic, copy, nullable) void (^onAgentForwardingWarning)(NSString *message);
+@property(nonatomic, copy, nullable) void (^onConnected)(NSUUID *shellId);
+@property(nonatomic, copy, nullable) void (^onData)(NSUUID *shellId, NSData *data);
+@property(nonatomic, copy, nullable) void (^onShellOpened)(NSUUID *shellId);
+@property(nonatomic, copy, nullable) void (^onShellClosed)(NSUUID *shellId);
+@property(nonatomic, copy, nullable) void (^onShellFailed)(NSUUID *shellId, NSString *message);
+@property(nonatomic, copy, nullable) void (^onHostKeyPrompt)
+    (ESSHostKeyPromptReason reason, NSString *fingerprint, NSString *contextLabel);
+@property(nonatomic, copy, nullable) void (^onError)(NSString *message);
+@property(nonatomic, copy, nullable) void (^onDisconnected)(void);
+@property(nonatomic, copy, nullable) void (^onAgentForwardingWarning)(NSString *message);
 
 /// SFTP / remote FS entry dictionaries (onDirectoryListed) use stable keys:
 ///   name (NSString), path (NSString), isDir (NSNumber bool), isSymlink (NSNumber bool),
@@ -60,43 +59,49 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 ///
 /// Capability values (onExplorerCapability): @"checking" | @"available" | @"unavailable" |
 ///   @"permissionDenied" | @"error"
-@property (nonatomic, copy, nullable) void (^onDirectoryListed)(NSString *path, NSArray<NSDictionary *> *entries);
-@property (nonatomic, copy, nullable) void (^onEntryResolved)(NSString *path, BOOL isDir, BOOL ok, NSString *error);
-@property (nonatomic, copy, nullable) void (^onPathCanonicalized)(NSString *requested, NSString *canonical);
-@property (nonatomic, copy, nullable) void (^onSftpFinished)(NSString *message);
-@property (nonatomic, copy, nullable) void (^onSftpError)(NSString *message);
-@property (nonatomic, copy, nullable) void (^onSftpCanceled)(NSString *message);
-@property (nonatomic, copy, nullable) void (^onSftpInterrupted)(NSDictionary *job);
-@property (nonatomic, copy, nullable) void (^onSftpUnavailable)(NSString *message);
-@property (nonatomic, copy, nullable) void (^onSftpProgress)(int64_t bytesDone, int64_t bytesTotal, NSString *currentName);
-@property (nonatomic, copy, nullable) void (^onTransferResumableChanged)(BOOL resumable);
-@property (nonatomic, copy, nullable) void (^onRemoteFsOpened)(NSInteger backend);
+@property(nonatomic, copy, nullable) void (^onDirectoryListed)
+    (NSString *path, NSArray<NSDictionary *> *entries);
+@property(nonatomic, copy, nullable) void (^onEntryResolved)
+    (NSString *path, BOOL isDir, BOOL ok, NSString *error);
+@property(nonatomic, copy, nullable) void (^onPathCanonicalized)
+    (NSString *requested, NSString *canonical);
+@property(nonatomic, copy, nullable) void (^onSftpFinished)(NSString *message);
+@property(nonatomic, copy, nullable) void (^onSftpError)(NSString *message);
+@property(nonatomic, copy, nullable) void (^onSftpCanceled)(NSString *message);
+@property(nonatomic, copy, nullable) void (^onSftpInterrupted)(NSDictionary *job);
+@property(nonatomic, copy, nullable) void (^onSftpUnavailable)(NSString *message);
+@property(nonatomic, copy, nullable) void (^onSftpProgress)
+    (int64_t bytesDone, int64_t bytesTotal, NSString *currentName);
+@property(nonatomic, copy, nullable) void (^onTransferResumableChanged)(BOOL resumable);
+@property(nonatomic, copy, nullable) void (^onRemoteFsOpened)(NSInteger backend);
 
 /// Tunnel dictionaries use the same stable keys as ESSTunnelStore.
-@property (nonatomic, copy, nullable) void (^onTunnelStatusChanged)(NSUUID *tunnelId, NSString *status, NSString *detail);
-@property (nonatomic, copy, nullable) void (^onTunnelError)(NSUUID *tunnelId, NSString *message);
+@property(nonatomic, copy, nullable) void (^onTunnelStatusChanged)
+    (NSUUID *tunnelId, NSString *status, NSString *detail);
+@property(nonatomic, copy, nullable) void (^onTunnelError)(NSUUID *tunnelId, NSString *message);
 
-@property (nonatomic, copy, nullable) void (^onCommandFinished)(NSString *requestId,
-                                                                NSInteger exitStatus,
-                                                                NSData *stdoutData,
-                                                                NSData *stderrData,
-                                                                NSString *errorMessage);
+@property(nonatomic, copy, nullable) void (^onCommandFinished)(NSString *requestId,
+                                                               NSInteger exitStatus,
+                                                               NSData *stdoutData,
+                                                               NSData *stderrData,
+                                                               NSString *errorMessage);
 
 /// Explorers (Phase 6). Kind is process|container|service|systemInfo.
-@property (nonatomic, copy, nullable) void (^onExplorerCapability)(NSString *kind,
-                                                                   NSString *capability,
-                                                                   NSString *message);
-@property (nonatomic, copy, nullable) void (^onExplorerBusy)(NSString *kind, BOOL busy);
-@property (nonatomic, copy, nullable) void (^onExplorerFailed)(NSString *kind, NSString *message);
-@property (nonatomic, copy, nullable) void (^onProcessSnapshot)(NSArray<NSDictionary *> *rows);
-@property (nonatomic, copy, nullable) void (^onContainerSnapshot)(NSArray<NSDictionary *> *rows);
-@property (nonatomic, copy, nullable) void (^onServiceSnapshot)(NSArray<NSDictionary *> *rows);
-@property (nonatomic, copy, nullable) void (^onSystemInfoSnapshot)(NSDictionary *snapshot);
-@property (nonatomic, copy, nullable) void (^onContainerInspect)(NSDictionary *info, NSString * _Nullable error);
-@property (nonatomic, copy, nullable) void (^onServiceInspect)(NSDictionary *info, NSString * _Nullable error);
+@property(nonatomic, copy, nullable) void (^onExplorerCapability)
+    (NSString *kind, NSString *capability, NSString *message);
+@property(nonatomic, copy, nullable) void (^onExplorerBusy)(NSString *kind, BOOL busy);
+@property(nonatomic, copy, nullable) void (^onExplorerFailed)(NSString *kind, NSString *message);
+@property(nonatomic, copy, nullable) void (^onProcessSnapshot)(NSArray<NSDictionary *> *rows);
+@property(nonatomic, copy, nullable) void (^onContainerSnapshot)(NSArray<NSDictionary *> *rows);
+@property(nonatomic, copy, nullable) void (^onServiceSnapshot)(NSArray<NSDictionary *> *rows);
+@property(nonatomic, copy, nullable) void (^onSystemInfoSnapshot)(NSDictionary *snapshot);
+@property(nonatomic, copy, nullable) void (^onContainerInspect)
+    (NSDictionary *info, NSString *_Nullable error);
+@property(nonatomic, copy, nullable) void (^onServiceInspect)
+    (NSDictionary *info, NSString *_Nullable error);
 
-@property (nonatomic, readonly, nullable) NSUUID *primaryShellId;
-@property (nonatomic, readonly, getter=isConnected) BOOL connected;
+@property(nonatomic, readonly, nullable) NSUUID *primaryShellId;
+@property(nonatomic, readonly, getter=isConnected) BOOL connected;
 
 /// Full connection payload (preferred).
 - (void)connectWithConnection:(ESSConnectionInfo *)connection

@@ -33,8 +33,8 @@
 
 | | |
 |:---:|:---:|
-| ![Connection Manager](./screenshots/connection-manager.png)<br>Connection Manager | ![Split Window](./screenshots/split-window.png)<br>Split Window |
-| ![SSH Proxy](./screenshots/ssh-proxy.png)<br>SSH Proxy | ![New Tunnel](./screenshots/new-tunnel.png)<br>New Tunnel |
+| ![MacOS Native with SwiftUI (experimental!!!)](./screenshots/MacOS-Native.png)<br>macOS Native (SwiftUI) | ![MacOS with Qt UI](./screenshots/MacOS-Qt.png)<br>macOS (Qt) |
+| ![Linux](./screenshots/Linux.png)<br>Linux | |
 
 ## Install
 

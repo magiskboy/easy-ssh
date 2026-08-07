@@ -1,6 +1,6 @@
+---
+# Default style for all languages (C++ / Objective-C / …).
 BasedOnStyle: LLVM
-Language: Cpp
-Standard: c++20
 
 IndentWidth: 4
 TabWidth: 4
@@ -51,3 +51,10 @@ ForEachMacros:
   - Q_FOREACH
   - forever
   - Q_FOREVER
+
+---
+Language: Cpp
+Standard: c++20
+
+---
+Language: ObjC

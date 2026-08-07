@@ -15,54 +15,54 @@ NS_ASSUME_NONNULL_BEGIN
 /// onSettingsChanged (if set) is invoked on the main queue.
 @interface ESSAppSettings : NSObject
 
-@property (nonatomic, copy, nullable) void (^onSettingsChanged)(void);
+@property(nonatomic, copy, nullable) void (^onSettingsChanged)(void);
 
 + (ESSAppSettings *)sharedSettings NS_SWIFT_NAME(shared());
 
 // --- File Explorer ---
-@property (nonatomic, assign) BOOL showSizeColumn;
-@property (nonatomic, assign) BOOL showPermissionsColumn;
-@property (nonatomic, assign) BOOL showModifiedColumn;
-@property (nonatomic, assign) BOOL showHiddenFiles;
-@property (nonatomic, copy) NSString *defaultDownloadDir;
+@property(nonatomic, assign) BOOL showSizeColumn;
+@property(nonatomic, assign) BOOL showPermissionsColumn;
+@property(nonatomic, assign) BOOL showModifiedColumn;
+@property(nonatomic, assign) BOOL showHiddenFiles;
+@property(nonatomic, copy) NSString *defaultDownloadDir;
 
 // --- Terminal ---
-@property (nonatomic, copy) NSString *terminalFontFamily;
-@property (nonatomic, assign) double terminalFontPointSize;
-@property (nonatomic, copy) NSString *colorScheme;
-@property (nonatomic, assign) NSInteger historySize;
-@property (nonatomic, assign) NSInteger cursorShape;
-@property (nonatomic, assign) BOOL cursorBlink;
-@property (nonatomic, assign) BOOL confirmMultilinePaste;
-@property (nonatomic, assign) BOOL smartLayout;
+@property(nonatomic, copy) NSString *terminalFontFamily;
+@property(nonatomic, assign) double terminalFontPointSize;
+@property(nonatomic, copy) NSString *colorScheme;
+@property(nonatomic, assign) NSInteger historySize;
+@property(nonatomic, assign) NSInteger cursorShape;
+@property(nonatomic, assign) BOOL cursorBlink;
+@property(nonatomic, assign) BOOL confirmMultilinePaste;
+@property(nonatomic, assign) BOOL smartLayout;
 
 // --- Session / tray ---
-@property (nonatomic, assign) BOOL autoReconnect;
-@property (nonatomic, assign) BOOL restoreWorkspace;
-@property (nonatomic, assign) BOOL closeToTray;
-@property (nonatomic, assign) BOOL minimizeToTray;
-@property (nonatomic, assign) BOOL startInTray;
-@property (nonatomic, assign) BOOL trayNotifications;
-@property (nonatomic, assign) BOOL trayMinimizeHintShown;
+@property(nonatomic, assign) BOOL autoReconnect;
+@property(nonatomic, assign) BOOL restoreWorkspace;
+@property(nonatomic, assign) BOOL closeToTray;
+@property(nonatomic, assign) BOOL minimizeToTray;
+@property(nonatomic, assign) BOOL startInTray;
+@property(nonatomic, assign) BOOL trayNotifications;
+@property(nonatomic, assign) BOOL trayMinimizeHintShown;
 
 // --- Transfers ---
-@property (nonatomic, assign) NSInteger transferStallTimeoutSec;
-@property (nonatomic, assign) BOOL autoResumeTransferAfterReconnect;
+@property(nonatomic, assign) NSInteger transferStallTimeoutSec;
+@property(nonatomic, assign) BOOL autoResumeTransferAfterReconnect;
 
 // --- Appearance ---
-@property (nonatomic, copy) NSString *uiFontMode;
-@property (nonatomic, copy) NSString *uiFontFamily;
-@property (nonatomic, assign) double uiFontPointSize;
-@property (nonatomic, copy) NSString *themeId;
-@property (nonatomic, copy) NSString *customThemePath;
+@property(nonatomic, copy) NSString *uiFontMode;
+@property(nonatomic, copy) NSString *uiFontFamily;
+@property(nonatomic, assign) double uiFontPointSize;
+@property(nonatomic, copy) NSString *themeId;
+@property(nonatomic, copy) NSString *customThemePath;
 
 // --- Window / sidebar ---
-@property (nonatomic, copy, nullable) NSData *windowGeometry;
-@property (nonatomic, assign) NSInteger sidebarWidth;
-@property (nonatomic, copy) NSString *sidebarTabId;
+@property(nonatomic, copy, nullable) NSData *windowGeometry;
+@property(nonatomic, assign) NSInteger sidebarWidth;
+@property(nonatomic, copy) NSString *sidebarTabId;
 
 // --- Workspace blob (prefer ESSWorkspaceStore for structured access) ---
-@property (nonatomic, copy, nullable) NSData *workspaceStateData;
+@property(nonatomic, copy, nullable) NSData *workspaceStateData;
 
 // --- Recent ---
 - (NSArray<NSUUID *> *)recentConnectionIdsWithLimit:(NSInteger)limit;
