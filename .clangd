@@ -7,7 +7,13 @@ Diagnostics:
 
 ---
 If:
-  PathMatch: [build/.*, \.deps/.*, third_party/.*]
+  PathMatch: tests/.*
+CompileFlags:
+  CompilationDatabase: build-tests
+
+---
+If:
+  PathMatch: [build/.*, build-tests/.*, \.deps/.*, third_party/.*]
 Diagnostics:
   Suppress: ["*"]
 Index:

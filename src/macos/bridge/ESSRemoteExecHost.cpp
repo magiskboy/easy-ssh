@@ -41,20 +41,16 @@ void ESSRemoteExecHost::wireWorker()
         m_worker,
         [this](const QString &requestId,
                int exitStatus,
-               const QByteArray &stdoutBytes,
-               const QByteArray &stderrBytes,
+               const QByteArray &stdoutBytes, // NOLINT(bugprone-easily-swappable-parameters)
+               const QByteArray &stderrBytes, // NOLINT(bugprone-easily-swappable-parameters)
                const QString &errorMessage) {
             QPointer<ESSRemoteExecHost> self(this);
-            const QString rid = requestId;
-            const int status = exitStatus;
-            const QByteArray out = stdoutBytes;
-            const QByteArray err = stderrBytes;
-            const QString error = errorMessage;
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (!self) {
-                    return;
-                }
-                emit self->commandFinished(rid, status, out, err, error);
+              if (!self) {
+                  return;
+              }
+              emit self->commandFinished(
+                  requestId, exitStatus, stdoutBytes, stderrBytes, errorMessage);
             });
         });
 }

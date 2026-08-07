@@ -49,8 +49,8 @@ jobs:
 
       - name: REUSE compliance
         run: |
-          chmod +x .github/scripts/run-reuse-lint.sh
-          .github/scripts/run-reuse-lint.sh
+          chmod +x .github/scripts/run-reuse.sh
+          .github/scripts/run-reuse.sh lint
 
   # Optional / advisory: does not block merges while the check set stabilizes.
   tidy:

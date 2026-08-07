@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Run clang-tidy on C++ translation units under src/.
 #
 # Requires a configured build tree with compile_commands.json, e.g.:
@@ -33,7 +29,11 @@ if ! command -v clang-tidy >/dev/null 2>&1; then
   exit 1
 fi
 
-mapfile -t files < <(find src -type f -name '*.cpp' | sort)
+# Portable alternative to mapfile (macOS /bin/bash 3.2).
+files=()
+while IFS= read -r line; do
+  files+=("$line")
+done < <(find src -type f -name '*.cpp' | sort)
 if [[ ${#files[@]} -eq 0 ]]; then
   echo "error: no .cpp sources found under src/" >&2
   exit 1

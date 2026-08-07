@@ -165,8 +165,8 @@ Notes:
 
 Recommended extensions are listed in [`.vscode/extensions.json`](.vscode/extensions.json) (clangd, CMake Tools, EditorConfig). Workspace settings in [`.vscode/settings.json`](.vscode/settings.json) disable the Microsoft C/C++ IntelliSense engine so it does not conflict with clangd.
 
-1. Configure a **debug** build so `build/compile_commands.json` exists (see above). clangd reads that path only (not a root-level copy).
-2. [`.clangd`](.clangd) points clangd at `build/`, and skips diagnostics plus background indexing under `build/`, `.deps/`, and `third_party/`.
+1. Configure a **debug** build so `build/compile_commands.json` exists (see above). For test files, also configure the **tests** preset so `build-tests/compile_commands.json` exists.
+2. [`.clangd`](.clangd) points clangd at `build/` for `src/`, and at `build-tests/` for `tests/`. It skips diagnostics plus background indexing under `build/`, `build-tests/`, `.deps/`, and `third_party/`.
 3. Formatting uses [`.clang-format`](.clang-format); lint checks use [`.clang-tidy`](.clang-tidy).
 
 Indent and newline defaults for other editors are in [`.editorconfig`](.editorconfig).
@@ -196,7 +196,7 @@ Style is defined in [`.clang-format`](.clang-format). Pre-commit reformats stage
 
 ### License headers (SPDX / REUSE)
 
-C and C++ sources use SPDX headers, for example:
+Only C / C++ / Objective-C / Objective-C++ / Swift sources under [`src/`](src/) and [`tests/`](tests/) get in-file SPDX headers, for example:
 
 ```cpp
 // SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
@@ -204,16 +204,18 @@ C and C++ sources use SPDX headers, for example:
 // SPDX-License-Identifier: GPL-3.0-only
 ```
 
-Bulk annotations for icons, GitHub metadata, and other non-source files live in [`REUSE.toml`](REUSE.toml). License texts are under [`LICENSES/`](LICENSES/).
+Do **not** add SPDX headers to CMake, scripts, docs, or other non-language files — those are covered by bulk annotations in [`REUSE.toml`](REUSE.toml). License texts are under [`LICENSES/`](LICENSES/).
 
 Install the REUSE tool (`requirements/requirements-dev.txt`), then:
 
 ```bash
 # Check the whole tree (also runs in CI)
-.github/scripts/run-reuse-lint.sh
+.github/scripts/run-reuse.sh lint
 
-# Add headers to new C++ files (defaults to all of src/)
-.github/scripts/run-reuse-annotate.sh path/to/NewFile.cpp path/to/NewFile.h
+# Add headers to src/ and tests/ language sources
+.github/scripts/run-reuse.sh annotate
+.github/scripts/run-reuse.sh annotate path/to/NewFile.cpp path/to/tst_Foo.cpp
+.github/scripts/run-reuse.sh annotate --year=2026 path/to/NewFile.swift
 ```
 
 ### Static analysis (clang-tidy)

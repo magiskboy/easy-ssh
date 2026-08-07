@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Single source of truth for dependency versions (CI, FetchContent, aqt).
 
 set(EASY_SSH_QT_VERSION "6.10.3")

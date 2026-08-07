@@ -1,8 +1,6 @@
-/*
- * SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
- *
- * SPDX-License-Identifier: GPL-3.0-only
- */
+// SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
+//
+// SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/explorer/process/ProcessParser.h"
 

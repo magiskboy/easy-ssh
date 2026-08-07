@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 set(EASY_SSH_CORE_SOURCES
     core/util/Logging.cpp
     core/util/Logging.h

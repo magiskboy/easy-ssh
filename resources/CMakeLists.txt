@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Qt resource embedding is only used by the Widgets shell.
 if(EASY_SSH_BUILD_QT_WIDGETS)
     qt_add_resources(easy-ssh "app_icons"

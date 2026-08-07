@@ -164,6 +164,7 @@ bool ShellDockHost::isPinned(const QUuid &shellId) const
     return m_docks.contains(shellId);
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool ShellDockHost::pinTool(const QString &toolId,
                             const QString &title,
                             QWidget *widget,

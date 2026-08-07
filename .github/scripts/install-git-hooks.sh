@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Enable repository git hooks (clang-format + REUSE pre-commit).
 set -euo pipefail
 
@@ -12,7 +8,7 @@ cd "$ROOT"
 
 chmod +x .githooks/pre-commit
 chmod +x .github/scripts/run-clang-format.sh
-chmod +x .github/scripts/run-reuse-lint.sh
+chmod +x .github/scripts/run-reuse.sh
 
 git config core.hooksPath .githooks
 

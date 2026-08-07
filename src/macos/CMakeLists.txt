@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # SwiftUI + SwiftTerm + ObjC++ bridge over easy-ssh-core (Apple only).
 # Swift is built via `swift build` (Unix Makefiles generator cannot enable_language(Swift)).
 # Bridge .mm files compile as CXX with -x objective-c++ (Unix Makefiles lacks OBJCXX rules).

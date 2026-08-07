@@ -1,9 +1,3 @@
-<!--
-SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-
-SPDX-License-Identifier: GPL-3.0-only
--->
-
 # QTermWidget (vendored for Easy SSH)
 
 Tree is [lxqt/qtermwidget](https://github.com/lxqt/qtermwidget) tag `2.4.0`

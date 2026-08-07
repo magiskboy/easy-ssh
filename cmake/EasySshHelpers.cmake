@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 include_guard(GLOBAL)
 
 # Shared helpers for configure-time and install-time (via install(SCRIPT)).

@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Pre-commit: auto-format staged C++ with clang-format, then REUSE lint.
 set -euo pipefail
 
@@ -25,10 +21,14 @@ fi
 unset _path_prefix _venv
 
 FORMAT="${ROOT}/.github/scripts/run-clang-format.sh"
-REUSE_LINT="${ROOT}/.github/scripts/run-reuse-lint.sh"
+REUSE_LINT="${ROOT}/.github/scripts/run-reuse.sh"
 
 # Staged C/C++ that still exist (added / copied / modified / renamed).
-mapfile -t staged_cxx < <(
+# Portable alternative to mapfile (macOS /bin/bash 3.2).
+staged_cxx=()
+while IFS= read -r f; do
+  staged_cxx+=("$f")
+done < <(
   git diff --cached --name-only --diff-filter=ACMR -- '*.cpp' '*.h' '*.hpp' \
     | while IFS= read -r f; do
         [[ -f "$f" ]] && printf '%s\n' "$f"
@@ -45,4 +45,4 @@ else
 fi
 
 echo "pre-commit: reuse lint"
-"$REUSE_LINT"
+"$REUSE_LINT" lint

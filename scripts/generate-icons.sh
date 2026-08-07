@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Generate platform icons from icon.png (source of truth at repo root).
 # Requires ImageMagick (magick or convert). macOS .icns: iconutil (Darwin) or
 # python3 + icnsutil as a fallback for committing assets from Linux.

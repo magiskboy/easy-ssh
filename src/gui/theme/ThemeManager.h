@@ -1,11 +1,8 @@
 /*
- * SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
  * SPDX-FileCopyrightText: Copyright (C) 2024 Beat Reichenbach (qt-themes palette mapping)
+ * SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
  *
  * SPDX-License-Identifier: GPL-3.0-only
- *
- * Palette mapping adapted from https://github.com/beatreichenbach/qt-themes
- * (MIT License).
  */
 
 #pragma once

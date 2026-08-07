@@ -1,9 +1,3 @@
-<!--
-SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-
-SPDX-License-Identifier: GPL-3.0-only
--->
-
 # lxqt-build-tools (vendored for Easy SSH)
 
 Tree is [lxqt/lxqt-build-tools](https://github.com/lxqt/lxqt-build-tools)

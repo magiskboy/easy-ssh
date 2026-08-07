@@ -1,6 +1,11 @@
 version = 1
 
-# Project-authored docs and repo metadata
+# In-file SPDX headers are applied ONLY to C / C++ / Objective-C / Objective-C++ /
+# Swift sources under src/ and tests/ (see .github/scripts/run-reuse.sh annotate).
+# All other project files are licensed via the annotations below — do not add
+# SPDX headers to them.
+
+# Project-authored docs, build system, tests, scripts, CI / editor metadata
 [[annotations]]
 path = [
   "README.md",
@@ -8,17 +13,26 @@ path = [
   "CHANGELOG.md",
   "SECURITY.md",
   "NOTICE",
+  "CMakeLists.txt",
+  "CMakePresets.json",
+  "installer.sh",
   ".gitignore",
   ".editorconfig",
   ".clang-format",
   ".clang-tidy",
   ".clangd",
   ".gitattributes",
-  "CMakePresets.json",
+  "cmake/**",
+  "scripts/**",
+  "tests/**",
   "requirements/**",
   ".githooks/**",
   ".github/**",
   ".vscode/**",
+  "src/CMakeLists.txt",
+  "src/macos/CMakeLists.txt",
+  "src/macos/Info.plist.in",
+  "src/macos/Package.swift.in",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
 SPDX-License-Identifier = "GPL-3.0-only"
@@ -28,11 +42,7 @@ SPDX-License-Identifier = "GPL-3.0-only"
 path = [
   "icon.png",
   "screenshots/**",
-  "resources/icons/**",
-  "resources/linux/icons/**",
-  "resources/linux/*.desktop",
-  "resources/macos/**",
-  "resources/windows/**",
+  "resources/**",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
 SPDX-License-Identifier = "GPL-3.0-only"
@@ -50,14 +60,37 @@ path = ["third_party/qtermwidget/**"]
 SPDX-FileCopyrightText = "Copyright (C) The QTermWidget / Konsole Authors; Easy SSH modifications Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
 SPDX-License-Identifier = "GPL-2.0-or-later"
 
+# Project notes for the vendored qtermwidget tree
+[[annotations]]
+path = ["third_party/qtermwidget/EASY_SSH.md"]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"
+
 # Vendored lxqt/lxqt-build-tools (unmodified; see EASY_SSH.md)
 [[annotations]]
 path = ["third_party/lxqt-build-tools/**"]
 SPDX-FileCopyrightText = "Copyright (C) The LXQt Authors"
 SPDX-License-Identifier = "BSD-3-Clause"
 
-# Product / phase specs
+# Project notes for the vendored lxqt-build-tools tree
 [[annotations]]
-path = [".ai/**","resources/themes/**"]
+path = ["third_party/lxqt-build-tools/EASY_SSH.md"]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# Qt Advanced Docking System notes (FetchContent; not vendored in-tree)
+[[annotations]]
+path = ["third_party/qt-ads/**"]
+SPDX-FileCopyrightText = [
+  "Copyright (C) 2024 Uwe Kindler",
+  "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>",
+]
+SPDX-License-Identifier = "LGPL-2.1-only"
+
+# Product / phase specs and theme assets authored here
+[[annotations]]
+path = [".ai/**"]
 SPDX-FileCopyrightText = "Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>"
 SPDX-License-Identifier = "GPL-3.0-only"

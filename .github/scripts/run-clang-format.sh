@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: Copyright (C) 2026 Nguyen Khac Thanh <ask@nkthanh.dev>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Format C++ sources with .clang-format.
 #
 # Usage:
@@ -50,7 +46,10 @@ if ! command -v clang-format >/dev/null 2>&1; then
 fi
 
 if [[ ${#files[@]} -eq 0 ]]; then
-  mapfile -t files < <(find src -type f \( -name '*.cpp' -o -name '*.h' \) | sort)
+  # Portable alternative to mapfile (macOS /bin/bash 3.2).
+  while IFS= read -r line; do
+    files+=("$line")
+  done < <(find src -type f \( -name '*.cpp' -o -name '*.h' \) | sort)
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "error: no C++ sources found under src/" >&2
     exit 1
