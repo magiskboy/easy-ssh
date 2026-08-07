@@ -10,7 +10,8 @@
 #include "core/fs/FsRemote.h"
 #include "core/fs/SftpTypes.h"
 #include "core/fs/TransferTypes.h"
-#include "core/shell/SshShell.h"
+#include "core/ssh/ShellIoHandler.h"
+#include "core/ssh/SshIoLoop.h"
 #include "core/ssh/SshKnownHosts.h"
 #include "core/ssh/SshSession.h"
 #include "core/tunnel/ITunnelSession.h"
@@ -19,6 +20,7 @@
 #include <QHash>
 #include <QMutex>
 #include <QObject>
+#include <QScopeGuard>
 #include <QString>
 #include <QStringList>
 #include <QStringView>
@@ -145,11 +147,29 @@ private:
     void wireTunnelSession(ITunnelSession *session);
     void retireShell(const QUuid &shellId, bool emitClosed);
     bool openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut);
-    void tryRequestAgentForwarding(SshShell *shell);
+    void tryRequestAgentForwarding(ssh_channel firstShellChannel);
     void emitTransferFailure(const QString &error);
+    void onIoLoopFault(const QString &message);
+    void onIoLoopSessionEof();
+    ShellIoHandler::Hooks makeShellHooks();
+    /// Run sync libssh work that assumes blocking mode (FS / open helpers).
+    template <typename Fn>
+    auto withBlockingSession(Fn &&fn) -> decltype(fn())
+    {
+        ssh_session session = m_session.handle();
+        if (session == nullptr) {
+            return fn();
+        }
+        const int wasBlocking = ssh_is_blocking(session);
+        ssh_set_blocking(session, 1);
+        auto restore =
+            qScopeGuard([session, wasBlocking]() { ssh_set_blocking(session, wasBlocking); });
+        return fn();
+    }
 
     SshSession m_session;
-    QHash<QUuid, SshShell *> m_shells;
+    SshIoLoop m_ioLoop;
+    QHash<QUuid, ShellIoHandler *> m_shellHandlers;
     FsRemote m_fs;
     QHash<QUuid, ITunnelSession *> m_tunnelSessions;
     class AgentForwardHost *m_agentForwardHost = nullptr;

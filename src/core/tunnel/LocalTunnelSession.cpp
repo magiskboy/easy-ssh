@@ -211,6 +211,7 @@ bool LocalTunnelSession::openForwardBridge(QIODevice *socket,
         const QByteArray path = m_def.remoteSocketPath.toUtf8();
         rc = ssh_channel_open_forward_unix(channel, path.constData(), originHost, originPort);
         if (rc != SSH_OK) {
+            ssh_set_blocking(m_session, 0);
             ssh_channel_free(channel);
             const QString message = tr("Unix socket forward open failed (server may not support "
                                        "direct-streamlocal): %1")
@@ -223,12 +224,16 @@ bool LocalTunnelSession::openForwardBridge(QIODevice *socket,
         rc = ssh_channel_open_forward(
             channel, remoteHost.constData(), m_def.remotePort, originHost, originPort);
         if (rc != SSH_OK) {
+            ssh_set_blocking(m_session, 0);
             ssh_channel_free(channel);
             const QString message = tr("Forward open failed: %1").arg(sessionError());
             emit errorOccurred(m_def.id, message);
             return false;
         }
     }
+
+    // Restore non-blocking so SshIoLoop / shell callbacks keep working (Phase 2).
+    ssh_set_blocking(m_session, 0);
 
     auto *bridge = new TunnelBridge;
     bridge->tunnelId = m_def.id;

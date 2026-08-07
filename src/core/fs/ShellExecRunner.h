@@ -45,6 +45,10 @@ private:
     QString buildExecCommand(const QString &command) const;
     QString sessionError() const;
     void pump() const;
+    bool waitChannelOk(const std::function<int()> &op,
+                       Result *result,
+                       QString *error,
+                       const char *failPrefix);
 
     ssh_session m_session = nullptr;
     QString m_shellPath;

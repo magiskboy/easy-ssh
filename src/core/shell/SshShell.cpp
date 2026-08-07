@@ -5,6 +5,7 @@
 #include "SshShell.h"
 
 #include <QCoreApplication>
+#include <QThread>
 
 namespace
 {
@@ -46,7 +47,23 @@ void SshShell::cleanup()
     m_session = nullptr;
 }
 
-bool SshShell::open(ssh_session session, int cols, int rows, QString *errorOut)
+bool SshShell::pumpAgain(const AgainPump &againPump, QString *errorOut, const char *what)
+{
+    if (againPump) {
+        if (!againPump()) {
+            if (errorOut) {
+                *errorOut = trShell("Aborted while waiting for %1").arg(QString::fromUtf8(what));
+            }
+            return false;
+        }
+        return true;
+    }
+    QThread::msleep(5);
+    return true;
+}
+
+bool SshShell::open(
+    ssh_session session, int cols, int rows, QString *errorOut, const AgainPump &againPump)
 {
     cleanup();
     m_session = session;
@@ -59,26 +76,47 @@ bool SshShell::open(ssh_session session, int cols, int rows, QString *errorOut)
         return false;
     }
 
-    if (ssh_channel_open_session(m_channel) != SSH_OK) {
-        if (errorOut) {
-            *errorOut = trShell("Failed to open channel: %1").arg(sessionError());
+    auto retry = [&](auto &&fn, const char *what) -> bool {
+        int spins = 0;
+        for (;;) {
+            const int rc = fn();
+            if (rc == SSH_AGAIN) {
+                if (++spins > 2000) {
+                    if (errorOut) {
+                        *errorOut =
+                            trShell("Timed out waiting for %1").arg(QString::fromUtf8(what));
+                    }
+                    return false;
+                }
+                if (!pumpAgain(againPump, errorOut, what)) {
+                    return false;
+                }
+                continue;
+            }
+            if (rc != SSH_OK) {
+                if (errorOut) {
+                    *errorOut =
+                        trShell("Failed to %1: %2").arg(QString::fromUtf8(what), sessionError());
+                }
+                return false;
+            }
+            return true;
         }
+    };
+
+    if (!retry([&]() { return ssh_channel_open_session(m_channel); }, "open channel")) {
         cleanup();
         return false;
     }
 
-    if (ssh_channel_request_pty_size(m_channel, "xterm-256color", cols, rows) != SSH_OK) {
-        if (errorOut) {
-            *errorOut = trShell("Failed to request PTY: %1").arg(sessionError());
-        }
+    if (!retry(
+            [&]() { return ssh_channel_request_pty_size(m_channel, "xterm-256color", cols, rows); },
+            "request PTY")) {
         cleanup();
         return false;
     }
 
-    if (ssh_channel_request_shell(m_channel) != SSH_OK) {
-        if (errorOut) {
-            *errorOut = trShell("Failed to request shell: %1").arg(sessionError());
-        }
+    if (!retry([&]() { return ssh_channel_request_shell(m_channel); }, "request shell")) {
         cleanup();
         return false;
     }
@@ -95,24 +133,40 @@ bool SshShell::write(const QByteArray &data, QString *errorOut)
     const char *ptr = data.constData();
     int remaining = data.size();
     while (remaining > 0) {
-        const int written = ssh_channel_write(m_channel, ptr, static_cast<uint32_t>(remaining));
-        if (written == SSH_ERROR || written < 0) {
-            if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
-                (m_session && !ssh_is_connected(m_session))) {
-                return false;
-            }
-            if (errorOut) {
-                *errorOut = trShell("Failed to write to channel: %1").arg(sessionError());
-            }
+        const int written = writeNonBlocking(ptr, remaining, errorOut);
+        if (written < 0) {
             return false;
         }
         if (written == 0) {
+            // Would block — treat as soft success for legacy callers; data may be lost
+            // if they do not retry. Prefer writeNonBlocking + queue under IoLoop.
             break;
         }
         ptr += written;
         remaining -= written;
     }
     return true;
+}
+
+int SshShell::writeNonBlocking(const char *data, int len, QString *errorOut)
+{
+    if (m_channel == nullptr || data == nullptr || len <= 0) {
+        return 0;
+    }
+
+    const int written = ssh_channel_write(m_channel, data, static_cast<uint32_t>(len));
+    if (written == SSH_ERROR || written < 0) {
+        if (!ssh_channel_is_open(m_channel) || ssh_channel_is_eof(m_channel) ||
+            (m_session && !ssh_is_connected(m_session))) {
+            if (errorOut) {
+                *errorOut = trShell("Failed to write to channel: %1").arg(sessionError());
+            }
+            return -1;
+        }
+        // SSH_AGAIN / temporary — report 0 bytes written.
+        return 0;
+    }
+    return written;
 }
 
 bool SshShell::changePtySize(int cols, int rows, QString *errorOut)

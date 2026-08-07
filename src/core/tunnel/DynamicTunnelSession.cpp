@@ -222,6 +222,7 @@ bool DynamicTunnelSession::openForwardBridge(QTcpSocket *socket,
                                  sourceHost.isEmpty() ? "127.0.0.1" : sourceHost.constData(),
                                  sourcePort > 0 ? sourcePort : 0);
     if (rc != SSH_OK) {
+        ssh_set_blocking(m_session, 0);
         ssh_channel_free(channel);
         const QString message = tr("Dynamic forward open failed for %1:%2: %3")
                                     .arg(destHost)
@@ -230,6 +231,9 @@ bool DynamicTunnelSession::openForwardBridge(QTcpSocket *socket,
         emit errorOccurred(m_def.id, message);
         return false;
     }
+
+    // Restore non-blocking so SshIoLoop / shell callbacks keep working (Phase 2).
+    ssh_set_blocking(m_session, 0);
 
     Socks5Handshake::writeConnectReply(socket, true);
 

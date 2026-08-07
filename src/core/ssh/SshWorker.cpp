@@ -14,10 +14,13 @@
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QFileInfo>
+#include <QMetaObject>
+#include <QScopeGuard>
 #include <QTimer>
 
 #include <algorithm>
 #include <libssh/libssh.h>
+#include <memory>
 
 namespace
 {
@@ -45,6 +48,9 @@ SshWorker::SshWorker(QObject *parent) : QObject(parent)
         return verifyKnownHostForSession(session, contextLabel);
     });
     m_session.setCancelChecker([this]() { return m_cancelRequested.load(); });
+
+    connect(&m_ioLoop, &SshIoLoop::fault, this, &SshWorker::onIoLoopFault);
+    connect(&m_ioLoop, &SshIoLoop::sessionEof, this, &SshWorker::onIoLoopSessionEof);
 }
 
 SshWorker::~SshWorker()
@@ -89,6 +95,14 @@ void SshWorker::connectToHost(const Connection &connection,
         return;
     }
 
+    QString attachError;
+    if (!m_ioLoop.attachSession(m_session.handle(), &attachError)) {
+        emit errorOccurred(attachError.isEmpty() ? tr("Failed to attach SSH I/O loop")
+                                                 : attachError);
+        m_session.cleanup();
+        return;
+    }
+
     if (!openShellLocked(initialShellId, cols, rows, &error)) {
         if (m_cancelRequested.load()) {
             cleanup();
@@ -97,6 +111,7 @@ void SshWorker::connectToHost(const Connection &connection,
         if (!error.isEmpty()) {
             emit errorOccurred(error);
         }
+        m_ioLoop.detachSession();
         m_session.cleanup();
         return;
     }
@@ -110,7 +125,8 @@ void SshWorker::connectToHost(const Connection &connection,
     m_fs.setConnectionId(connection.id);
     m_fs.setStallTimeoutSec(AppSettings::instance().transferStallTimeoutSec());
     m_fs.setShellCommands(connection.shellCommands);
-    const bool fsReady = m_fs.open(m_session.handle(), &sftpFailure);
+    const bool fsReady =
+        withBlockingSession([&]() { return m_fs.open(m_session.handle(), &sftpFailure); });
 
     if (m_cancelRequested.load()) {
         cleanup();
@@ -137,6 +153,9 @@ void SshWorker::connectToHost(const Connection &connection,
     }
     m_session.resetKeepAliveClock();
     m_ioTimer->start(20);
+
+    // Blocks until disconnectSession / fault / EOF stops the loop.
+    m_ioLoop.run();
 }
 
 void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
@@ -149,11 +168,11 @@ void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
         emit shellOpenFailed(shellId, tr("Invalid shell id"));
         return;
     }
-    if (m_shells.contains(shellId)) {
+    if (m_shellHandlers.contains(shellId)) {
         emit shellOpenFailed(shellId, tr("Shell already open"));
         return;
     }
-    if (m_shells.size() >= kMaxShells) {
+    if (m_shellHandlers.size() >= kMaxShells) {
         emit shellOpenFailed(shellId, tr("Maximum of %1 shells per session").arg(kMaxShells));
         return;
     }
@@ -165,28 +184,60 @@ void SshWorker::openShell(const QUuid &shellId, int cols, int rows)
     }
 
     emit shellOpened(shellId);
+    m_ioLoop.wake();
+}
+
+ShellIoHandler::Hooks SshWorker::makeShellHooks()
+{
+    ShellIoHandler::Hooks hooks;
+    hooks.dataReady = [this](const QUuid &id, const QByteArray &data) {
+        if (!data.isEmpty()) {
+            m_session.resetKeepAliveClock();
+            emit dataReceived(id, data);
+        }
+    };
+    hooks.closed = [this](const QUuid &id) {
+        // Defer so we do not destroy the handler during its own onIdle.
+        QMetaObject::invokeMethod(
+            this, [this, id]() { retireShell(id, true); }, Qt::QueuedConnection);
+    };
+    hooks.failed = [this](const QUuid &id, const QString &message) {
+        emit shellFailed(id, message);
+    };
+    hooks.againPump = [this]() {
+        if (m_cancelRequested.load()) {
+            return false;
+        }
+        return m_ioLoop.pollOnce(50);
+    };
+    return hooks;
 }
 
 bool SshWorker::openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut)
 {
-    auto *shell = new SshShell();
-    if (!shell->open(m_session.handle(), cols, rows, errorOut)) {
-        delete shell;
-        return false;
-    }
-    m_shells.insert(shellId, shell);
-    tryRequestAgentForwarding(shell);
-    return true;
+    // PTY/shell request_exec-style opens are simpler in blocking mode; IoLoop
+    // keeps the session non-blocking afterward for channel callbacks.
+    return withBlockingSession([&]() -> bool {
+        auto handler = std::make_unique<ShellIoHandler>(
+            shellId, m_session.handle(), cols, rows, makeShellHooks());
+        ShellIoHandler *raw = handler.get();
+        if (!m_ioLoop.addHandler(std::move(handler), errorOut)) {
+            return false;
+        }
+        m_shellHandlers.insert(shellId, raw);
+        tryRequestAgentForwarding(raw->channel());
+        return true;
+    });
 }
 
-void SshWorker::tryRequestAgentForwarding(SshShell *shell)
+void SshWorker::tryRequestAgentForwarding(ssh_channel firstShellChannel)
 {
     if (m_agentForwardRequested) {
         return;
     }
     m_agentForwardRequested = true;
 
-    if (!m_agentForwarding || shell == nullptr || shell->channel() == nullptr) {
+    if (!m_agentForwarding || firstShellChannel == nullptr) {
         return;
     }
 
@@ -199,7 +250,7 @@ void SshWorker::tryRequestAgentForwarding(SshShell *shell)
 
     auto *host = new AgentForwardHost(this);
     QString error;
-    if (!host->start(m_session.handle(), shell->channel(), &error)) {
+    if (!host->start(m_session.handle(), firstShellChannel, &error)) {
         emit agentForwardingWarning(error.isEmpty() ? tr("Failed to enable agent forwarding")
                                                     : error);
         delete host;
@@ -215,12 +266,11 @@ void SshWorker::closeShell(const QUuid &shellId)
 
 void SshWorker::retireShell(const QUuid &shellId, bool emitClosed)
 {
-    SshShell *shell = m_shells.take(shellId);
-    if (shell == nullptr) {
+    if (!m_shellHandlers.contains(shellId)) {
         return;
     }
-    shell->cleanup();
-    delete shell;
+    m_shellHandlers.remove(shellId);
+    m_ioLoop.removeHandler(shellId.toString(QUuid::WithoutBraces));
     if (emitClosed) {
         emit shellClosed(shellId);
     }
@@ -232,26 +282,11 @@ void SshWorker::writeToChannel(const QUuid &shellId, const QByteArray &data)
         return;
     }
 
-    SshShell *shell = m_shells.value(shellId, nullptr);
-    if (shell == nullptr) {
+    ShellIoHandler *handler = m_shellHandlers.value(shellId, nullptr);
+    if (handler == nullptr) {
         return;
     }
-
-    QString error;
-    if (!shell->write(data, &error)) {
-        if (!m_session.isConnected() ||
-            (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
-            if (!error.isEmpty()) {
-                emit errorOccurred(error);
-            }
-            disconnectSession();
-            return;
-        }
-        if (!error.isEmpty()) {
-            emit shellFailed(shellId, error);
-        }
-        retireShell(shellId, true);
-    }
+    handler->enqueueWrite(data);
 }
 
 void SshWorker::changePtySize(const QUuid &shellId, int cols, int rows)
@@ -259,11 +294,11 @@ void SshWorker::changePtySize(const QUuid &shellId, int cols, int rows)
     if (!m_running) {
         return;
     }
-    SshShell *shell = m_shells.value(shellId, nullptr);
-    if (shell == nullptr) {
+    ShellIoHandler *handler = m_shellHandlers.value(shellId, nullptr);
+    if (handler == nullptr) {
         return;
     }
-    shell->changePtySize(cols, rows);
+    handler->changePtySize(cols, rows);
 }
 
 void SshWorker::disconnectSession()
@@ -274,6 +309,7 @@ void SshWorker::disconnectSession()
     if (m_ioTimer) {
         m_ioTimer->stop();
     }
+    m_ioLoop.stop();
 
     if (m_running && m_fs.isOpen()) {
         m_fs.requestInterrupt(TransferEndReason::Interrupted, tr("Connection lost"));
@@ -286,6 +322,19 @@ void SshWorker::disconnectSession()
         qCWarning(lcSsh) << "Session disconnected";
         emit disconnected();
     }
+}
+
+void SshWorker::onIoLoopFault(const QString &message)
+{
+    if (!message.isEmpty()) {
+        emit errorOccurred(message);
+    }
+    disconnectSession();
+}
+
+void SshWorker::onIoLoopSessionEof()
+{
+    disconnectSession();
 }
 
 void SshWorker::requestCancel()
@@ -561,47 +610,10 @@ void SshWorker::pollChannel()
         return;
     }
 
+    // Shell I/O is on SshIoLoop callbacks; timer only services tunnels / agent / keepalive.
     pollTunnels();
     if (m_agentForwardHost) {
         m_agentForwardHost->poll();
-    }
-
-    bool hadActivity = false;
-    const QList<QUuid> shellIds = m_shells.keys();
-    for (const QUuid &shellId : shellIds) {
-        SshShell *shell = m_shells.value(shellId, nullptr);
-        if (shell == nullptr) {
-            continue;
-        }
-
-        QByteArray data;
-        QString error;
-        const SshShell::PollStatus status = shell->poll(&data, &error);
-        switch (status) {
-        case SshShell::PollStatus::Data:
-            if (!data.isEmpty()) {
-                emit dataReceived(shellId, data);
-            }
-            hadActivity = true;
-            break;
-        case SshShell::PollStatus::Idle:
-            break;
-        case SshShell::PollStatus::ChannelClosed:
-            retireShell(shellId, true);
-            break;
-        case SshShell::PollStatus::Error:
-            if (!m_session.isConnected() ||
-                (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
-                if (!error.isEmpty()) {
-                    emit errorOccurred(error);
-                }
-                disconnectSession();
-                return;
-            }
-            emit shellFailed(shellId, error.isEmpty() ? tr("Shell read error") : error);
-            retireShell(shellId, true);
-            break;
-        }
     }
 
     if (!m_session.isConnected()) {
@@ -610,7 +622,7 @@ void SshWorker::pollChannel()
     }
 
     QString error;
-    if (!m_session.pollKeepAlive(hadActivity, &error)) {
+    if (!m_session.pollKeepAlive(false, &error)) {
         emit errorOccurred(error);
         disconnectSession();
     }
@@ -690,6 +702,7 @@ void SshWorker::cleanup()
     if (m_ioTimer) {
         m_ioTimer->stop();
     }
+    m_ioLoop.stop();
 
     stopAllTunnels();
 
@@ -702,14 +715,13 @@ void SshWorker::cleanup()
     m_agentForwarding = false;
 
     m_fs.close();
-    const QList<QUuid> shellIds = m_shells.keys();
+
+    const QList<QUuid> shellIds = m_shellHandlers.keys();
     for (const QUuid &id : shellIds) {
-        SshShell *shell = m_shells.take(id);
-        if (shell) {
-            shell->cleanup();
-            delete shell;
-        }
+        m_shellHandlers.remove(id);
+        m_ioLoop.removeHandler(id.toString(QUuid::WithoutBraces));
     }
+    m_ioLoop.detachSession();
     m_session.cleanup();
 
     delete m_agentForwardHost;
@@ -788,46 +800,12 @@ void SshWorker::pumpIoDuringBlockingOp()
     }
 
     // Keep interactive shell / tunnels responsive while a one-shot exec blocks.
+    // Shell data arrives via channel callbacks during pollOnce.
     pollTunnels();
     if (m_agentForwardHost) {
         m_agentForwardHost->poll();
     }
-
-    const QList<QUuid> shellIds = m_shells.keys();
-    for (const QUuid &shellId : shellIds) {
-        SshShell *shell = m_shells.value(shellId, nullptr);
-        if (shell == nullptr) {
-            continue;
-        }
-
-        QByteArray data;
-        QString error;
-        const SshShell::PollStatus status = shell->poll(&data, &error);
-        switch (status) {
-        case SshShell::PollStatus::Data:
-            if (!data.isEmpty()) {
-                emit dataReceived(shellId, data);
-            }
-            break;
-        case SshShell::PollStatus::Idle:
-            break;
-        case SshShell::PollStatus::ChannelClosed:
-            retireShell(shellId, true);
-            break;
-        case SshShell::PollStatus::Error:
-            if (!m_session.isConnected() ||
-                (m_session.handle() && !ssh_is_connected(m_session.handle()))) {
-                if (!error.isEmpty()) {
-                    emit errorOccurred(error);
-                }
-                disconnectSession();
-                return;
-            }
-            emit shellFailed(shellId, error.isEmpty() ? tr("Shell read error") : error);
-            retireShell(shellId, true);
-            break;
-        }
-    }
+    m_ioLoop.pollOnce(0);
 
     // Drain queued writes / other worker slots without starting nested user input.
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);

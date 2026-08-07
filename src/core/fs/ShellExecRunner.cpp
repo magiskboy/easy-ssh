@@ -7,6 +7,7 @@
 #include "ShellCommandSet.h"
 
 #include <QCoreApplication>
+#include <QScopeGuard>
 #include <QThread>
 
 namespace
@@ -65,6 +66,39 @@ void ShellExecRunner::pump() const
     }
 }
 
+bool ShellExecRunner::waitChannelOk(const std::function<int()> &op,
+                                    Result *result,
+                                    QString *error,
+                                    const char *failPrefix)
+{
+    int spins = 0;
+    for (;;) {
+        const int rc = op();
+        if (rc == SSH_OK) {
+            return true;
+        }
+        if (rc == SSH_AGAIN) {
+            if (++spins > 2000) {
+                result->errorMessage = trExec("%1: timed out").arg(QString::fromUtf8(failPrefix));
+                if (error) {
+                    *error = result->errorMessage;
+                }
+                return false;
+            }
+            pump();
+            if (!m_pump) {
+                QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
+            }
+            continue;
+        }
+        result->errorMessage = trExec("%1: %2").arg(QString::fromUtf8(failPrefix), sessionError());
+        if (error) {
+            *error = result->errorMessage;
+        }
+        return false;
+    }
+}
+
 bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
 {
     Result local;
@@ -78,6 +112,16 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         }
         return false;
     }
+
+    // Sync exec assumes a blocking session. Phase 2 IoLoop keeps the session
+    // non-blocking — temporarily restore blocking for this one-shot channel.
+    const int wasBlocking = ssh_is_blocking(m_session);
+    ssh_set_blocking(m_session, 1);
+    auto restoreBlocking = qScopeGuard([this, wasBlocking]() {
+        if (m_session != nullptr) {
+            ssh_set_blocking(m_session, wasBlocking);
+        }
+    });
 
     ssh_channel channel = ssh_channel_new(m_session);
     if (channel == nullptr) {
@@ -99,21 +143,19 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         }
     };
 
-    if (ssh_channel_open_session(channel) != SSH_OK) {
-        result->errorMessage = trExec("Failed to open channel: %1").arg(sessionError());
-        if (error) {
-            *error = result->errorMessage;
-        }
+    if (!waitChannelOk([&]() { return ssh_channel_open_session(channel); },
+                       result,
+                       error,
+                       "Failed to open channel")) {
         cleanup();
         return false;
     }
 
     const QByteArray execCmd = buildExecCommand(command).toUtf8();
-    if (ssh_channel_request_exec(channel, execCmd.constData()) != SSH_OK) {
-        result->errorMessage = trExec("Failed to execute remote command: %1").arg(sessionError());
-        if (error) {
-            *error = result->errorMessage;
-        }
+    if (!waitChannelOk([&]() { return ssh_channel_request_exec(channel, execCmd.constData()); },
+                       result,
+                       error,
+                       "Failed to execute remote command")) {
         cleanup();
         return false;
     }

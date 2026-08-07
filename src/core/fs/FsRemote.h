@@ -22,6 +22,8 @@
 #include <memory>
 #include <optional>
 
+#include <QScopeGuard>
+
 #include <libssh/libssh.h>
 
 /**
@@ -130,6 +132,24 @@ private:
 
     static QString joinRemotePath(const QString &dir, const QString &name);
 
+    /// Phase 2: IoLoop keeps ssh_session non-blocking; sync SFTP/SCP needs blocking.
+    template <typename Fn>
+    auto withBlockingSession(Fn &&fn) -> decltype(fn())
+    {
+        if (m_sshSession == nullptr) {
+            return fn();
+        }
+        const int wasBlocking = ssh_is_blocking(m_sshSession);
+        ssh_set_blocking(m_sshSession, 1);
+        auto restore = qScopeGuard([this, wasBlocking]() {
+            if (m_sshSession != nullptr) {
+                ssh_set_blocking(m_sshSession, wasBlocking);
+            }
+        });
+        return fn();
+    }
+
+    ssh_session m_sshSession = nullptr;
     std::unique_ptr<FsEngine> m_engine;
     ShellCommandSetConfig m_shellCommands;
     FsBackend m_backend = FsBackend::None;
