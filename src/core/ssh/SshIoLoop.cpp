@@ -140,9 +140,9 @@ void SshIoLoop::run()
 
     m_stopped.store(false);
 
-    // Finite timeout so QTimer (tunnels/agent/keepalive) and QueuedConnection slots
+    // Finite timeout so QueuedConnection slots and Qt readyRead (tunnel/agent sockets)
     // can run via processEvents while SSH is idle. wake() still returns early.
-    constexpr int kIdlePollMs = 20;
+    constexpr int kIdlePollMs = 50;
 
     while (!m_stopped.load()) {
         const int rc = ssh_event_dopoll(m_event, kIdlePollMs);

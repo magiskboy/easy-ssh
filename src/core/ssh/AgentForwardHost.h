@@ -16,6 +16,7 @@
 #include <libssh/libssh.h>
 
 class QIODevice;
+class SshIoLoop;
 
 /**
  * Session-wide OpenSSH ForwardAgent bridge (0..1 per SshWorker).
@@ -34,8 +35,9 @@ public:
     static bool isLocalAgentPresent();
     static QString localAgentSocketPath();
 
+    void setIoLoop(SshIoLoop *loop) { m_loop = loop; }
+
     bool start(ssh_session session, ssh_channel firstShellChannel, QString *errorOut = nullptr);
-    void poll();
     void stop();
 
 private slots:
@@ -52,6 +54,7 @@ private:
     void closeBridge(TunnelBridge *bridge);
 
     ssh_session m_session = nullptr;
+    SshIoLoop *m_loop = nullptr;
     struct ssh_callbacks_struct m_callbacks{};
     QList<TunnelBridge *> m_bridges;
     bool m_started = false;

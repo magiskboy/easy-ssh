@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "core/ssh/SftpTransferIoHandler.h"
+#include "core/fs/SftpTransferIoHandler.h"
 
 #include "core/ssh/SshIoLoop.h"
 

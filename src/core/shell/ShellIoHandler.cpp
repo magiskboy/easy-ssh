@@ -4,12 +4,15 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 
-#include "core/ssh/ShellIoHandler.h"
+#include "core/shell/ShellIoHandler.h"
 
 #include "core/ssh/SshIoLoop.h"
 
-ShellIoHandler::ShellIoHandler(
-    const QUuid &shellId, ssh_session session, int cols, int rows, Hooks hooks)
+ShellIoHandler::ShellIoHandler(const QUuid &shellId,
+                               ssh_session session,
+                               int cols, // NOLINT(bugprone-easily-swappable-parameters)
+                               int rows, // NOLINT(bugprone-easily-swappable-parameters)
+                               Hooks hooks)
     : m_shellId(shellId), m_session(session), m_cols(cols), m_rows(rows), m_hooks(std::move(hooks))
 {
 }
@@ -89,8 +92,11 @@ bool ShellIoHandler::changePtySize(int cols, int rows, QString *errorOut)
     return m_shell.changePtySize(cols, rows, errorOut);
 }
 
-int ShellIoHandler::onData(
-    ssh_session session, ssh_channel channel, void *data, uint32_t len, int isStderr)
+int ShellIoHandler::onData(ssh_session session,
+                           ssh_channel channel,
+                           void *data,
+                           uint32_t len, // NOLINT(bugprone-easily-swappable-parameters)
+                           int isStderr) // NOLINT(bugprone-easily-swappable-parameters)
 {
     Q_UNUSED(session);
     Q_UNUSED(channel);

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "core/ssh/ShellIoHandler.h"
+#include "core/shell/ShellIoHandler.h"
 #include "core/ssh/SshIoLoop.h"
 
 #include <QtTest>

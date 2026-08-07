@@ -12,6 +12,7 @@
 #include <QList>
 
 class QIODevice;
+class SshIoLoop;
 
 class RemoteTunnelSession final : public ITunnelSession
 {
@@ -20,6 +21,7 @@ class RemoteTunnelSession final : public ITunnelSession
 public:
     RemoteTunnelSession(const TunnelDefinition &def,
                         ssh_session session,
+                        SshIoLoop *loop,
                         QObject *parent = nullptr);
     ~RemoteTunnelSession() override;
 
@@ -30,7 +32,6 @@ public:
 
     bool start() override;
     void stop(bool emitOff) override;
-    void poll() override;
 
     /// Attach an already-accepted reverse-forward channel to this tunnel.
     bool attachForwardChannel(ssh_channel channel);
@@ -48,6 +49,7 @@ private:
 
     TunnelDefinition m_def;
     ssh_session m_session = nullptr;
+    SshIoLoop *m_loop = nullptr;
     bool m_remoteListening = false;
     QList<TunnelBridge *> m_bridges;
 };

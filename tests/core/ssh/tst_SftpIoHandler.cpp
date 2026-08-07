@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/fs/SftpAioTransfer.h"
-#include "core/ssh/SftpMetaIoHandler.h"
-#include "core/ssh/SftpTransferIoHandler.h"
+#include "core/fs/SftpMetaIoHandler.h"
+#include "core/fs/SftpTransferIoHandler.h"
 #include "core/ssh/SshIoLoop.h"
 
 #include <QtTest>

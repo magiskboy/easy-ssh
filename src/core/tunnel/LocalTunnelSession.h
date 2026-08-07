@@ -14,13 +14,17 @@
 class QIODevice;
 class QLocalServer;
 class QTcpServer;
+class SshIoLoop;
 
 class LocalTunnelSession final : public ITunnelSession
 {
     Q_OBJECT
 
 public:
-    LocalTunnelSession(const TunnelDefinition &def, ssh_session session, QObject *parent = nullptr);
+    LocalTunnelSession(const TunnelDefinition &def,
+                       ssh_session session,
+                       SshIoLoop *loop,
+                       QObject *parent = nullptr);
     ~LocalTunnelSession() override;
 
     QUuid id() const override { return m_def.id; }
@@ -28,7 +32,6 @@ public:
 
     bool start() override;
     void stop(bool emitOff) override;
-    void poll() override;
 
 private slots:
     void onNewTcpConnection();
@@ -47,6 +50,7 @@ private:
 
     TunnelDefinition m_def;
     ssh_session m_session = nullptr;
+    SshIoLoop *m_loop = nullptr;
     QTcpServer *m_tcpServer = nullptr;
     QLocalServer *m_localServer = nullptr;
     QList<TunnelBridge *> m_bridges;

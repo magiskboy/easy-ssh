@@ -52,10 +52,10 @@ public:
     bool isAttached() const { return m_session != nullptr; }
 
     /// Blocks until stop(). Must run on the loop thread.
-    /// Uses a short dopoll timeout so Qt timers / processEvents can run while idle.
+    /// Uses a short dopoll timeout so QueuedConnection / Qt socket events can run while idle.
     void run();
     /// One dopoll + onIdle. For nested pump while run() is blocked in processEvents
-    /// (e.g. leftover sync SCP). Does not call processEvents (caller may). Same thread only.
+    /// (e.g. shell open SSH_AGAIN). Does not call processEvents (caller may). Same thread only.
     bool pollOnce(int timeoutMs);
     /// Thread-safe: set stop flag and wake dopoll.
     void stop();

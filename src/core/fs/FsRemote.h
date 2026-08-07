@@ -7,6 +7,7 @@
 #pragma once
 
 #include "FsEngine.h"
+#include "ScpChunkTransfer.h"
 #include "SftpAioTransfer.h"
 #include "SftpTypes.h"
 #include "TransferTypes.h"
@@ -57,6 +58,8 @@ public:
     void setEngine(std::unique_ptr<FsEngine> engine);
     FsEngine *engine() const { return m_engine.get(); }
     SftpEngine *sftpEngine() const;
+    class ScpEngine *scpEngine() const;
+    ssh_session sshSession() const { return m_sshSession; }
 
     void setShellCommands(const ShellCommandSetConfig &config);
     ShellCommandSetConfig shellCommands() const { return m_shellCommands; }
@@ -107,8 +110,8 @@ public:
     bool resumeInterruptedTransfer(QString *error);
     bool discardInterruptedTransfer(QString *error);
 
-    /// Phase 3: non-blocking SFTP transfer driven from SshIoLoop::onIdle.
-    /// Returns false if start fails (error set). SCP backend is not supported here.
+    /// Phase 3/5: non-blocking transfer driven from SshIoLoop::onIdle (SFTP AIO or SCP chunks).
+    /// Returns false if start fails (error set).
     bool
     beginAsyncUploadFiles(const QStringList &localPaths, const QString &remoteDir, QString *error);
     bool
@@ -243,5 +246,6 @@ private:
     bool m_asyncActive = false;
     std::deque<AsyncWorkItem> m_asyncWork;
     std::unique_ptr<SftpAioTransfer> m_aio;
+    std::unique_ptr<ScpChunkTransfer> m_scpChunk;
     TransferWriteMode m_asyncFileMode = TransferWriteMode::FreshFilepart;
 };

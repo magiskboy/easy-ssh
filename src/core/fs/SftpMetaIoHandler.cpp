@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "core/ssh/SftpMetaIoHandler.h"
+#include "core/fs/SftpMetaIoHandler.h"
 
 #include "core/fs/Symlink.h"
 #include "core/ssh/SshIoLoop.h"
@@ -210,31 +210,7 @@ void SftpMetaIoHandler::tickList()
 {
     SftpEngine *sftp = m_fs->sftpEngine();
     if (sftp == nullptr) {
-        // SCP / non-SFTP: fall back to one-shot sync list.
-        QVector<RemoteEntry> entries;
-        QString error;
-        if (!m_fs->listDirectoryEntries(m_request.path, &entries, &error)) {
-            if (m_resolveNeedsList) {
-                if (m_hooks.resolved) {
-                    m_hooks.resolved(m_request.path, true, false, error);
-                }
-                finishOk();
-                return;
-            }
-            finishFail(error);
-            return;
-        }
-        if (m_resolveNeedsList) {
-            if (m_hooks.resolved) {
-                m_hooks.resolved(m_request.path, true, true, {});
-            }
-            finishOk();
-            return;
-        }
-        if (m_hooks.listed) {
-            m_hooks.listed(m_request.path, entries);
-        }
-        finishOk();
+        finishFail(trMeta("SFTP backend is not available"));
         return;
     }
 

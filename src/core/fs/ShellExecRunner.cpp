@@ -42,7 +42,12 @@ QString ShellExecRunner::sessionError() const
 
 QString ShellExecRunner::buildExecCommand(const QString &command) const
 {
-    const QString shell = m_shellPath.trimmed();
+    return wrapCommand(m_shellPath, command);
+}
+
+QString ShellExecRunner::wrapCommand(const QString &shellPath, const QString &command)
+{
+    const QString shell = shellPath.trimmed();
     if (shell.isEmpty()) {
         return command;
     }
@@ -57,13 +62,6 @@ QString ShellExecRunner::stdoutText(const Result &result)
 QString ShellExecRunner::stderrText(const Result &result)
 {
     return QString::fromUtf8(result.stderrBytes);
-}
-
-void ShellExecRunner::pump() const
-{
-    if (m_pump) {
-        m_pump();
-    }
 }
 
 bool ShellExecRunner::waitChannelOk(const std::function<int()> &op,
@@ -85,10 +83,7 @@ bool ShellExecRunner::waitChannelOk(const std::function<int()> &op,
                 }
                 return false;
             }
-            pump();
-            if (!m_pump) {
-                QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
-            }
+            QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
             continue;
         }
         result->errorMessage = trExec("%1: %2").arg(QString::fromUtf8(failPrefix), sessionError());
@@ -113,8 +108,9 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         return false;
     }
 
-    // Sync exec assumes a blocking session. Phase 2 IoLoop keeps the session
-    // non-blocking — temporarily restore blocking for this one-shot channel.
+    // Sync exec assumes a blocking session. IoLoop keeps the session
+    // non-blocking — temporarily restore blocking for this one-shot channel
+    // (connect-time SCP probe / open only).
     const int wasBlocking = ssh_is_blocking(m_session);
     ssh_set_blocking(m_session, 1);
     auto restoreBlocking = qScopeGuard([this, wasBlocking]() {
@@ -167,7 +163,6 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         const int nout = ssh_channel_read_timeout(channel, buffer, sizeof(buffer), 0, kPollSleepMs);
         if (nout > 0) {
             result->stdoutBytes.append(buffer, nout);
-            pump();
             continue;
         }
         if (nout == SSH_ERROR) {
@@ -182,7 +177,6 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
         const int nerr = ssh_channel_read_timeout(channel, buffer, sizeof(buffer), 1, kPollSleepMs);
         if (nerr > 0) {
             result->stderrBytes.append(buffer, nerr);
-            pump();
             continue;
         }
         if (nerr == SSH_ERROR) {
@@ -198,11 +192,7 @@ bool ShellExecRunner::run(const QString &command, Result *out, QString *error)
             eof = true;
             break;
         }
-        // Keep sibling channels (shell PTY, tunnels) alive while this exec waits.
-        pump();
-        if (!m_pump) {
-            QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
-        }
+        QThread::msleep(static_cast<unsigned long>(kPollSleepMs));
         waitedMs += kPollSleepMs;
     }
 

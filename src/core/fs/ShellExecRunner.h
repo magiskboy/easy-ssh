@@ -15,6 +15,9 @@
 /**
  * One-shot remote command via ssh_channel_request_exec (no PTY).
  * Optional wrapper: <shell> -c '<command>' when shell path is set.
+ *
+ * Used by ScpEngine open/probe (connect-time) and sync helpers. Hot-path browse
+ * uses ScpMetaIoHandler / ExecIoHandler on SshIoLoop instead.
  */
 class ShellExecRunner
 {
@@ -32,9 +35,8 @@ public:
     void setShellPath(const QString &shellPath);
     QString shellPath() const { return m_shellPath; }
 
-    /// Optional hook invoked while waiting for remote output so the caller can
-    /// keep polling other SSH channels (shell / tunnels) on the same session.
-    void setPump(std::function<void()> pump) { m_pump = std::move(pump); }
+    /// Wrap @p command for @p shellPath -c '…' when shell is set; otherwise return as-is.
+    static QString wrapCommand(const QString &shellPath, const QString &command);
 
     bool run(const QString &command, Result *out, QString *error = nullptr);
 
@@ -44,7 +46,6 @@ public:
 private:
     QString buildExecCommand(const QString &command) const;
     QString sessionError() const;
-    void pump() const;
     bool waitChannelOk(const std::function<int()> &op,
                        Result *result,
                        QString *error,
@@ -52,5 +53,4 @@ private:
 
     ssh_session m_session = nullptr;
     QString m_shellPath;
-    std::function<void()> m_pump;
 };

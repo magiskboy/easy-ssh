@@ -10,8 +10,9 @@
 
 RemoteTunnelSession::RemoteTunnelSession(const TunnelDefinition &def,
                                          ssh_session session,
+                                         SshIoLoop *loop,
                                          QObject *parent)
-    : ITunnelSession(parent), m_def(def), m_session(session)
+    : ITunnelSession(parent), m_def(def), m_session(session), m_loop(loop)
 {
 }
 
@@ -76,19 +77,6 @@ void RemoteTunnelSession::stop(bool emitOff)
     }
 }
 
-void RemoteTunnelSession::poll()
-{
-    QList<TunnelBridge *> toClose;
-    for (TunnelBridge *bridge : m_bridges) {
-        if (TunnelBridgeIo::pollChannelToSocket(bridge)) {
-            toClose.append(bridge);
-        }
-    }
-    for (TunnelBridge *bridge : toClose) {
-        closeBridge(bridge);
-    }
-}
-
 bool RemoteTunnelSession::attachForwardChannel(ssh_channel channel)
 {
     return openForwardBridge(channel);
@@ -133,6 +121,19 @@ bool RemoteTunnelSession::openForwardBridge(ssh_channel channel)
     bridge->tunnelId = m_def.id;
     bridge->channel = channel;
     bridge->socket = socket;
+    bridge->owner = this;
+    bridge->requestClose = [this, bridge]() { closeBridge(bridge); };
+    if (m_loop != nullptr) {
+        QString attachError;
+        if (!TunnelBridgeIo::attachToLoop(bridge, m_loop, &attachError)) {
+            delete bridge;
+            emit errorOccurred(m_def.id,
+                               attachError.isEmpty() ? tr("Failed to attach forward channel")
+                                                     : attachError);
+            socket->deleteLater();
+            return false;
+        }
+    }
     m_bridges.append(bridge);
 
     wireBridgeSocket(socket);

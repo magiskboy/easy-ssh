@@ -11,8 +11,9 @@
 
 DynamicTunnelSession::DynamicTunnelSession(const TunnelDefinition &def,
                                            ssh_session session,
+                                           SshIoLoop *loop,
                                            QObject *parent)
-    : ITunnelSession(parent), m_def(def), m_session(session)
+    : ITunnelSession(parent), m_def(def), m_session(session), m_loop(loop)
 {
 }
 
@@ -100,19 +101,6 @@ void DynamicTunnelSession::stop(bool emitOff)
 
     if (emitOff) {
         emit statusChanged(m_def.id, QStringLiteral("Off"), QString());
-    }
-}
-
-void DynamicTunnelSession::poll()
-{
-    QList<TunnelBridge *> toClose;
-    for (TunnelBridge *bridge : m_bridges) {
-        if (TunnelBridgeIo::pollChannelToSocket(bridge)) {
-            toClose.append(bridge);
-        }
-    }
-    for (TunnelBridge *bridge : toClose) {
-        closeBridge(bridge);
     }
 }
 
@@ -241,6 +229,20 @@ bool DynamicTunnelSession::openForwardBridge(QTcpSocket *socket,
     bridge->tunnelId = m_def.id;
     bridge->channel = channel;
     bridge->socket = socket;
+    bridge->owner = this;
+    bridge->requestClose = [this, bridge]() { closeBridge(bridge); };
+    if (m_loop != nullptr) {
+        QString attachError;
+        if (!TunnelBridgeIo::attachToLoop(bridge, m_loop, &attachError)) {
+            delete bridge;
+            ssh_channel_close(channel);
+            ssh_channel_free(channel);
+            emit errorOccurred(m_def.id,
+                               attachError.isEmpty() ? tr("Failed to attach forward channel")
+                                                     : attachError);
+            return false;
+        }
+    }
     m_bridges.append(bridge);
 
     connect(socket, &QTcpSocket::readyRead, this, &DynamicTunnelSession::onBridgeSocketReadyRead);

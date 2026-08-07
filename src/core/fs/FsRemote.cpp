@@ -4,6 +4,7 @@
 
 #include "FsRemote.h"
 
+#include "ScpChunkTransfer.h"
 #include "ScpEngine.h"
 #include "SftpAioTransfer.h"
 #include "SftpEngine.h"
@@ -116,6 +117,14 @@ SftpEngine *FsRemote::sftpEngine() const
         return nullptr;
     }
     return static_cast<SftpEngine *>(m_engine.get());
+}
+
+ScpEngine *FsRemote::scpEngine() const
+{
+    if (m_backend != FsBackend::Scp) {
+        return nullptr;
+    }
+    return static_cast<ScpEngine *>(m_engine.get());
 }
 
 void FsRemote::setProgressCallback(ProgressCallback callback)
@@ -1072,6 +1081,13 @@ void FsRemote::abortAsyncTransfer()
         });
         m_aio.reset();
     }
+    if (m_scpChunk) {
+        withBlockingSession([&]() {
+            m_scpChunk->abort();
+            return true;
+        });
+        m_scpChunk.reset();
+    }
     m_asyncWork.clear();
     m_asyncActive = false;
     m_activeJob.reset();
@@ -1085,9 +1101,21 @@ bool FsRemote::startAsyncCommon(qint64 bytesTotal, QString *error)
         }
         return false;
     }
-    if (m_backend != FsBackend::Sftp || sftpEngine() == nullptr) {
+    if (m_backend != FsBackend::Sftp && m_backend != FsBackend::Scp) {
+        if (error) {
+            *error = trFs("Async transfer requires SFTP or SCP");
+        }
+        return false;
+    }
+    if (m_backend == FsBackend::Sftp && sftpEngine() == nullptr) {
         if (error) {
             *error = trFs("Async transfer requires SFTP");
+        }
+        return false;
+    }
+    if (m_backend == FsBackend::Scp && scpEngine() == nullptr) {
+        if (error) {
+            *error = trFs("Async transfer requires SCP");
         }
         return false;
     }
@@ -1346,6 +1374,23 @@ bool FsRemote::prepareAsyncUploadJob(const QString &localPath,
     m_asyncFileMode = mode;
     const TransferOptions opts = optionsForMode(mode, resumePtr);
 
+    if (m_backend == FsBackend::Scp) {
+        // SCP has no filepart/resume; write the final remote path directly.
+        TransferOptions scpOpts = opts;
+        scpOpts.mode = TransferWriteMode::OverwriteFinal;
+        m_scpChunk = std::make_unique<ScpChunkTransfer>();
+        const bool started = withBlockingSession([&]() {
+            return m_scpChunk->startUpload(
+                scpEngine(), m_sshSession, localPath, remoteFinalPath, scpOpts, error);
+        });
+        if (!started) {
+            m_scpChunk.reset();
+            m_activeJob.reset();
+            return false;
+        }
+        return true;
+    }
+
     m_aio = std::make_unique<SftpAioTransfer>();
     const bool started = withBlockingSession([&]() {
         return m_aio->startUpload(sftpEngine(), localPath, remoteFinalPath, opts, error);
@@ -1400,6 +1445,22 @@ bool FsRemote::prepareAsyncDownloadJob(const QString &remoteFinalPath,
     m_asyncFileMode = mode;
     const TransferOptions opts = optionsForMode(mode, resumePtr);
 
+    if (m_backend == FsBackend::Scp) {
+        TransferOptions scpOpts = opts;
+        scpOpts.mode = TransferWriteMode::OverwriteFinal;
+        m_scpChunk = std::make_unique<ScpChunkTransfer>();
+        const bool started = withBlockingSession([&]() {
+            return m_scpChunk->startDownload(
+                scpEngine(), m_sshSession, remoteFinalPath, localFinalPath, scpOpts, error);
+        });
+        if (!started) {
+            m_scpChunk.reset();
+            m_activeJob.reset();
+            return false;
+        }
+        return true;
+    }
+
     m_aio = std::make_unique<SftpAioTransfer>();
     const bool started = withBlockingSession([&]() {
         return m_aio->startDownload(sftpEngine(), remoteFinalPath, localFinalPath, opts, error);
@@ -1414,11 +1475,16 @@ bool FsRemote::prepareAsyncDownloadJob(const QString &remoteFinalPath,
 
 bool FsRemote::finishAsyncFileFailure(QString *error)
 {
-    const qint64 partialBytes = m_aio ? m_aio->partialBytes() : 0;
+    const qint64 partialBytes =
+        m_aio ? m_aio->partialBytes() : (m_scpChunk ? m_scpChunk->partialBytes() : 0);
     const QString partialHash = m_aio ? m_aio->partialSha256PrefixHex() : QString();
     if (m_aio) {
         m_aio->abort();
         m_aio.reset();
+    }
+    if (m_scpChunk) {
+        m_scpChunk->abort();
+        m_scpChunk.reset();
     }
 
     const bool hashFail =
@@ -1468,7 +1534,9 @@ bool FsRemote::finishAsyncFileFailure(QString *error)
 
 FsRemote::TickResult FsRemote::tickAsyncAio(QString *error)
 {
-    if (!m_aio || !m_aio->isActive()) {
+    const bool useScp = m_scpChunk && m_scpChunk->isActive();
+    const bool useSftp = m_aio && m_aio->isActive();
+    if (!useScp && !useSftp) {
         return TickResult::Failed;
     }
 
@@ -1492,6 +1560,29 @@ FsRemote::TickResult FsRemote::tickAsyncAio(QString *error)
     const auto onProgress = [this](qint64 delta, const QString &name) {
         noteTransferProgress(delta, name);
     };
+
+    if (useScp) {
+        ScpChunkTransfer::TickResult r = ScpChunkTransfer::TickResult::Failed;
+        withBlockingSession([&]() {
+            r = m_scpChunk->tick(shouldCancel, onProgress, error);
+            return true;
+        });
+        if (r == ScpChunkTransfer::TickResult::Again) {
+            return TickResult::Running;
+        }
+        if (r == ScpChunkTransfer::TickResult::Done) {
+            if (m_activeJob) {
+                TransferJobStore::removeJob(*m_activeJob);
+            }
+            m_activeJob.reset();
+            m_scpChunk.reset();
+            return TickResult::Running;
+        }
+        finishAsyncFileFailure(error);
+        abortAsyncTransfer();
+        endTransfer();
+        return TickResult::Failed;
+    }
 
     // Sync sftp_read/write need a blocking session; keep each tick short (few chunks).
     SftpAioTransfer::TickResult r = SftpAioTransfer::TickResult::Failed;
@@ -1748,7 +1839,7 @@ FsRemote::TickResult FsRemote::tickAsync(QString *error)
     if (!m_asyncActive) {
         return TickResult::Idle;
     }
-    if (m_aio && m_aio->isActive()) {
+    if ((m_aio && m_aio->isActive()) || (m_scpChunk && m_scpChunk->isActive())) {
         return tickAsyncAio(error);
     }
     return tickAsyncWorkItem(error);

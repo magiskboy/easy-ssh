@@ -8,12 +8,11 @@
 
 #include "core/connection/Connection.h"
 #include "core/fs/FsRemote.h"
+#include "core/fs/SftpMetaIoHandler.h"
+#include "core/fs/SftpTransferIoHandler.h"
 #include "core/fs/SftpTypes.h"
 #include "core/fs/TransferTypes.h"
-#include "core/ssh/ExecIoHandler.h"
-#include "core/ssh/SftpMetaIoHandler.h"
-#include "core/ssh/SftpTransferIoHandler.h"
-#include "core/ssh/ShellIoHandler.h"
+#include "core/shell/ShellIoHandler.h"
 #include "core/ssh/SshIoLoop.h"
 #include "core/ssh/SshKnownHosts.h"
 #include "core/ssh/SshSession.h"
@@ -59,7 +58,7 @@ public:
     ~SshWorker() override;
 
 public slots:
-    /// Establish transport + SFTP, open initial shell, start poll timer.
+    /// Establish transport + SFTP, open initial shell, run SshIoLoop.
     void connectToHost(const Connection &connection,
                        const SessionCredentials &credentials,
                        const QUuid &initialShellId,
@@ -136,16 +135,14 @@ signals:
                          const QByteArray &stderrBytes,
                          const QString &errorMessage);
 
-private slots:
-    void pollChannel();
-
 private:
     bool waitForHostKeyTrust(HostKeyPrompt reason,
                              const QString &fingerprint,
                              const QString &contextLabel);
     bool verifyKnownHostForSession(ssh_session session, const QString &contextLabel);
     void cleanup();
-    void pollTunnels();
+    void acceptPendingRemoteForwards();
+    void ensureTunnelHostHandler();
     void startExecHandler(const QString &requestId, const QString &command);
     void onExecHandlerFinished(const QString &handlerId);
     void failPendingExecCommands(const QString &error);
@@ -185,7 +182,6 @@ private:
     class AgentForwardHost *m_agentForwardHost = nullptr;
     bool m_agentForwarding = false;
     bool m_agentForwardRequested = false;
-    class QTimer *m_ioTimer = nullptr;
     bool m_running = false;
     int m_execInFlight = 0;
     static constexpr int kMaxConcurrentExec = 4;

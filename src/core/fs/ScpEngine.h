@@ -29,6 +29,17 @@ public:
 
     void setCommandConfig(const ShellCommandSetConfig &config);
 
+    ShellCommandSet &commandSet() { return m_commands; }
+    const ShellCommandSet &commandSet() const { return m_commands; }
+    bool fullTimeOk() const { return m_fullTimeOk; }
+    bool fullTimeProbed() const { return m_fullTimeProbed; }
+    void setFullTimeProbed(bool probed, bool ok)
+    {
+        m_fullTimeProbed = probed;
+        m_fullTimeOk = ok;
+    }
+    QString lsOptions() const;
+
     Capabilities capabilities() const override;
 
     bool open(ssh_session session, QString *failureMessage = nullptr) override;
@@ -68,7 +79,6 @@ public:
 
 private:
     QString sessionError() const;
-    QString lsOptions() const;
     bool runChecked(const QString &command,
                     ShellExecRunner::Result *result,
                     QString *error,

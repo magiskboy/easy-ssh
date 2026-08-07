@@ -4,19 +4,20 @@
 
 #include "SshWorker.h"
 
+#include "core/fs/ScpMetaIoHandler.h"
+#include "core/fs/SftpMetaIoHandler.h"
+#include "core/fs/SftpTransferIoHandler.h"
 #include "core/fs/TransferJobStore.h"
 #include "core/settings/AppSettings.h"
 #include "core/ssh/AgentForwardHost.h"
 #include "core/ssh/ExecIoHandler.h"
-#include "core/ssh/SftpMetaIoHandler.h"
-#include "core/ssh/SftpTransferIoHandler.h"
 #include "core/tunnel/RemoteTunnelSession.h"
+#include "core/tunnel/TunnelHostIoHandler.h"
 #include "core/util/Logging.h"
 
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QScopeGuard>
-#include <QTimer>
 
 #include <algorithm>
 #include <libssh/libssh.h>
@@ -148,12 +149,8 @@ void SshWorker::connectToHost(const Connection &connection,
         emit sftpUnavailable(sftpFailure);
     }
 
-    if (m_ioTimer == nullptr) {
-        m_ioTimer = new QTimer(this);
-        connect(m_ioTimer, &QTimer::timeout, this, &SshWorker::pollChannel);
-    }
     m_session.resetKeepAliveClock();
-    m_ioTimer->start(20);
+    ensureTunnelHostHandler();
 
     // Blocks until disconnectSession / fault / EOF stops the loop.
     m_ioLoop.run();
@@ -250,6 +247,7 @@ void SshWorker::tryRequestAgentForwarding(ssh_channel firstShellChannel)
     }
 
     auto *host = new AgentForwardHost(this);
+    host->setIoLoop(&m_ioLoop);
     QString error;
     if (!host->start(m_session.handle(), firstShellChannel, &error)) {
         emit agentForwardingWarning(error.isEmpty() ? tr("Failed to enable agent forwarding")
@@ -307,9 +305,6 @@ void SshWorker::disconnectSession()
     m_cancelRequested.store(true);
     respondHostKeyTrust(false);
 
-    if (m_ioTimer) {
-        m_ioTimer->stop();
-    }
     m_ioLoop.stop();
 
     if (m_running && m_fs.isOpen()) {
@@ -405,7 +400,7 @@ void SshWorker::emitTransferFailure(const QString &error)
 
 bool SshWorker::useAsyncFs() const
 {
-    return m_fs.backend() == FsBackend::Sftp;
+    return m_fs.backend() == FsBackend::Sftp || m_fs.backend() == FsBackend::Scp;
 }
 
 void SshWorker::enqueueFsOp(std::function<void()> op)
@@ -438,24 +433,62 @@ void SshWorker::onFsHandlerFinished(const QString &handlerId)
 
 void SshWorker::startMetaHandler(SftpMetaIoHandler::Request request)
 {
-    SftpMetaIoHandler::Hooks hooks;
-    hooks.listed = [this](const QString &path, const QVector<RemoteEntry> &entries) {
+    auto listed = [this](const QString &path, const QVector<RemoteEntry> &entries) {
         QVector<RemoteEntry> filtered = entries;
         filterTransferPartials(&filtered);
         emit directoryListed(path, filtered);
     };
-    hooks.resolved = [this](const QString &path, bool isDir, bool ok, const QString &error) {
+    auto resolved = [this](const QString &path, bool isDir, bool ok, const QString &error) {
         emit entryResolved(path, isDir, ok, error);
     };
-    hooks.canonicalized = [this](const QString &requested, const QString &canonical) {
+    auto canonicalized = [this](const QString &requested, const QString &canonical) {
         emit pathCanonicalized(requested, canonical);
     };
-    hooks.finished = [this](const QString &message) { emit sftpFinished(message); };
-    hooks.failed = [this](const QString &message) {
+    auto finished = [this](const QString &message) { emit sftpFinished(message); };
+    auto failed = [this](const QString &message) {
         if (!message.isEmpty()) {
             emit sftpError(message);
         }
     };
+
+    if (m_fs.backend() == FsBackend::Scp) {
+        ScpMetaIoHandler::Request scpReq;
+        scpReq.op = static_cast<ScpMetaIoHandler::Op>(static_cast<uint8_t>(request.op));
+        scpReq.path = request.path;
+        scpReq.from = request.from;
+        scpReq.to = request.to;
+        scpReq.target = request.target;
+        scpReq.linkPath = request.linkPath;
+        scpReq.recursive = request.recursive;
+
+        ScpMetaIoHandler::Hooks hooks;
+        hooks.listed = listed;
+        hooks.resolved = resolved;
+        hooks.canonicalized = canonicalized;
+        hooks.finished = finished;
+        hooks.failed = failed;
+
+        auto handler =
+            std::make_unique<ScpMetaIoHandler>(&m_fs, std::move(scpReq), std::move(hooks));
+        const QString id = handler->id();
+        handler->setCompletedHook([this, id]() { onFsHandlerFinished(id); });
+
+        QString error;
+        if (!m_ioLoop.addHandler(std::move(handler), &error)) {
+            m_fsBusy = false;
+            emit sftpError(error.isEmpty() ? tr("Failed to start remote FS operation") : error);
+            return;
+        }
+        m_ioLoop.wake();
+        return;
+    }
+
+    SftpMetaIoHandler::Hooks hooks;
+    hooks.listed = listed;
+    hooks.resolved = resolved;
+    hooks.canonicalized = canonicalized;
+    hooks.finished = finished;
+    hooks.failed = failed;
 
     auto handler = std::make_unique<SftpMetaIoHandler>(&m_fs, std::move(request), std::move(hooks));
     const QString id = handler->id();
@@ -774,37 +807,42 @@ void SshWorker::canonicalizePath(const QString &path)
     enqueueFsOp([this, req]() { startMetaHandler(req); });
 }
 
-void SshWorker::pollChannel()
+void SshWorker::ensureTunnelHostHandler()
 {
-    if (!m_running) {
+    if (m_ioLoop.handler(TunnelHostIoHandler::handlerId()) != nullptr) {
         return;
     }
 
-    if (!m_session.isConnected()) {
-        disconnectSession();
-        return;
-    }
-
-    // Shell I/O is on SshIoLoop callbacks; timer only services tunnels / agent / keepalive.
-    pollTunnels();
-    if (m_agentForwardHost) {
-        m_agentForwardHost->poll();
-    }
-
-    if (!m_session.isConnected()) {
-        disconnectSession();
-        return;
-    }
+    TunnelHostIoHandler::Hooks hooks;
+    hooks.acceptRemoteForwards = [this]() { acceptPendingRemoteForwards(); };
+    hooks.pollKeepAlive = [this](QString *error) {
+        if (!m_running || !m_session.isConnected()) {
+            return true;
+        }
+        return m_session.pollKeepAlive(false, error);
+    };
+    hooks.keepaliveFailed = [this](const QString &error) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, error]() {
+                emit errorOccurred(error);
+                disconnectSession();
+            },
+            Qt::QueuedConnection);
+    };
 
     QString error;
-    if (!m_session.pollKeepAlive(false, &error)) {
-        emit errorOccurred(error);
-        disconnectSession();
+    if (!m_ioLoop.addHandler(std::make_unique<TunnelHostIoHandler>(std::move(hooks)), &error)) {
+        qCWarning(lcSsh) << "Failed to add TunnelHostIoHandler:" << error;
     }
 }
 
-void SshWorker::pollTunnels()
+void SshWorker::acceptPendingRemoteForwards()
 {
+    if (!m_running || !m_session.isConnected()) {
+        return;
+    }
+
     QList<RemoteTunnelSession *> remotes;
     for (ITunnelSession *session : m_tunnelSessions) {
         if (auto *remote = qobject_cast<RemoteTunnelSession *>(session)) {
@@ -812,12 +850,6 @@ void SshWorker::pollTunnels()
         }
     }
     acceptRemoteForwards(m_session.handle(), remotes);
-
-    for (ITunnelSession *session : m_tunnelSessions) {
-        if (session) {
-            session->poll();
-        }
-    }
 }
 
 void SshWorker::wireTunnelSession(ITunnelSession *session)
@@ -874,9 +906,6 @@ void SshWorker::cleanup()
 {
     m_running = false;
 
-    if (m_ioTimer) {
-        m_ioTimer->stop();
-    }
     m_ioLoop.stop();
 
     stopAllTunnels();
@@ -899,6 +928,7 @@ void SshWorker::cleanup()
         m_shellHandlers.remove(id);
         m_ioLoop.removeHandler(id.toString(QUuid::WithoutBraces));
     }
+    m_ioLoop.removeHandler(TunnelHostIoHandler::handlerId());
     m_ioLoop.detachSession();
     m_session.cleanup();
 
@@ -1008,7 +1038,7 @@ void SshWorker::startTunnel(const TunnelDefinition &def)
 
     emit tunnelStatusChanged(def.id, QStringLiteral("Starting"), QString());
 
-    ITunnelSession *session = createTunnelSession(def, m_session.handle(), this);
+    ITunnelSession *session = createTunnelSession(def, m_session.handle(), &m_ioLoop, this);
     if (session == nullptr) {
         const QString message = tr("Unsupported tunnel type");
         emit tunnelError(def.id, message);

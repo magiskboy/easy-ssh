@@ -18,14 +18,8 @@ set(EASY_SSH_CORE_SOURCES
     core/ssh/SshIoLoop.cpp
     core/ssh/SshIoLoop.h
     core/ssh/SshIoHandler.h
-    core/ssh/ShellIoHandler.cpp
-    core/ssh/ShellIoHandler.h
     core/ssh/ExecIoHandler.cpp
     core/ssh/ExecIoHandler.h
-    core/ssh/SftpMetaIoHandler.cpp
-    core/ssh/SftpMetaIoHandler.h
-    core/ssh/SftpTransferIoHandler.cpp
-    core/ssh/SftpTransferIoHandler.h
     core/ssh/AgentForwardHost.cpp
     core/ssh/AgentForwardHost.h
     core/ssh/SshKnownHosts.cpp
@@ -45,6 +39,8 @@ set(EASY_SSH_CORE_SOURCES
     core/session/WorkspaceState.h
     core/shell/SshShell.cpp
     core/shell/SshShell.h
+    core/shell/ShellIoHandler.cpp
+    core/shell/ShellIoHandler.h
     core/fs/FsEngine.h
     core/fs/FsRemote.cpp
     core/fs/FsRemote.h
@@ -52,8 +48,16 @@ set(EASY_SSH_CORE_SOURCES
     core/fs/SftpAioTransfer.h
     core/fs/SftpEngine.cpp
     core/fs/SftpEngine.h
+    core/fs/SftpMetaIoHandler.cpp
+    core/fs/SftpMetaIoHandler.h
+    core/fs/SftpTransferIoHandler.cpp
+    core/fs/SftpTransferIoHandler.h
     core/fs/ScpEngine.cpp
     core/fs/ScpEngine.h
+    core/fs/ScpChunkTransfer.cpp
+    core/fs/ScpChunkTransfer.h
+    core/fs/ScpMetaIoHandler.cpp
+    core/fs/ScpMetaIoHandler.h
     core/fs/TransferTypes.h
     core/fs/TransferJobStore.cpp
     core/fs/TransferJobStore.h
@@ -105,6 +109,8 @@ set(EASY_SSH_CORE_SOURCES
     core/tunnel/ITunnelSession.h
     core/tunnel/TunnelBridge.cpp
     core/tunnel/TunnelBridge.h
+    core/tunnel/TunnelHostIoHandler.cpp
+    core/tunnel/TunnelHostIoHandler.h
     core/tunnel/LocalTunnelSession.cpp
     core/tunnel/LocalTunnelSession.h
     core/tunnel/RemoteTunnelSession.cpp
