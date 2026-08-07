@@ -178,7 +178,18 @@ void ConnectionManagerDialog::selectConnection(const QUuid &id)
     if (id.isNull()) {
         return;
     }
+    // Programmatic list selection blocks onSelectionChanged, so load the
+    // editor explicitly (same pattern as save/duplicate/import).
+    if (m_panelMode == PanelMode::Existing && m_loadedConnection && m_loadedConnection->id == id) {
+        selectIdInList(id);
+        updateActionButtons();
+        return;
+    }
+    if (!ensureCanLeaveSelection()) {
+        return;
+    }
     selectIdInList(id);
+    loadSelection(id);
 }
 
 void ConnectionManagerDialog::closeEvent(QCloseEvent *event)
