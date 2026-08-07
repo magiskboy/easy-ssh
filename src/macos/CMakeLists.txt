@@ -425,10 +425,10 @@ if(DEFINED EASY_SSH_QT_PREFIX)
     endforeach()
 endif()
 
-# Sign nested code inside-out (TN2206). Avoid bash `$` loops under CMake
-# VERBATIM+Ninja — `$fw`/`$f` escaping is unreliable and left Intel CI with
-# unsigned bundled dylibs (ARM often still worked via linker auto ad-hoc sign).
-# Do not use --deep on the .app: Qt framework layout breaks.
+# Sign nested code inside-out (TN2206). Sign only our built dylibs — do not
+# re-sign Qt frameworks: codesign rejects their layout with "bundle format is
+# ambiguous", and the SDK copies already carry valid signatures. Avoid bash
+# `$` loops under CMake VERBATIM+Ninja. Do not use --deep on the .app.
 set(_easy_ssh_native_codesign_cmds
     COMMAND codesign --force --sign -
         "${EASY_SSH_NATIVE_FW_DIR}/$<TARGET_FILE_NAME:easy-ssh-bridge>"
@@ -444,17 +444,6 @@ if(TARGET qt6keychain)
         COMMAND codesign --force --sign -
             "${EASY_SSH_NATIVE_FW_DIR}/$<TARGET_FILE_NAME:qt6keychain>"
     )
-endif()
-if(DEFINED EASY_SSH_QT_PREFIX)
-    set(_qt_lib_for_sign "${EASY_SSH_QT_PREFIX}/lib")
-    foreach(_fwname QtCore QtGui QtNetwork QtDBus)
-        if(EXISTS "${_qt_lib_for_sign}/${_fwname}.framework")
-            list(APPEND _easy_ssh_native_codesign_cmds
-                COMMAND codesign --force --sign -
-                    "${EASY_SSH_NATIVE_FW_DIR}/${_fwname}.framework"
-            )
-        endif()
-    endforeach()
 endif()
 list(APPEND _easy_ssh_native_codesign_cmds
     COMMAND codesign --force --sign - "${EASY_SSH_NATIVE_EXE}"

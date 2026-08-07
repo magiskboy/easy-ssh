@@ -627,8 +627,11 @@ void ScpMetaIoHandler::onIdle()
     }
 }
 
-int ScpMetaIoHandler::onData(
-    ssh_session session, ssh_channel channel, void *data, uint32_t len, int isStderr)
+int ScpMetaIoHandler::onData(ssh_session session,
+                             ssh_channel channel,
+                             void *data,
+                             uint32_t len, // NOLINT(bugprone-easily-swappable-parameters)
+                             int isStderr) // NOLINT(bugprone-easily-swappable-parameters)
 {
     Q_UNUSED(session);
     Q_UNUSED(channel);
