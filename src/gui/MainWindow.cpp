@@ -695,6 +695,10 @@ void MainWindow::setupUi()
             this,
             &MainWindow::openConnectionManager);
     connect(m_connectionList,
+            &ConnectionListWidget::connectAfterCreateRequested,
+            this,
+            &MainWindow::connectAfterCreating);
+    connect(m_connectionList,
             &ConnectionListWidget::statusMessage,
             this,
             [this](const QString &, ErrorNotifier::Level) {
@@ -1203,6 +1207,14 @@ void MainWindow::createConnectionFromQuery(const QString &query)
     }
     connect(dialog, &QDialog::accepted, this, [this, dialog]() {
         const Connection connection = dialog->connection();
+        const bool connectAfter = dialog->connectAfterAccept();
+        const QString password = dialog->password();
+        const bool passwordProvided = dialog->passwordProvided();
+        const QString gatewayPassword = dialog->gatewayPassword();
+        const bool gatewayPasswordProvided = dialog->gatewayPasswordProvided();
+        const QString gatewayPassphrase = dialog->gatewayPassphrase();
+        const bool gatewayPassphraseProvided = dialog->gatewayPassphraseProvided();
+
         if (!m_connectionModel->add(connection)) {
             ErrorNotifier::notify(this,
                                   tr("Error"),
@@ -1215,14 +1227,14 @@ void MainWindow::createConnectionFromQuery(const QString &query)
                                                connection,
                                                AuthType::Password,
                                                false,
-                                               dialog->password(),
-                                               dialog->passwordProvided(),
+                                               password,
+                                               passwordProvided,
                                                dialog->passphrase(),
                                                dialog->passphraseProvided(),
-                                               dialog->gatewayPassword(),
-                                               dialog->gatewayPasswordProvided(),
-                                               dialog->gatewayPassphrase(),
-                                               dialog->gatewayPassphraseProvided());
+                                               gatewayPassword,
+                                               gatewayPasswordProvided,
+                                               gatewayPassphrase,
+                                               gatewayPassphraseProvided);
 
         rebuildConnectionsListMenu();
         if (m_sessionTabs) {
@@ -1231,27 +1243,46 @@ void MainWindow::createConnectionFromQuery(const QString &query)
         setStatusText(tr("Created connection: %1").arg(connection.name),
                       ErrorNotifier::Level::Success);
 
-        // Avoid racing the async keychain write / skip keychain when the user opted out.
-        if (connection.authType == AuthType::Password && dialog->passwordProvided()) {
-            SessionCredentials credentials;
-            credentials.targetSecret = dialog->password();
-            if (connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials) {
-                if (connection.jumpHops.first().authType == AuthType::Password &&
-                    dialog->gatewayPasswordProvided()) {
-                    credentials.gatewaySecret = dialog->gatewayPassword();
-                } else if (connection.jumpHops.first().authType == AuthType::PrivateKey &&
-                           dialog->gatewayPassphraseProvided()) {
-                    credentials.gatewaySecret = dialog->gatewayPassphrase();
-                }
-            }
-            finishConnect(connection, credentials);
-        } else {
-            openConnectionById(connection.id);
+        if (connectAfter) {
+            connectAfterCreating(connection,
+                                 password,
+                                 passwordProvided,
+                                 gatewayPassword,
+                                 gatewayPasswordProvided,
+                                 gatewayPassphrase,
+                                 gatewayPassphraseProvided);
         }
     });
     dialog->show();
     dialog->raise();
     dialog->activateWindow();
+}
+
+void MainWindow::connectAfterCreating(const Connection &connection,
+                                      const QString &password,
+                                      bool passwordProvided,
+                                      const QString &gatewayPassword,
+                                      bool gatewayPasswordProvided,
+                                      const QString &gatewayPassphrase,
+                                      bool gatewayPassphraseProvided)
+{
+    // Avoid racing the async keychain write / skip keychain when the user opted out.
+    if (connection.authType == AuthType::Password && passwordProvided) {
+        SessionCredentials credentials;
+        credentials.targetSecret = password;
+        if (connection.usesJumpHost() && !connection.jumpHops.first().useTargetCredentials) {
+            if (connection.jumpHops.first().authType == AuthType::Password &&
+                gatewayPasswordProvided) {
+                credentials.gatewaySecret = gatewayPassword;
+            } else if (connection.jumpHops.first().authType == AuthType::PrivateKey &&
+                       gatewayPassphraseProvided) {
+                credentials.gatewaySecret = gatewayPassphrase;
+            }
+        }
+        finishConnect(connection, credentials);
+        return;
+    }
+    openConnectionById(connection.id);
 }
 
 void MainWindow::focusShell(const QUuid &connectionId, const QUuid &shellId)

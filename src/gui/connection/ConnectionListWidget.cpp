@@ -92,6 +92,14 @@ void ConnectionListWidget::createConnection()
     auto *dialog = new ConnectionDialog(ConnectionDialog::Mode::Create, window());
     connect(dialog, &QDialog::accepted, this, [this, dialog]() {
         const Connection connection = dialog->connection();
+        const bool connectAfter = dialog->connectAfterAccept();
+        const QString password = dialog->password();
+        const bool passwordProvided = dialog->passwordProvided();
+        const QString gatewayPassword = dialog->gatewayPassword();
+        const bool gatewayPasswordProvided = dialog->gatewayPasswordProvided();
+        const QString gatewayPassphrase = dialog->gatewayPassphrase();
+        const bool gatewayPassphraseProvided = dialog->gatewayPassphraseProvided();
+
         if (!m_model->add(connection)) {
             ErrorNotifier::notify(this,
                                   tr("Error"),
@@ -103,17 +111,27 @@ void ConnectionListWidget::createConnection()
         persistSecrets(connection,
                        AuthType::Password,
                        false,
-                       dialog->password(),
-                       dialog->passwordProvided(),
+                       password,
+                       passwordProvided,
                        dialog->passphrase(),
                        dialog->passphraseProvided(),
-                       dialog->gatewayPassword(),
-                       dialog->gatewayPasswordProvided(),
-                       dialog->gatewayPassphrase(),
-                       dialog->gatewayPassphraseProvided());
+                       gatewayPassword,
+                       gatewayPasswordProvided,
+                       gatewayPassphrase,
+                       gatewayPassphraseProvided);
 
         emit statusMessage(tr("Created connection: %1").arg(connection.name),
                            ErrorNotifier::Level::Success);
+
+        if (connectAfter) {
+            emit connectAfterCreateRequested(connection,
+                                             password,
+                                             passwordProvided,
+                                             gatewayPassword,
+                                             gatewayPasswordProvided,
+                                             gatewayPassphrase,
+                                             gatewayPassphraseProvided);
+        }
     });
     dialog->show();
     dialog->raise();

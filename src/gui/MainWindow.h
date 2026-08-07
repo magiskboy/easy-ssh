@@ -107,6 +107,13 @@ private:
     void populatePaletteConnections();
     void populatePaletteShells();
     void createConnectionFromQuery(const QString &query);
+    void connectAfterCreating(const Connection &connection,
+                              const QString &password,
+                              bool passwordProvided,
+                              const QString &gatewayPassword,
+                              bool gatewayPasswordProvided,
+                              const QString &gatewayPassphrase,
+                              bool gatewayPassphraseProvided);
     void focusShell(const QUuid &connectionId, const QUuid &shellId);
     void applyAppSettings();
     void rebindShortcuts();

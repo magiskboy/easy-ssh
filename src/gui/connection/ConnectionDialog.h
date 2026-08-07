@@ -26,6 +26,9 @@ public:
     void setConnection(const Connection &connection);
     Connection connection() const;
 
+    /// True when the dialog was accepted via "Save and Connect" (Create mode only).
+    bool connectAfterAccept() const { return m_connectAfterAccept; }
+
     QString password() const;
     QString passphrase() const;
     bool passwordProvided() const;
@@ -38,6 +41,9 @@ public:
 
 private:
     void accept() override;
+    void acceptSave(bool connectAfter);
 
+    Mode m_mode = Mode::Create;
     ConnectionEditor *m_editor = nullptr;
+    bool m_connectAfterAccept = false;
 };

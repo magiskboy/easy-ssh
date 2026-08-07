@@ -50,6 +50,14 @@ signals:
                           const QString &targetSecret,
                           bool gatewaySecretUpdated,
                           const QString &gatewaySecret);
+    /// Emitted after a new connection is saved when the user chose Save and Connect.
+    void connectAfterCreateRequested(const Connection &connection,
+                                     const QString &password,
+                                     bool passwordProvided,
+                                     const QString &gatewayPassword,
+                                     bool gatewayPasswordProvided,
+                                     const QString &gatewayPassphrase,
+                                     bool gatewayPassphraseProvided);
     void statusMessage(const QString &message, ErrorNotifier::Level level);
     void manageConnectionsRequested(const QUuid &selectId);
 
