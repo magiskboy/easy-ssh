@@ -1,5 +1,0 @@
-# Keep build context focused; keys/fixtures must still be included.
-keys/
-*.md
-!README.md
-!fixtures/**/README

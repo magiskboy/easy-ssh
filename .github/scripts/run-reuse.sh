@@ -4,7 +4,6 @@
 #
 # In-file SPDX headers apply only to C / C++ / Objective-C / Objective-C++ /
 # Swift under src/ and tests/. Other tracked files use REUSE.toml annotations.
-# sandbox/ is intentionally out of scope for lint.
 #
 # Usage:
 #   .github/scripts/run-reuse.sh lint
@@ -40,7 +39,7 @@ Usage:
   .github/scripts/run-reuse.sh -h | --help
 
 Commands:
-  lint       Verify tracked files (excludes sandbox/) against REUSE / SPDX
+  lint       Verify tracked files against REUSE / SPDX
   annotate   Add / refresh SPDX headers on src/ and tests/ language sources
 
 annotate options:
@@ -85,7 +84,7 @@ cmd_lint() {
   while IFS= read -r line; do
     [[ -f "$line" ]] || continue
     files+=("$line")
-  done < <(git ls-files | grep -v '^sandbox/')
+  done < <(git ls-files)
 
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "error: no files to lint" >&2
