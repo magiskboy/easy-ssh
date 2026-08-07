@@ -236,31 +236,26 @@ jobs:
         run: |
           set -euo pipefail
           staging="${{ github.workspace }}/staging"
-          case "${{ matrix.ui }}" in
-            native)
-              cmake --preset release-macos-native \
-                -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}" \
-                -DCMAKE_INSTALL_PREFIX="$staging"
-              ;;
-            *)
-              cmake_args=(
-                --preset release
-                -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}"
-                -DCMAKE_INSTALL_PREFIX="$staging"
-              )
-              if [[ "${{ matrix.os_family }}" == "macos" ]]; then
-                # Keep the Qt Widgets DMG independent of the SwiftUI shell.
-                cmake_args+=(-DEASY_SSH_NATIVE_MACOS=OFF)
-              fi
-              cmake "${cmake_args[@]}"
-              ;;
-          esac
+          cmake_args=(
+            --preset release
+            -DEASY_SSH_PACKAGE_SUFFIX="${{ matrix.target }}"
+            -DCMAKE_INSTALL_PREFIX="$staging"
+          )
+          if [[ "${{ matrix.ui }}" == "native" ]]; then
+            # Separate tree so the SwiftUI package does not mix with Widgets.
+            cmake_args+=(-B build-release-native)
+            cmake_args+=(-DEASY_SSH_BUILD_QT_WIDGETS=OFF -DEASY_SSH_NATIVE_MACOS=ON)
+          elif [[ "${{ matrix.os_family }}" == "macos" ]]; then
+            # Keep the Qt Widgets DMG independent of the SwiftUI shell.
+            cmake_args+=(-DEASY_SSH_NATIVE_MACOS=OFF)
+          fi
+          cmake "${cmake_args[@]}"
 
       - name: Build
         run: |
           set -euo pipefail
           if [[ "${{ matrix.ui }}" == "native" ]]; then
-            cmake --build --preset release-macos-native --parallel
+            cmake --build build-release-native --parallel
           else
             cmake --build --preset release --parallel
           fi

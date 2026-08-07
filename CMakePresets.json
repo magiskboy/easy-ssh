@@ -27,23 +27,6 @@
       }
     },
     {
-      "name": "release-macos-native",
-      "displayName": "Release macOS SwiftUI (easy-ssh-native)",
-      "inherits": "release",
-      "binaryDir": "${sourceDir}/build-release-native",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_TESTING": "OFF",
-        "EASY_SSH_BUILD_QT_WIDGETS": "OFF",
-        "EASY_SSH_NATIVE_MACOS": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Darwin"
-      }
-    },
-    {
       "name": "tests",
       "displayName": "Unit tests (CI / local)",
       "generator": "Ninja",
@@ -62,15 +45,6 @@
     {
       "name": "release",
       "configurePreset": "release"
-    },
-    {
-      "name": "release-macos-native",
-      "configurePreset": "release-macos-native",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Darwin"
-      }
     },
     {
       "name": "tests",

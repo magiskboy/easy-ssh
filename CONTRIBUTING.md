@@ -104,8 +104,7 @@ CMake presets (all use local aqt Qt + FetchContent deps):
 | Preset | Purpose | Binary dir |
 |--------|---------|------------|
 | `debug` | Local development | `build/` |
-| `release` | Packages / CI (Qt Widgets by default) | `build-release/` |
-| `release-macos-native` | macOS SwiftUI shell only (`easy-ssh-native`) | `build-release-native/` |
+| `release` | Packages / CI | `build-release/` |
 | `tests` | Unit tests (CI / local) | `build-tests/` |
 
 ```bash
@@ -113,22 +112,18 @@ CMake presets (all use local aqt Qt + FetchContent deps):
 cmake --preset debug
 cmake --build --preset debug
 ./build/bin/easy-ssh
+# On Apple, also: open ./build/bin/easy-ssh-native.app
 
-# Release (Qt Widgets)
+# Release
 cmake --preset release
 cmake --build --preset release
 ./build-release/bin/easy-ssh
-
-# Release (macOS SwiftUI only — Darwin)
-cmake --preset release-macos-native
-cmake --build --preset release-macos-native
-open ./build-release-native/bin/easy-ssh-native.app
 ```
 
-On Apple, both UIs can be enabled together (default for `debug` / `release`). CI builds them as **separate** packages:
+On Apple, both UIs are enabled by default (`EASY_SSH_BUILD_QT_WIDGETS` + `EASY_SSH_NATIVE_MACOS`). CI builds them as **separate** packages via the same `release` preset with option overrides:
 
 - Qt Widgets: `-DEASY_SSH_NATIVE_MACOS=OFF` → `easy-ssh-macos-{arm64,amd64}.dmg`
-- SwiftUI: `release-macos-native` → `easy-ssh-macos-{arm64,amd64}-native.dmg`
+- SwiftUI: `-DEASY_SSH_BUILD_QT_WIDGETS=OFF -DEASY_SSH_NATIVE_MACOS=ON` → `easy-ssh-macos-{arm64,amd64}-native.dmg`
 
 Options:
 
