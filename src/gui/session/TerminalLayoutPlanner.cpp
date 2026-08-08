@@ -12,7 +12,8 @@ constexpr int kRight = 0x02;
 constexpr int kBottom = 0x08;
 } // namespace
 
-TerminalPlacement TerminalLayoutPlanner::decide(const TerminalLayoutSnapshot &snapshot, Mode mode) const
+TerminalPlacement TerminalLayoutPlanner::decide(const TerminalLayoutSnapshot &snapshot,
+                                                Mode mode) const
 {
     TerminalPlacement placement;
     placement.dockArea = kCenter;

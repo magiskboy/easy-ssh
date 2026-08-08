@@ -808,7 +808,9 @@ void TerminalSessionWidget::syncPtySize()
     const QUuid terminalId = m_primaryTerminalId;
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, terminalId, cols, rows]() { worker->changePtySize(terminalId, cols, rows); },
+        [worker = m_worker, terminalId, cols, rows]() {
+            worker->changePtySize(terminalId, cols, rows);
+        },
         Qt::QueuedConnection);
 }
 

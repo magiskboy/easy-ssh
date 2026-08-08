@@ -22,7 +22,8 @@ TerminalDockHost::TerminalDockHost(QWidget *parent) : QWidget(parent)
     m_termHolder = new QWidget(this);
     m_termHolder->hide();
 
-    m_emptyLabel = new QLabel(tr("No open terminals.\nUse Terminal → New Terminal to open one."), this);
+    m_emptyLabel =
+        new QLabel(tr("No open terminals.\nUse Terminal → New Terminal to open one."), this);
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setWordWrap(true);
 
@@ -49,10 +50,10 @@ TerminalDockHost::~TerminalDockHost()
 }
 
 bool TerminalDockHost::pinTerminal(const QUuid &terminalId,
-                             const QString &title,
-                             QWidget *term,
-                             int dockArea,
-                             const QUuid &relativeTo)
+                                   const QString &title,
+                                   QWidget *term,
+                                   int dockArea,
+                                   const QUuid &relativeTo)
 {
     if (terminalId.isNull() || !term || !m_manager) {
         return false;
@@ -116,8 +117,9 @@ bool TerminalDockHost::eventFilter(QObject *watched, QEvent *event)
     const QUuid terminalId = terminalIdForDock(tab->dockWidget());
     if (!terminalId.isNull()) {
         menu.addSeparator();
-        menu.addAction(
-            tr("Rename…"), this, [this, terminalId]() { emit terminalRenameRequested(terminalId); });
+        menu.addAction(tr("Rename…"), this, [this, terminalId]() {
+            emit terminalRenameRequested(terminalId);
+        });
         menu.exec(ce->globalPos());
         ce->accept();
         return true;
@@ -176,9 +178,9 @@ bool TerminalDockHost::isPinned(const QUuid &terminalId) const
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool TerminalDockHost::pinTool(const QString &toolId,
-                            const QString &title,
-                            QWidget *widget,
-                            int dockArea)
+                               const QString &title,
+                               QWidget *widget,
+                               int dockArea)
 {
     if (toolId.isEmpty() || !widget || !m_manager) {
         return false;

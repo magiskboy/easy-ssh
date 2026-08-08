@@ -68,7 +68,8 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
     root->addWidget(m_overlay, 0);
     root->addWidget(m_dockHost, 1);
 
-    connect(m_dockHost, &TerminalDockHost::terminalFocused, this, &SessionPage::onDockTerminalFocused);
+    connect(
+        m_dockHost, &TerminalDockHost::terminalFocused, this, &SessionPage::onDockTerminalFocused);
     connect(m_dockHost,
             &TerminalDockHost::terminalCloseRequested,
             this,
@@ -119,7 +120,8 @@ SessionPage::SessionPage(Session *session, QWidget *parent) : QWidget(parent), m
 
     connect(m_session, &Session::stateChanged, this, &SessionPage::onSessionStateChanged);
     connect(m_session, &Session::terminalsChanged, this, &SessionPage::onTerminalsChanged);
-    connect(m_session, &Session::activeTerminalChanged, this, &SessionPage::onActiveTerminalChanged);
+    connect(
+        m_session, &Session::activeTerminalChanged, this, &SessionPage::onActiveTerminalChanged);
     connect(m_session, &Session::shellData, this, &SessionPage::onTerminalData);
     connect(m_session,
             &Session::hostKeyPrompt,
@@ -338,8 +340,9 @@ void SessionPage::continueWorkspaceRestore()
     }
 
     const QString focusTool = m_restoreEntry.activeToolId;
-    const QUuid focusTerminal = m_restoreEntry.activeTerminalId.isNull() ? m_session->activeTerminalId()
-                                                                   : m_restoreEntry.activeTerminalId;
+    const QUuid focusTerminal = m_restoreEntry.activeTerminalId.isNull()
+                                    ? m_session->activeTerminalId()
+                                    : m_restoreEntry.activeTerminalId;
     if (!focusTool.isEmpty() && m_dockHost->isToolPinned(focusTool)) {
         m_dockHost->focusTool(focusTool);
     } else if (!focusTerminal.isNull()) {
@@ -424,7 +427,8 @@ void SessionPage::onDockTerminalRenameRequested(const QUuid &terminalId)
     }
     const QString current = terminalTitle(terminalId);
     bool ok = false;
-    const QString name = UiHelpers::getText(this, {tr("Rename Terminal"), tr("Name:"), current}, &ok);
+    const QString name =
+        UiHelpers::getText(this, {tr("Rename Terminal"), tr("Name:"), current}, &ok);
     if (!ok || name.trimmed().isEmpty()) {
         return;
     }
@@ -481,7 +485,9 @@ void SessionPage::onTermContextMenuRequested(const QPoint &pos)
     menu.exec(term->mapToGlobal(pos));
 }
 
-void SessionPage::pinTerminalToLayout(const QUuid &terminalId, int dockArea, const QUuid &relativeTo)
+void SessionPage::pinTerminalToLayout(const QUuid &terminalId,
+                                      int dockArea,
+                                      const QUuid &relativeTo)
 {
     if (m_closingTerminalIds.contains(terminalId)) {
         return;

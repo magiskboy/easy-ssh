@@ -63,11 +63,11 @@ bool SshTerminal::pumpAgain(const AgainPump &againPump, QString *errorOut, const
 }
 
 bool SshTerminal::open(ssh_session session,
-                    int cols,
-                    int rows,
-                    QString *errorOut,
-                    const AgainPump &againPump,
-                    const BeforeTerminalHook &beforeTerminal)
+                       int cols,
+                       int rows,
+                       QString *errorOut,
+                       const AgainPump &againPump,
+                       const BeforeTerminalHook &beforeTerminal)
 {
     cleanup();
     m_session = session;

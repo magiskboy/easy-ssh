@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "core/terminal/SshTerminal.h"
 #include "core/ssh/SshIoHandler.h"
+#include "core/terminal/SshTerminal.h"
 
 #include <QByteArray>
 #include <QString>
@@ -36,7 +36,8 @@ public:
         std::function<bool(ssh_channel channel, QString *errorOut)> beforeTerminal;
     };
 
-    TerminalIoHandler(const QUuid &terminalId, ssh_session session, int cols, int rows, Hooks hooks);
+    TerminalIoHandler(
+        const QUuid &terminalId, ssh_session session, int cols, int rows, Hooks hooks);
     ~TerminalIoHandler() override;
 
     QString id() const override;

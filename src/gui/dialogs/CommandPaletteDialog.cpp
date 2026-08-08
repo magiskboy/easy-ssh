@@ -350,7 +350,8 @@ void CommandPaletteDialog::activateCurrentItem()
         accept();
         break;
     case ItemKind::Terminal:
-        emit terminalChosen(row->data(kConnectionIdRole).toUuid(), row->data(kTerminalIdRole).toUuid());
+        emit terminalChosen(row->data(kConnectionIdRole).toUuid(),
+                            row->data(kTerminalIdRole).toUuid());
         accept();
         break;
     case ItemKind::EmptyHint:

@@ -171,13 +171,15 @@ void SshWorker::openTerminal(const QUuid &terminalId, int cols, int rows)
         return;
     }
     if (m_terminalHandlers.size() >= kMaxTerminals) {
-        emit terminalOpenFailed(terminalId, tr("Maximum of %1 terminals per session").arg(kMaxTerminals));
+        emit terminalOpenFailed(terminalId,
+                                tr("Maximum of %1 terminals per session").arg(kMaxTerminals));
         return;
     }
 
     QString error;
     if (!openTerminalLocked(terminalId, cols, rows, &error)) {
-        emit terminalOpenFailed(terminalId, error.isEmpty() ? tr("Failed to open terminal") : error);
+        emit terminalOpenFailed(terminalId,
+                                error.isEmpty() ? tr("Failed to open terminal") : error);
         return;
     }
 

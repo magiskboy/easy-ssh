@@ -33,10 +33,10 @@ public:
     QWidget *termHolder() const { return m_termHolder; }
 
     bool pinTerminal(const QUuid &terminalId,
-                  const QString &title,
-                  QWidget *term,
-                  int dockArea = /* ads::CenterDockWidgetArea */ 0x10,
-                  const QUuid &relativeTo = {});
+                     const QString &title,
+                     QWidget *term,
+                     int dockArea = /* ads::CenterDockWidgetArea */ 0x10,
+                     const QUuid &relativeTo = {});
     bool unpinTerminal(const QUuid &terminalId);
     bool focusTerminal(const QUuid &terminalId);
     bool isPinned(const QUuid &terminalId) const;

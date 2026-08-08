@@ -347,7 +347,9 @@ void Session::changePtySize(const QUuid &terminalId, int cols, int rows)
 
     QMetaObject::invokeMethod(
         m_worker,
-        [worker = m_worker, terminalId, cols, rows]() { worker->changePtySize(terminalId, cols, rows); },
+        [worker = m_worker, terminalId, cols, rows]() {
+            worker->changePtySize(terminalId, cols, rows);
+        },
         Qt::QueuedConnection);
 }
 
@@ -863,7 +865,8 @@ void Session::onTerminalOpened(const QUuid &terminalId)
 void Session::onTerminalClosed(const QUuid &terminalId)
 {
     const bool wasActive = (terminalId == m_activeTerminalId);
-    m_terminals.removeIf([&terminalId](const TerminalChannelState &shell) { return shell.id == terminalId; });
+    m_terminals.removeIf(
+        [&terminalId](const TerminalChannelState &shell) { return shell.id == terminalId; });
 
     if (wasActive) {
         m_activeTerminalId = {};
@@ -905,7 +908,8 @@ void Session::onTerminalFailed(const QUuid &terminalId, const QString &message)
 void Session::onTerminalOpenFailed(const QUuid &terminalId, const QString &message)
 {
     const bool wasActive = (terminalId == m_activeTerminalId);
-    m_terminals.removeIf([&terminalId](const TerminalChannelState &shell) { return shell.id == terminalId; });
+    m_terminals.removeIf(
+        [&terminalId](const TerminalChannelState &shell) { return shell.id == terminalId; });
 
     if (wasActive) {
         m_activeTerminalId = {};

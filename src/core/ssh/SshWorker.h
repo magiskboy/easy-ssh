@@ -12,10 +12,10 @@
 #include "core/fs/SftpTransferIoHandler.h"
 #include "core/fs/SftpTypes.h"
 #include "core/fs/TransferTypes.h"
-#include "core/terminal/TerminalIoHandler.h"
 #include "core/ssh/SshIoLoop.h"
 #include "core/ssh/SshKnownHosts.h"
 #include "core/ssh/SshSession.h"
+#include "core/terminal/TerminalIoHandler.h"
 #include "core/tunnel/ITunnelSession.h"
 #include "core/tunnel/Tunnel.h"
 

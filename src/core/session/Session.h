@@ -59,7 +59,8 @@ public:
     void reconnect(int cols = 80, int rows = 24);
     void shutdown();
 
-    QUuid newTerminal(int cols = 80, int rows = 24, const QUuid &terminalId = {}, bool auxiliary = false);
+    QUuid
+    newTerminal(int cols = 80, int rows = 24, const QUuid &terminalId = {}, bool auxiliary = false);
     void closeTerminal(const QUuid &terminalId);
     void setActiveTerminal(const QUuid &terminalId);
     void renameTerminal(const QUuid &terminalId, const QString &title);

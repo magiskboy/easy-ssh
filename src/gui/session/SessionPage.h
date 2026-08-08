@@ -93,7 +93,8 @@ private:
 
     void ensurePane(const QUuid &terminalId);
     void removePane(const QUuid &terminalId);
-    void pinTerminalToLayout(const QUuid &terminalId, int dockArea = 0x10, const QUuid &relativeTo = {});
+    void
+    pinTerminalToLayout(const QUuid &terminalId, int dockArea = 0x10, const QUuid &relativeTo = {});
     void pinTerminalWithSmartLayout(const QUuid &terminalId);
     void applySettingsToTerm(QTermWidget *term);
     Pane *activePane();

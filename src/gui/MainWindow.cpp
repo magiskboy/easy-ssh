@@ -1084,7 +1084,8 @@ void MainWindow::ensureCommandPalette()
             &CommandPaletteDialog::createConnectionChosen,
             this,
             &MainWindow::createConnectionFromQuery);
-    connect(m_commandPalette, &CommandPaletteDialog::terminalChosen, this, &MainWindow::focusTerminal);
+    connect(
+        m_commandPalette, &CommandPaletteDialog::terminalChosen, this, &MainWindow::focusTerminal);
 }
 
 void MainWindow::populatePaletteActions()

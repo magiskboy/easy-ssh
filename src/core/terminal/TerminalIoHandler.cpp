@@ -9,11 +9,12 @@
 #include "core/ssh/SshIoLoop.h"
 
 TerminalIoHandler::TerminalIoHandler(const QUuid &terminalId,
-                               ssh_session session,
-                               int cols, // NOLINT(bugprone-easily-swappable-parameters)
-                               int rows, // NOLINT(bugprone-easily-swappable-parameters)
-                               Hooks hooks)
-    : m_terminalId(terminalId), m_session(session), m_cols(cols), m_rows(rows), m_hooks(std::move(hooks))
+                                     ssh_session session,
+                                     int cols, // NOLINT(bugprone-easily-swappable-parameters)
+                                     int rows, // NOLINT(bugprone-easily-swappable-parameters)
+                                     Hooks hooks)
+    : m_terminalId(terminalId), m_session(session), m_cols(cols), m_rows(rows),
+      m_hooks(std::move(hooks))
 {
 }
 
@@ -98,10 +99,10 @@ bool TerminalIoHandler::changePtySize(int cols, int rows, QString *errorOut)
 }
 
 int TerminalIoHandler::onData(ssh_session session,
-                           ssh_channel channel,
-                           void *data,
-                           uint32_t len, // NOLINT(bugprone-easily-swappable-parameters)
-                           int isStderr) // NOLINT(bugprone-easily-swappable-parameters)
+                              ssh_channel channel,
+                              void *data,
+                              uint32_t len, // NOLINT(bugprone-easily-swappable-parameters)
+                              int isStderr) // NOLINT(bugprone-easily-swappable-parameters)
 {
     Q_UNUSED(session);
     Q_UNUSED(channel);
@@ -184,7 +185,8 @@ void TerminalIoHandler::finishIfNeeded()
 
     if (m_writeFailed && m_hooks.failed) {
         m_hooks.failed(m_terminalId,
-                       m_writeError.isEmpty() ? QStringLiteral("Terminal write error") : m_writeError);
+                       m_writeError.isEmpty() ? QStringLiteral("Terminal write error")
+                                              : m_writeError);
     }
     if (m_hooks.closed) {
         m_hooks.closed(m_terminalId);

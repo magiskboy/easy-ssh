@@ -53,6 +53,10 @@ for entry in json.loads(compdb.read_text(encoding="utf-8")):
     if not path.is_absolute():
         path = (Path(entry.get("directory") or ".") / path)
     path = path.resolve()
+    # Stale compile_commands.json (e.g. after renames) may still list
+    # removed TUs; clang-tidy then fails with clang-diagnostic-error.
+    if not path.is_file():
+        continue
     try:
         rel = path.relative_to(root).as_posix()
     except ValueError:

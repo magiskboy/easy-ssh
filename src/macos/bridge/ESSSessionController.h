@@ -28,7 +28,8 @@ typedef NS_ENUM(NSInteger, ESSHostKeyPromptReason) {
 @property(nonatomic, copy, nullable) void (^onData)(NSUUID *terminalId, NSData *data);
 @property(nonatomic, copy, nullable) void (^onTerminalOpened)(NSUUID *terminalId);
 @property(nonatomic, copy, nullable) void (^onTerminalClosed)(NSUUID *terminalId);
-@property(nonatomic, copy, nullable) void (^onTerminalFailed)(NSUUID *terminalId, NSString *message);
+@property(nonatomic, copy, nullable) void (^onTerminalFailed)(NSUUID *terminalId, NSString *message)
+    ;
 @property(nonatomic, copy, nullable) void (^onHostKeyPrompt)
     (ESSHostKeyPromptReason reason, NSString *fingerprint, NSString *contextLabel);
 @property(nonatomic, copy, nullable) void (^onError)(NSString *message);
