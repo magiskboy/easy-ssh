@@ -189,13 +189,13 @@ QString formatPriorityDisplay(int nice)
     return trParse("Very low (%1)").arg(nice);
 }
 
-QString formatStartedDisplay(qint64 elapsedSeconds)
+QString formatStartedDisplay(qint64 elapsedSeconds, const QDateTime &now)
 {
     if (elapsedSeconds < 0) {
         return QStringLiteral("—");
     }
-    const QDateTime started = QDateTime::currentDateTime().addSecs(-elapsedSeconds);
-    const QDate today = QDate::currentDate();
+    const QDateTime started = now.addSecs(-elapsedSeconds);
+    const QDate today = now.date();
     const QString timeText = QLocale::system().toString(started.time(), QLocale::ShortFormat);
     if (started.date() == today) {
         return trParse("Today %1").arg(timeText);
