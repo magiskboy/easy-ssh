@@ -10,6 +10,7 @@
 #include "core/explorer/process/ProcessInfo.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QString>
 #include <QVector>
 
@@ -35,7 +36,9 @@ QString formatStateDisplay(const QString &stateCode);
 QString formatPriorityDisplay(int nice);
 
 /// Human start time from etimes (seconds ago).
-QString formatStartedDisplay(qint64 elapsedSeconds);
+/// \a now defaults to the wall clock; tests pass a fixed value.
+QString formatStartedDisplay(qint64 elapsedSeconds,
+                             const QDateTime &now = QDateTime::currentDateTime());
 
 /// Format KiB from ps rss/vsz as MiB / GiB / TiB.
 QString formatMemoryFromKiB(qint64 kib);

@@ -12,10 +12,10 @@
 #include "core/fs/SftpTransferIoHandler.h"
 #include "core/fs/SftpTypes.h"
 #include "core/fs/TransferTypes.h"
-#include "core/shell/ShellIoHandler.h"
 #include "core/ssh/SshIoLoop.h"
 #include "core/ssh/SshKnownHosts.h"
 #include "core/ssh/SshSession.h"
+#include "core/terminal/TerminalIoHandler.h"
 #include "core/tunnel/ITunnelSession.h"
 #include "core/tunnel/Tunnel.h"
 
@@ -44,7 +44,7 @@ class SshWorker final : public QObject
     Q_OBJECT
 
 public:
-    static constexpr int kMaxShells = 8;
+    static constexpr int kMaxTerminals = 8;
 
     enum class HostKeyPrompt
     {
@@ -61,14 +61,14 @@ public slots:
     /// Establish transport + SFTP, open initial shell, run SshIoLoop.
     void connectToHost(const Connection &connection,
                        const SessionCredentials &credentials,
-                       const QUuid &initialShellId,
+                       const QUuid &initialTerminalId,
                        int cols = 80,
                        int rows = 24);
-    void openShell(const QUuid &shellId, int cols = 80, int rows = 24);
-    void closeShell(const QUuid &shellId);
-    void writeToChannel(const QUuid &shellId, const QByteArray &data);
-    void changePtySize(const QUuid &shellId, int cols, int rows);
-    /// Tear down transport (all shells, SFTP, tunnels, SshSession). Not domain Session destroy.
+    void openTerminal(const QUuid &terminalId, int cols = 80, int rows = 24);
+    void closeTerminal(const QUuid &terminalId);
+    void writeToChannel(const QUuid &terminalId, const QByteArray &data);
+    void changePtySize(const QUuid &terminalId, int cols, int rows);
+    /// Tear down transport (all terminals, SFTP, tunnels, SshSession). Not domain Session destroy.
     void disconnectSession();
     /// Thread-safe: abort in-flight connect / host-key wait. Safe from any thread.
     void requestCancel();
@@ -99,12 +99,12 @@ public slots:
     void execCommand(QStringView requestId, const QString &command);
 
 signals:
-    void connected(const QUuid &initialShellId);
-    void dataReceived(const QUuid &shellId, const QByteArray &data);
-    void shellOpened(const QUuid &shellId);
-    void shellClosed(const QUuid &shellId);
-    void shellFailed(const QUuid &shellId, const QString &message);
-    void shellOpenFailed(const QUuid &shellId, const QString &message);
+    void connected(const QUuid &initialTerminalId);
+    void dataReceived(const QUuid &terminalId, const QByteArray &data);
+    void terminalOpened(const QUuid &terminalId);
+    void terminalClosed(const QUuid &terminalId);
+    void terminalFailed(const QUuid &terminalId, const QString &message);
+    void terminalOpenFailed(const QUuid &terminalId, const QString &message);
     void hostKeyPrompt(SshWorker::HostKeyPrompt reason,
                        const QString &fingerprintSha256,
                        const QString &contextLabel);
@@ -147,13 +147,13 @@ private:
     void onExecHandlerFinished(const QString &handlerId);
     void failPendingExecCommands(const QString &error);
     void wireTunnelSession(ITunnelSession *session);
-    void retireShell(const QUuid &shellId, bool emitClosed);
-    bool openShellLocked(const QUuid &shellId, int cols, int rows, QString *errorOut);
+    void retireTerminal(const QUuid &terminalId, bool emitClosed);
+    bool openTerminalLocked(const QUuid &terminalId, int cols, int rows, QString *errorOut);
     void tryRequestAgentForwarding(ssh_channel firstShellChannel);
     void emitTransferFailure(const QString &error);
     void onIoLoopFault(const QString &message);
     void onIoLoopSessionEof();
-    ShellIoHandler::Hooks makeShellHooks();
+    TerminalIoHandler::Hooks makeTerminalHooks();
     bool useAsyncFs() const;
     void enqueueFsOp(std::function<void()> op);
     void onFsHandlerFinished(const QString &handlerId);
@@ -176,7 +176,7 @@ private:
 
     SshSession m_session;
     SshIoLoop m_ioLoop;
-    QHash<QUuid, ShellIoHandler *> m_shellHandlers;
+    QHash<QUuid, TerminalIoHandler *> m_terminalHandlers;
     FsRemote m_fs;
     QHash<QUuid, ITunnelSession *> m_tunnelSessions;
     class AgentForwardHost *m_agentForwardHost = nullptr;

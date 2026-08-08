@@ -27,7 +27,7 @@ public:
     {
         Actions,
         Connections,
-        Shells,
+        Terminals,
     };
 
     struct ActionItem
@@ -48,10 +48,10 @@ public:
         int recentRank = -1; // lower = more recent; -1 = not recent
     };
 
-    struct ShellItem
+    struct TerminalItem
     {
         QUuid connectionId;
-        QUuid shellId;
+        QUuid terminalId;
         QString title;
         QString subtitle;
         QStringList searchFields;
@@ -62,7 +62,7 @@ public:
 
     void setActionItems(const QList<ActionItem> &items);
     void setConnectionItems(const QList<ConnectionItem> &items);
-    void setShellItems(const QList<ShellItem> &items);
+    void setTerminalItems(const QList<TerminalItem> &items);
 
     void openMode(Mode mode);
 
@@ -70,7 +70,7 @@ signals:
     void actionChosen(const QString &actionId);
     void connectionChosen(const QUuid &connectionId);
     void createConnectionChosen(const QString &query);
-    void shellChosen(const QUuid &connectionId, const QUuid &shellId);
+    void terminalChosen(const QUuid &connectionId, const QUuid &terminalId);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -82,7 +82,7 @@ private:
     {
         Action,
         Connection,
-        Shell,
+        Terminal,
         CreateConnection,
         EmptyHint,
     };
@@ -98,7 +98,7 @@ private:
         bool enabled = true;
         QString actionId;
         QUuid connectionId;
-        QUuid shellId;
+        QUuid terminalId;
     };
 
     void rebuildVisibleList();
@@ -113,5 +113,5 @@ private:
 
     QList<ActionItem> m_actions;
     QList<ConnectionItem> m_connections;
-    QList<ShellItem> m_shells;
+    QList<TerminalItem> m_terminals;
 };

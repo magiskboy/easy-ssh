@@ -22,24 +22,24 @@ class CDockManager;
 class CDockWidget;
 } // namespace ads
 
-class ShellDockHost final : public QWidget
+class TerminalDockHost final : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit ShellDockHost(QWidget *parent = nullptr);
-    ~ShellDockHost() override;
+    explicit TerminalDockHost(QWidget *parent = nullptr);
+    ~TerminalDockHost() override;
 
     QWidget *termHolder() const { return m_termHolder; }
 
-    bool pinShell(const QUuid &shellId,
-                  const QString &title,
-                  QWidget *term,
-                  int dockArea = /* ads::CenterDockWidgetArea */ 0x10,
-                  const QUuid &relativeTo = {});
-    bool unpinShell(const QUuid &shellId);
-    bool focusShell(const QUuid &shellId);
-    bool isPinned(const QUuid &shellId) const;
+    bool pinTerminal(const QUuid &terminalId,
+                     const QString &title,
+                     QWidget *term,
+                     int dockArea = /* ads::CenterDockWidgetArea */ 0x10,
+                     const QUuid &relativeTo = {});
+    bool unpinTerminal(const QUuid &terminalId);
+    bool focusTerminal(const QUuid &terminalId);
+    bool isPinned(const QUuid &terminalId) const;
 
     /// Non-shell tool pane (e.g. process explorer). @p toolId is stable per session page.
     bool pinTool(const QString &toolId,
@@ -50,24 +50,24 @@ public:
     bool focusTool(const QString &toolId);
     bool isToolPinned(const QString &toolId) const;
 
-    QList<QUuid> pinnedShellIds() const;
+    QList<QUuid> pinnedTerminalIds() const;
     QStringList pinnedToolIds() const;
-    /// Pinned shells that are not floating OS windows (smart-layout targets).
-    QList<QUuid> dockedShellIds() const;
-    QUuid focusedShellId() const;
+    /// Pinned terminals that are not floating OS windows (smart-layout targets).
+    QList<QUuid> dockedTerminalIds() const;
+    QUuid focusedTerminalId() const;
     QString focusedToolId() const;
     void clearLayout();
     void setLayoutActive(bool active);
-    void setShellTitle(const QUuid &shellId, const QString &title);
+    void setTerminalTitle(const QUuid &terminalId, const QString &title);
 
     QByteArray saveLayout() const;
     bool restoreLayout(const QByteArray &state);
 
 signals:
-    void shellFocused(const QUuid &shellId);
-    /// Dock close button: host should terminate the shell (Session::closeShell).
-    void shellCloseRequested(const QUuid &shellId);
-    void shellRenameRequested(const QUuid &shellId);
+    void terminalFocused(const QUuid &terminalId);
+    /// Dock close button: host should terminate the shell (Session::closeTerminal).
+    void terminalCloseRequested(const QUuid &terminalId);
+    void terminalRenameRequested(const QUuid &terminalId);
     void toolClosed(const QString &toolId);
     /// Emitted while building a tool dock-tab context menu; listeners may append actions.
     void toolContextMenuAboutToShow(const QString &toolId, QMenu *menu);
@@ -76,9 +76,9 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-    ads::CDockWidget *dockForShell(const QUuid &shellId) const;
+    ads::CDockWidget *dockForTerminal(const QUuid &terminalId) const;
     ads::CDockWidget *dockForTool(const QString &toolId) const;
-    QUuid shellIdForDock(ads::CDockWidget *dock) const;
+    QUuid terminalIdForDock(ads::CDockWidget *dock) const;
     QString toolIdForDock(ads::CDockWidget *dock) const;
     void updateEmptyState();
     bool hasAnyDocks() const;

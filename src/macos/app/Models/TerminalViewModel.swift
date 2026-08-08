@@ -8,7 +8,7 @@ import SwiftTerm
 import SwiftUI
 
 @MainActor
-final class ShellViewModel: ObservableObject, Identifiable {
+final class TerminalViewModel: ObservableObject, Identifiable {
     let id: UUID
 
     @Published var title: String

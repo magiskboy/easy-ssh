@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "ShellLayoutPlanner.h"
+#include "TerminalLayoutPlanner.h"
 
 namespace
 {
@@ -12,9 +12,10 @@ constexpr int kRight = 0x02;
 constexpr int kBottom = 0x08;
 } // namespace
 
-ShellPlacement ShellLayoutPlanner::decide(const ShellLayoutSnapshot &snapshot, Mode mode) const
+TerminalPlacement TerminalLayoutPlanner::decide(const TerminalLayoutSnapshot &snapshot,
+                                                Mode mode) const
 {
-    ShellPlacement placement;
+    TerminalPlacement placement;
     placement.dockArea = kCenter;
 
     if (mode == Mode::Off || snapshot.dockedIds.isEmpty()) {

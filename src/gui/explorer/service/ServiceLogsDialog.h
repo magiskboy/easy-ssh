@@ -37,8 +37,8 @@ protected:
     void showEvent(QShowEvent *event) override;
 
 private slots:
-    void onShellsChanged();
-    void onShellData(const QUuid &shellId, const QByteArray &data);
+    void onTerminalsChanged();
+    void onTerminalData(const QUuid &terminalId, const QByteArray &data);
     void onSendData(const char *data, int length);
     void onSessionStateChanged();
     void syncPtySize();
@@ -47,12 +47,12 @@ private:
     void applySettingsToTerm();
     void schedulePtySizeSync();
     void tryInjectCommand();
-    void closeOwnedShell();
+    void closeOwnedTerminal();
     QSize readTerminalSize() const;
 
     QPointer<Session> m_session;
     ServiceInfo m_service;
-    QUuid m_shellId;
+    QUuid m_terminalId;
     QTermWidget *m_term = nullptr;
     TerminalIoBridge *m_bridge = nullptr;
     QLabel *m_statusLabel = nullptr;

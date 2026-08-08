@@ -88,9 +88,12 @@ void ProcessParserTest::formatUserAndStartedDisplay()
     ProcessInfo empty;
     QCOMPARE(ProcessParser::formatUserDisplay(empty), QStringLiteral("\u2014"));
 
-    QCOMPARE(ProcessParser::formatStartedDisplay(-1), QStringLiteral("\u2014"));
-    QVERIFY(ProcessParser::formatStartedDisplay(30).contains(QStringLiteral("Today")));
-    QVERIFY(ProcessParser::formatStartedDisplay(90000).contains(QStringLiteral("Yesterday")));
+    // Pin wall clock so Today/Yesterday do not depend on CI run time.
+    const QDateTime now(QDate(2026, 8, 8), QTime(12, 0, 0));
+    QCOMPARE(ProcessParser::formatStartedDisplay(-1, now), QStringLiteral("\u2014"));
+    QVERIFY(ProcessParser::formatStartedDisplay(30, now).contains(QStringLiteral("Today")));
+    // 90000s = 25h → 2026-08-07 11:00 with the pinned noon clock.
+    QVERIFY(ProcessParser::formatStartedDisplay(90000, now).contains(QStringLiteral("Yesterday")));
 }
 
 void ProcessParserTest::parsePsListRejectsNullOutput()

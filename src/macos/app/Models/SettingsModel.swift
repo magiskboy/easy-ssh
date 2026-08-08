@@ -9,7 +9,7 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general
     case fileExplorer
-    case shell
+    case terminal
     case shortcuts
 
     var id: String { rawValue }
@@ -18,7 +18,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "General"
         case .fileExplorer: return "File Explorer"
-        case .shell: return "Shell"
+        case .terminal: return "Terminal"
         case .shortcuts: return "Shortcuts"
         }
     }
@@ -55,7 +55,7 @@ final class SettingsModel: ObservableObject {
     @Published var showHiddenFiles = false
     @Published var defaultDownloadDir: String = ""
 
-    // Shell
+    // Terminal
     @Published var terminalFontFamily: String = ""
     @Published var terminalFontPointSize: Double = 13
     @Published var colorScheme: String = "WhiteOnBlack"

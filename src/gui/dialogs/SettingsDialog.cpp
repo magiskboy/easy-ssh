@@ -44,7 +44,7 @@ SettingsDialog::SettingsDialog(QWidget *parent, const QString &initialCategoryId
     m_shell->addPage(nullptr, tr("General"), createGeneralPage(), QStringLiteral("general"));
     m_shell->addPage(
         nullptr, tr("File Explorer"), createFileExplorerPage(), QStringLiteral("file-explorer"));
-    m_shell->addPage(nullptr, tr("Shell"), createShellPage(), QStringLiteral("shell"));
+    m_shell->addPage(nullptr, tr("Terminal"), createTerminalPage(), QStringLiteral("terminal"));
     m_shell->addPage(nullptr, tr("Shortcuts"), createShortcutsPage(), QStringLiteral("shortcuts"));
 
     if (!initialCategoryId.isEmpty()) {
@@ -142,7 +142,7 @@ QWidget *SettingsDialog::createGeneralPage()
     sessionLayout->addWidget(m_autoReconnect);
     m_restoreWorkspace = new QCheckBox(tr("Restore previous workspace on launch"), sessionGroup);
     m_restoreWorkspace->setToolTip(
-        tr("Reopen the last open connections, shells, and explorer tabs when Easy SSH starts."));
+        tr("Reopen the last open connections, terminals, and explorer tabs when Easy SSH starts."));
     sessionLayout->addWidget(m_restoreWorkspace);
 
     auto *windowGroup = new QGroupBox(tr("Window"), page);
@@ -241,7 +241,7 @@ QWidget *SettingsDialog::createFileExplorerPage()
     return page;
 }
 
-QWidget *SettingsDialog::createShellPage()
+QWidget *SettingsDialog::createTerminalPage()
 {
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
@@ -303,9 +303,9 @@ QWidget *SettingsDialog::createShellPage()
 
     auto *layoutGroup = new QGroupBox(tr("Layout"), page);
     auto *layoutLayout = new QVBoxLayout(layoutGroup);
-    m_smartLayout = new QCheckBox(tr("Smart layout for new shells"), layoutGroup);
+    m_smartLayout = new QCheckBox(tr("Smart layout for new terminals"), layoutGroup);
     m_smartLayout->setToolTip(
-        tr("Automatically tile newly created shells next to the focused pane "
+        tr("Automatically tile newly created terminals next to the focused pane "
            "(alternating right / bottom). Drag from the sidebar to place manually."));
     layoutLayout->addWidget(m_smartLayout);
 

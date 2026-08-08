@@ -7,7 +7,7 @@ import Foundation
 enum PaletteMode: String, Equatable, Identifiable {
     case actions
     case connections
-    case shells
+    case terminals
 
     var id: String { rawValue }
 
@@ -15,7 +15,7 @@ enum PaletteMode: String, Equatable, Identifiable {
         switch self {
         case .actions: return "Command Palette"
         case .connections: return "Quick Connect"
-        case .shells: return "Go to Shell"
+        case .terminals: return "Go to Terminal"
         }
     }
 
@@ -23,7 +23,7 @@ enum PaletteMode: String, Equatable, Identifiable {
         switch self {
         case .actions: return "Filter actions…"
         case .connections: return "Search connections or create…"
-        case .shells: return "Search open shells…"
+        case .terminals: return "Search open terminals…"
         }
     }
 }
@@ -48,23 +48,23 @@ struct PaletteConnectionItem: Identifiable, Equatable {
     var id: UUID { connectionId }
 }
 
-struct PaletteShellItem: Identifiable, Equatable {
+struct PaletteTerminalItem: Identifiable, Equatable {
     let connectionId: UUID
-    let shellId: UUID
+    let terminalId: UUID
     let sessionTitle: String
-    let shellTitle: String
+    let terminalTitle: String
     let subtitle: String
     let searchFields: [String]
     let isActive: Bool
 
-    var id: String { "\(connectionId.uuidString)-\(shellId.uuidString)" }
+    var id: String { "\(connectionId.uuidString)-\(terminalId.uuidString)" }
 }
 
 enum PaletteRow: Identifiable, Equatable {
     case action(PaletteActionItem, score: Int)
     case connection(PaletteConnectionItem, score: Int)
     case createConnection(score: Int)
-    case shell(PaletteShellItem, score: Int)
+    case terminal(PaletteTerminalItem, score: Int)
     case hint(String)
 
     var id: String {
@@ -72,7 +72,7 @@ enum PaletteRow: Identifiable, Equatable {
         case let .action(item, _): return "action-\(item.actionId)"
         case let .connection(item, _): return "conn-\(item.connectionId.uuidString)"
         case .createConnection: return "create"
-        case let .shell(item, _): return "shell-\(item.id)"
+        case let .terminal(item, _): return "terminal-\(item.id)"
         case let .hint(text): return "hint-\(text)"
         }
     }
@@ -82,7 +82,7 @@ enum PaletteRow: Identifiable, Equatable {
         case let .action(_, score): return score
         case let .connection(_, score): return score
         case .createConnection(let score): return score
-        case let .shell(_, score): return score
+        case let .terminal(_, score): return score
         case .hint: return Int.min
         }
     }
@@ -101,6 +101,6 @@ enum PaletteMetaActions {
     static let excluded: Set<String> = [
         "general.commandPalette",
         "general.quickConnect",
-        "session.goToShell",
+        "session.goToTerminal",
     ]
 }

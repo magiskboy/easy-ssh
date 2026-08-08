@@ -4,7 +4,7 @@
 
 import SwiftUI
 
-struct ShellSettingsView: View {
+struct TerminalSettingsView: View {
     @EnvironmentObject private var settingsModel: SettingsModel
 
     var body: some View {
@@ -57,7 +57,7 @@ struct ShellSettingsView: View {
             }
 
             Section("Layout") {
-                Toggle("Smart layout for new shells", isOn: $settingsModel.smartLayout)
+                Toggle("Smart layout for new terminals", isOn: $settingsModel.smartLayout)
             }
         }
         .formStyle(.grouped)

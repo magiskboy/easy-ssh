@@ -37,10 +37,10 @@ set(EASY_SSH_CORE_SOURCES
     core/session/SessionManager.h
     core/session/WorkspaceState.cpp
     core/session/WorkspaceState.h
-    core/shell/SshShell.cpp
-    core/shell/SshShell.h
-    core/shell/ShellIoHandler.cpp
-    core/shell/ShellIoHandler.h
+    core/terminal/SshTerminal.cpp
+    core/terminal/SshTerminal.h
+    core/terminal/TerminalIoHandler.cpp
+    core/terminal/TerminalIoHandler.h
     core/fs/FsEngine.h
     core/fs/FsRemote.cpp
     core/fs/FsRemote.h
@@ -150,10 +150,10 @@ set(EASY_SSH_GUI_SOURCES
     gui/session/SessionSideBar.h
     gui/session/SessionPage.cpp
     gui/session/SessionPage.h
-    gui/session/ShellDockHost.cpp
-    gui/session/ShellDockHost.h
-    gui/session/ShellLayoutPlanner.cpp
-    gui/session/ShellLayoutPlanner.h
+    gui/session/TerminalDockHost.cpp
+    gui/session/TerminalDockHost.h
+    gui/session/TerminalLayoutPlanner.cpp
+    gui/session/TerminalLayoutPlanner.h
     gui/connection/ConnectionListWidget.cpp
     gui/connection/ConnectionListWidget.h
     gui/connection/ConnectionDialog.cpp

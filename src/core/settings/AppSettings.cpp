@@ -68,15 +68,15 @@ constexpr ShortcutDef kShortcutDefs[] = {
     {"general.shortcuts", "General", "Keyboard Shortcuts", "Ctrl+Shift+,"},
     {"general.about", "General", "About", "F1"},
 
-    {"session.newSession", "Terminal", "New Shell", "Ctrl+T"},
-    {"session.goToShell", "Windows", "Go to Shell", "Ctrl+P"},
+    {"session.newSession", "Terminal", "New Terminal", "Ctrl+T"},
+    {"session.goToTerminal", "Windows", "Go to Terminal", "Ctrl+P"},
     {"session.processExplorer", "Explorer", "Processes", ""},
     {"session.containerExplorer", "Explorer", "Containers", ""},
     {"session.serviceExplorer", "Explorer", "Services", ""},
     {"session.systemInfo", "Explorer", "System Information", ""},
     {"session.nextTab", "Windows", "Next Tab", "Ctrl+Tab"},
     {"session.previousTab", "Windows", "Previous Tab", "Ctrl+Shift+Tab"},
-    {"shell.close", "Terminal", "Close Shell", "Ctrl+Shift+W"},
+    {"terminal.close", "Terminal", "Close Terminal", "Ctrl+Shift+W"},
 
     {"terminal.copy", "Terminal", "Copy", "Ctrl+Shift+C"},
     {"terminal.paste", "Terminal", "Paste", "Ctrl+Shift+V"},

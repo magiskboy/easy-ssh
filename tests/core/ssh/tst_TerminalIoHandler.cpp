@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "core/shell/ShellIoHandler.h"
+#include "core/terminal/TerminalIoHandler.h"
 #include "core/ssh/SshIoLoop.h"
 
 #include <QtTest>
@@ -43,12 +43,12 @@ private:
 
 } // namespace
 
-class ShellIoHandlerTest final : public QObject
+class TerminalIoHandlerTest final : public QObject
 {
     Q_OBJECT
 
 private slots:
-    void shellHandlerIdFormat();
+    void terminalHandlerIdFormat();
     void cancelBeforeStartIsIdempotent();
     void enqueueWriteWakesLoop();
     void pollOnceInvokesOnIdle();
@@ -57,28 +57,28 @@ private slots:
 // Manual regression (p9 Phase 2): type in terminal; yes/top output; multi-pane;
 // PTY resize; tunnels/agent still tick; explorer exec keeps shell alive via pump.
 
-void ShellIoHandlerTest::shellHandlerIdFormat()
+void TerminalIoHandlerTest::terminalHandlerIdFormat()
 {
     const QUuid id = QUuid::createUuid();
-    ShellIoHandler handler(id, nullptr, 80, 24, {});
+    TerminalIoHandler handler(id, nullptr, 80, 24, {});
     QCOMPARE(handler.id(), id.toString(QUuid::WithoutBraces));
-    QCOMPARE(handler.shellId(), id);
+    QCOMPARE(handler.terminalId(), id);
 }
 
-void ShellIoHandlerTest::cancelBeforeStartIsIdempotent()
+void TerminalIoHandlerTest::cancelBeforeStartIsIdempotent()
 {
     const QUuid id = QUuid::createUuid();
-    ShellIoHandler handler(id, nullptr, 80, 24, {});
+    TerminalIoHandler handler(id, nullptr, 80, 24, {});
     handler.cancel();
     handler.cancel();
-    QVERIFY(!handler.shell()->isOpen());
+    QVERIFY(!handler.terminal()->isOpen());
 }
 
-void ShellIoHandlerTest::enqueueWriteWakesLoop()
+void TerminalIoHandlerTest::enqueueWriteWakesLoop()
 {
     SshIoLoop loop;
     const QUuid id = QUuid::createUuid();
-    ShellIoHandler handler(id, nullptr, 80, 24, {});
+    TerminalIoHandler handler(id, nullptr, 80, 24, {});
     // Without start(), enqueue still appends and wakes (no channel flush until open).
     handler.enqueueWrite(QByteArrayLiteral("x"));
     // Wake must not crash even if handler is not registered on the loop.
@@ -86,7 +86,7 @@ void ShellIoHandlerTest::enqueueWriteWakesLoop()
     loop.stop();
 }
 
-void ShellIoHandlerTest::pollOnceInvokesOnIdle()
+void TerminalIoHandlerTest::pollOnceInvokesOnIdle()
 {
     SshIoLoop loop;
     auto handler = std::make_unique<QueuingHandler>(QStringLiteral("q1"));
@@ -101,5 +101,5 @@ void ShellIoHandlerTest::pollOnceInvokesOnIdle()
     // handler destroyed by removeHandler; do not touch raw
 }
 
-QTEST_GUILESS_MAIN(ShellIoHandlerTest)
-#include "tst_ShellIoHandler.moc"
+QTEST_GUILESS_MAIN(TerminalIoHandlerTest)
+#include "tst_TerminalIoHandler.moc"

@@ -88,16 +88,16 @@ private struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button("New Shell") {
-                appModel.openShellInSelectedSession()
+            Button("New Terminal") {
+                appModel.openTerminalInSelectedSession()
             }
             .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.newSession"))
-            .disabled(!(appModel.selectedSession?.canOpenShell ?? false))
+            .disabled(!(appModel.selectedSession?.canOpenTerminal ?? false))
 
-            Button("Close Shell") {
-                appModel.closeShellInSelectedSession()
+            Button("Close Terminal") {
+                appModel.closeTerminalInSelectedSession()
             }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "shell.close"))
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "terminal.close"))
             .disabled(!appModel.canUseTerminalActions)
 
             Button("Close Session") {
@@ -108,20 +108,20 @@ private struct AppMenuCommands: Commands {
 
             Divider()
 
-            Menu("Go to Shell") {
-                if let session = appModel.selectedSession, !session.shells.isEmpty {
-                    ForEach(session.shells) { shell in
+            Menu("Go to Terminal") {
+                if let session = appModel.selectedSession, !session.terminals.isEmpty {
+                    ForEach(session.terminals) { shell in
                         Button(shell.title) {
-                            appModel.focusShellInSelectedSession(shell.id)
+                            appModel.focusTerminalInSelectedSession(shell.id)
                         }
                     }
                 } else {
-                    Button("No shells") {}
+                    Button("No terminals") {}
                         .disabled(true)
                 }
             }
-            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.goToShell"))
-            .disabled(appModel.selectedSession?.shells.isEmpty ?? true)
+            .optionalKeyboardShortcut(appModel.shortcutPortable(for: "session.goToTerminal"))
+            .disabled(appModel.selectedSession?.terminals.isEmpty ?? true)
         }
 
         CommandGroup(replacing: .undoRedo) {

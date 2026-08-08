@@ -26,7 +26,7 @@ namespace
 constexpr int kKindRole = Qt::UserRole;
 constexpr int kActionIdRole = Qt::UserRole + 1;
 constexpr int kConnectionIdRole = Qt::UserRole + 2;
-constexpr int kShellIdRole = Qt::UserRole + 3;
+constexpr int kTerminalIdRole = Qt::UserRole + 3;
 constexpr int kEnabledRole = Qt::UserRole + 4;
 
 } // namespace
@@ -80,9 +80,9 @@ void CommandPaletteDialog::setConnectionItems(const QList<ConnectionItem> &items
     m_connections = items;
 }
 
-void CommandPaletteDialog::setShellItems(const QList<ShellItem> &items)
+void CommandPaletteDialog::setTerminalItems(const QList<TerminalItem> &items)
 {
-    m_shells = items;
+    m_terminals = items;
 }
 
 void CommandPaletteDialog::openMode(Mode mode)
@@ -97,9 +97,9 @@ void CommandPaletteDialog::openMode(Mode mode)
         setWindowTitle(tr("Quick Connect"));
         m_filterEdit->setPlaceholderText(tr("Search connections or create…"));
         break;
-    case Mode::Shells:
-        setWindowTitle(tr("Go to Shell"));
-        m_filterEdit->setPlaceholderText(tr("Search open shells…"));
+    case Mode::Terminals:
+        setWindowTitle(tr("Go to Terminal"));
+        m_filterEdit->setPlaceholderText(tr("Search open terminals…"));
         break;
     }
 
@@ -201,7 +201,7 @@ QListWidgetItem *CommandPaletteDialog::makeRow(const BuiltItem &item)
     row->setData(kKindRole, static_cast<int>(item.kind));
     row->setData(kActionIdRole, item.actionId);
     row->setData(kConnectionIdRole, item.connectionId);
-    row->setData(kShellIdRole, item.shellId);
+    row->setData(kTerminalIdRole, item.terminalId);
     row->setData(kEnabledRole, item.enabled);
     row->setFlags(item.enabled ? (Qt::ItemIsEnabled | Qt::ItemIsSelectable)
                                : Qt::ItemFlags(Qt::NoItemFlags));
@@ -267,25 +267,25 @@ void CommandPaletteDialog::rebuildVisibleList()
         items.append(create);
         break;
     }
-    case Mode::Shells: {
-        if (m_shells.isEmpty()) {
+    case Mode::Terminals: {
+        if (m_terminals.isEmpty()) {
             BuiltItem empty;
             empty.kind = ItemKind::EmptyHint;
-            empty.primary = tr("No open shells");
+            empty.primary = tr("No open terminals");
             empty.secondary = tr("Try Quick Connect to open a host");
             empty.enabled = false;
             empty.score = 0;
             items.append(empty);
             break;
         }
-        for (const ShellItem &shell : m_shells) {
+        for (const TerminalItem &shell : m_terminals) {
             BuiltItem item;
-            item.kind = ItemKind::Shell;
+            item.kind = ItemKind::Terminal;
             item.primary = shell.title;
             item.secondary = shell.subtitle;
             item.searchFields = shell.searchFields;
             item.connectionId = shell.connectionId;
-            item.shellId = shell.shellId;
+            item.terminalId = shell.terminalId;
             item.enabled = true;
             if (const auto score = FuzzyMatch::bestMatchScore(query, item.searchFields)) {
                 item.score = *score;
@@ -349,8 +349,9 @@ void CommandPaletteDialog::activateCurrentItem()
         emit createConnectionChosen(m_filterEdit->text().trimmed());
         accept();
         break;
-    case ItemKind::Shell:
-        emit shellChosen(row->data(kConnectionIdRole).toUuid(), row->data(kShellIdRole).toUuid());
+    case ItemKind::Terminal:
+        emit terminalChosen(row->data(kConnectionIdRole).toUuid(),
+                            row->data(kTerminalIdRole).toUuid());
         accept();
         break;
     case ItemKind::EmptyHint:

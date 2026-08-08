@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "core/shell/SshShell.h"
 #include "core/ssh/SshIoHandler.h"
+#include "core/terminal/SshTerminal.h"
 
 #include <QByteArray>
 #include <QString>
@@ -21,28 +21,29 @@ class SshIoLoop;
  * One interactive PTY shell on a SshIoLoop (Phase 2).
  * Channel callbacks enqueue data; onIdle flushes writes and delivers output.
  */
-class ShellIoHandler final : public SshIoHandler, public SshChannelCallbacks
+class TerminalIoHandler final : public SshIoHandler, public SshChannelCallbacks
 {
 public:
     struct Hooks
     {
-        std::function<void(const QUuid &shellId, const QByteArray &data)> dataReady;
-        std::function<void(const QUuid &shellId)> closed;
-        std::function<void(const QUuid &shellId, const QString &message)> failed;
+        std::function<void(const QUuid &terminalId, const QByteArray &data)> dataReady;
+        std::function<void(const QUuid &terminalId)> closed;
+        std::function<void(const QUuid &terminalId, const QString &message)> failed;
         /// Return false to abort SSH_AGAIN waits during open.
         std::function<bool()> againPump;
         /// After open+PTY, before request_shell. Return false to abort open.
         /// Soft failures (e.g. agent forward warn) should return true.
-        std::function<bool(ssh_channel channel, QString *errorOut)> beforeShell;
+        std::function<bool(ssh_channel channel, QString *errorOut)> beforeTerminal;
     };
 
-    ShellIoHandler(const QUuid &shellId, ssh_session session, int cols, int rows, Hooks hooks);
-    ~ShellIoHandler() override;
+    TerminalIoHandler(
+        const QUuid &terminalId, ssh_session session, int cols, int rows, Hooks hooks);
+    ~TerminalIoHandler() override;
 
     QString id() const override;
-    QUuid shellId() const { return m_shellId; }
-    SshShell *shell() { return &m_shell; }
-    ssh_channel channel() const { return m_shell.channel(); }
+    QUuid terminalId() const { return m_terminalId; }
+    SshTerminal *terminal() { return &m_terminal; }
+    ssh_channel channel() const { return m_terminal.channel(); }
 
     bool start(SshIoLoop *loop, QString *error) override;
     void cancel() override;
@@ -62,12 +63,12 @@ private:
     void deliverPendingOutput();
     void finishIfNeeded();
 
-    QUuid m_shellId;
+    QUuid m_terminalId;
     ssh_session m_session = nullptr;
     int m_cols = 80;
     int m_rows = 24;
     Hooks m_hooks;
-    SshShell m_shell;
+    SshTerminal m_terminal;
     SshIoLoop *m_loop = nullptr;
     QByteArray m_pendingOut;
     QByteArray m_writeQueue;

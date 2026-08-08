@@ -31,20 +31,20 @@ struct SessionPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !session.shells.isEmpty {
-                shellStrip
+            if !session.terminals.isEmpty {
+                terminalStrip
                 Divider()
             }
 
             ZStack {
-                if let tree = session.layout, !session.shells.isEmpty {
-                    ShellSplitView(session: session, node: tree)
+                if let tree = session.layout, !session.terminals.isEmpty {
+                    TerminalSplitView(session: session, node: tree)
                         .opacity(session.state == .connected && session.overlayMessage == nil ? 1 : 0.35)
                 } else if session.state == .connected {
                     EmptyStateView(
-                        title: "No Shell",
+                        title: "No Terminal",
                         systemImage: "terminal",
-                        message: "Open a new shell from the Session menu."
+                        message: "Open a new terminal from the Session menu."
                     )
                 } else {
                     Color.clear
@@ -70,7 +70,7 @@ struct SessionPane: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .sheet(item: $session.renameRequest) { request in
-            RenameShellSheet(
+            RenameTerminalSheet(
                 title: Binding(
                     get: { session.renameRequest?.title ?? request.title },
                     set: { newValue in
@@ -108,8 +108,8 @@ struct SessionPane: View {
         }
     }
 
-    private var shellStrip: some View {
-        ShellTabStripRepresentable(session: session)
+    private var terminalStrip: some View {
+        TerminalTabStripRepresentable(session: session)
             .frame(height: 28)
             .background(.bar)
     }
@@ -119,28 +119,28 @@ struct SessionPane: View {
 // SwiftUI Button/onTapGesture inside ScrollView is unreliable on macOS (clicks
 // silently dropped). Drive select/close with real NSButtons instead.
 
-private struct ShellTabStripRepresentable: NSViewRepresentable {
+private struct TerminalTabStripRepresentable: NSViewRepresentable {
     @ObservedObject var session: SessionViewModel
 
     func makeCoordinator() -> Coordinator {
         Coordinator(session: session)
     }
 
-    func makeNSView(context: Context) -> ShellTabStripView {
-        let view = ShellTabStripView()
+    func makeNSView(context: Context) -> TerminalTabStripView {
+        let view = TerminalTabStripView()
         view.coordinator = context.coordinator
         return view
     }
 
-    func updateNSView(_ nsView: ShellTabStripView, context: Context) {
+    func updateNSView(_ nsView: TerminalTabStripView, context: Context) {
         context.coordinator.session = session
         nsView.coordinator = context.coordinator
         nsView.reload(
-            items: session.shells.map { shell in
-                ShellTabItem(
+            items: session.terminals.map { shell in
+                TerminalTabItem(
                     id: shell.id,
                     title: shell.title,
-                    isSelected: shell.id == session.focusedShellId,
+                    isSelected: shell.id == session.focusedTerminalId,
                     isInLayout: session.layout?.contains(shell.id) ?? false
                 )
             }
@@ -156,31 +156,31 @@ private struct ShellTabStripRepresentable: NSViewRepresentable {
         }
 
         func select(_ id: UUID) {
-            session.focusShell(id)
+            session.focusTerminal(id)
         }
 
         func close(_ id: UUID) {
-            session.closeShell(id)
+            session.closeTerminal(id)
         }
 
         func rename(_ id: UUID) {
-            session.beginRenameShell(id)
+            session.beginRenameTerminal(id)
         }
     }
 }
 
-private struct ShellTabItem: Equatable {
+private struct TerminalTabItem: Equatable {
     let id: UUID
     let title: String
     let isSelected: Bool
     let isInLayout: Bool
 }
 
-private final class ShellTabStripView: NSView {
-    weak var coordinator: ShellTabStripRepresentable.Coordinator?
+private final class TerminalTabStripView: NSView {
+    weak var coordinator: TerminalTabStripRepresentable.Coordinator?
     private let stack = NSStackView()
-    private var items: [ShellTabItem] = []
-    private var buttons: [UUID: ShellTabButton] = [:]
+    private var items: [TerminalTabItem] = []
+    private var buttons: [UUID: TerminalTabButton] = [:]
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -206,7 +206,7 @@ private final class ShellTabStripView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func reload(items: [ShellTabItem]) {
+    func reload(items: [TerminalTabItem]) {
         if self.items == items { return }
         self.items = items
 
@@ -218,11 +218,11 @@ private final class ShellTabStripView: NSView {
         }
 
         for (index, item) in items.enumerated() {
-            let button: ShellTabButton
+            let button: TerminalTabButton
             if let existing = buttons[item.id] {
                 button = existing
             } else {
-                button = ShellTabButton()
+                button = TerminalTabButton()
                 button.target = self
                 button.action = #selector(tabClicked(_:))
                 button.closeAction = { [weak self] id in
@@ -241,8 +241,8 @@ private final class ShellTabStripView: NSView {
         }
     }
 
-    @objc private func tabClicked(_ sender: ShellTabButton) {
-        coordinator?.select(sender.shellId)
+    @objc private func tabClicked(_ sender: TerminalTabButton) {
+        coordinator?.select(sender.terminalId)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -250,16 +250,16 @@ private final class ShellTabStripView: NSView {
         let menu = NSMenu()
         let rename = NSMenuItem(title: "Rename…", action: #selector(renameClicked(_:)), keyEquivalent: "")
         rename.target = self
-        rename.representedObject = button.shellId
+        rename.representedObject = button.terminalId
         menu.addItem(rename)
         let close = NSMenuItem(title: "Close", action: #selector(closeClicked(_:)), keyEquivalent: "")
         close.target = self
-        close.representedObject = button.shellId
+        close.representedObject = button.terminalId
         menu.addItem(close)
         return menu
     }
 
-    private func hitTestTab(at windowPoint: NSPoint) -> ShellTabButton? {
+    private func hitTestTab(at windowPoint: NSPoint) -> TerminalTabButton? {
         let point = convert(windowPoint, from: nil)
         return buttons.values.first { button in
             button.frame.contains(button.superview?.convert(point, from: self) ?? point)
@@ -280,8 +280,8 @@ private final class ShellTabStripView: NSView {
 
 /// One chip: title button (select) + nested close button. Nested NSButton receives
 /// clicks correctly because we forward mouseDown when the hit lands on close.
-private final class ShellTabButton: NSView {
-    private(set) var shellId = UUID()
+private final class TerminalTabButton: NSView {
+    private(set) var terminalId = UUID()
     weak var target: AnyObject?
     var action: Selector?
     var closeAction: ((UUID) -> Void)?
@@ -308,11 +308,11 @@ private final class ShellTabButton: NSView {
         addSubview(titleButton)
 
         closeButton.isBordered = false
-        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Shell")
+        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Terminal")
         closeButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
         closeButton.imagePosition = .imageOnly
         closeButton.focusRingType = .none
-        closeButton.toolTip = "Close Shell"
+        closeButton.toolTip = "Close Terminal"
         closeButton.target = self
         closeButton.action = #selector(closeClicked(_:))
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -338,8 +338,8 @@ private final class ShellTabButton: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func configure(item: ShellTabItem) {
-        shellId = item.id
+    func configure(item: TerminalTabItem) {
+        terminalId = item.id
         titleText = (item.isInLayout ? "" : "⧉ ") + item.title
         titleButton.title = titleText
         titleButton.toolTip = item.isInLayout
@@ -366,19 +366,19 @@ private final class ShellTabButton: NSView {
     }
 
     @objc private func closeClicked(_ sender: Any?) {
-        closeAction?(shellId)
+        closeAction?(terminalId)
     }
 }
 
-struct ShellSplitView: View {
+struct TerminalSplitView: View {
     @ObservedObject var session: SessionViewModel
-    let node: ShellLayoutNode
+    let node: TerminalLayoutNode
 
     var body: some View {
         switch node {
         case let .leaf(id):
-            if let shell = session.shells.first(where: { $0.id == id }) {
-                ShellPaneView(session: session, shell: shell)
+            if let terminal = session.terminals.first(where: { $0.id == id }) {
+                TerminalPaneView(session: session, terminal: terminal)
                     .id(id)
             } else {
                 Color.black.opacity(0.05)
@@ -389,10 +389,10 @@ struct ShellSplitView: View {
             // panes often stack/overlap instead of tiling. Use an explicit stack + clip.
             // Do not bind view identity to leaf UUIDs — tab swaps would recreate sibling
             // panes and drop their TerminalViews.
-            ResizableShellSplit(axis: axis) {
-                ShellSplitView(session: session, node: first)
+            ResizableTerminalSplit(axis: axis) {
+                TerminalSplitView(session: session, node: first)
             } second: {
-                ShellSplitView(session: session, node: second)
+                TerminalSplitView(session: session, node: second)
             }
         }
     }
@@ -400,7 +400,7 @@ struct ShellSplitView: View {
 
 /// Equal-weight split with a draggable separator. Clips children so SwiftTerm
 /// layers cannot paint into the sibling pane.
-private struct ResizableShellSplit<First: View, Second: View>: View {
+private struct ResizableTerminalSplit<First: View, Second: View>: View {
     let axis: SplitAxis
     @ViewBuilder var first: () -> First
     @ViewBuilder var second: () -> Second
@@ -488,25 +488,25 @@ private struct ResizableShellSplit<First: View, Second: View>: View {
     }
 }
 
-struct ShellPaneView: View {
+struct TerminalPaneView: View {
     @ObservedObject var session: SessionViewModel
-    @ObservedObject var shell: ShellViewModel
+    @ObservedObject var terminal: TerminalViewModel
 
     var body: some View {
         VStack(spacing: 0) {
-            if session.showFindBar && session.focusedShellId == shell.id {
-                TerminalFindBar(shell: shell) {
+            if session.showFindBar && session.focusedTerminalId == terminal.id {
+                TerminalFindBar(terminal: terminal) {
                     session.showFindBar = false
-                    shell.showFindBar = false
-                    shell.clearFind()
-                    session.requestTerminalActivation(for: shell.id)
+                    terminal.showFindBar = false
+                    terminal.clearFind()
+                    session.requestTerminalActivation(for: terminal.id)
                 }
             }
             // Do not attach SwiftUI tap gestures here — they intercept clicks so the
             // embedded TerminalView never becomes first responder (caret keeps blinking
             // on inactive panes). Focus is synced from HostedTerminalView.mouseDown /
             // becomeFirstResponder instead.
-            TerminalRepresentable(session: session, shell: shell)
+            TerminalRepresentable(session: session, terminal: terminal)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -514,14 +514,14 @@ struct ShellPaneView: View {
     }
 }
 
-private struct RenameShellSheet: View {
+private struct RenameTerminalSheet: View {
     @Binding var title: String
     let onCancel: () -> Void
     let onSave: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Rename Shell")
+            Text("Rename Terminal")
                 .font(.headline)
             TextField("Title", text: $title)
                 .textFieldStyle(.roundedBorder)

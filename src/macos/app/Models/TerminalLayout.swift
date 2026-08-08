@@ -11,8 +11,8 @@ enum SplitAxis: String, Equatable, Codable {
     case vertical
 }
 
-/// In-memory split tree for shells in one session (Phase 4 MVP; not persisted).
-indirect enum ShellLayoutNode: Equatable, Codable {
+/// In-memory split tree for terminals in one session (Phase 4 MVP; not persisted).
+indirect enum TerminalLayoutNode: Equatable, Codable {
     enum CodingKeys: String, CodingKey {
         case leaf
         case split
@@ -29,8 +29,8 @@ indirect enum ShellLayoutNode: Equatable, Codable {
             return
         }
         let axis = try container.decode(SplitAxis.self, forKey: .axis)
-        let first = try container.decode(ShellLayoutNode.self, forKey: .first)
-        let second = try container.decode(ShellLayoutNode.self, forKey: .second)
+        let first = try container.decode(TerminalLayoutNode.self, forKey: .first)
+        let second = try container.decode(TerminalLayoutNode.self, forKey: .second)
         self = .split(axis: axis, first: first, second: second)
     }
 
@@ -46,7 +46,7 @@ indirect enum ShellLayoutNode: Equatable, Codable {
         }
     }
     case leaf(UUID)
-    case split(axis: SplitAxis, first: ShellLayoutNode, second: ShellLayoutNode)
+    case split(axis: SplitAxis, first: TerminalLayoutNode, second: TerminalLayoutNode)
 
     var leafCount: Int {
         switch self {
@@ -71,7 +71,7 @@ indirect enum ShellLayoutNode: Equatable, Codable {
     }
 
     /// Split `relativeTo` leaf, placing `newId` as the second child (Right/Bottom).
-    func splitting(relativeTo: UUID, newId: UUID, axis: SplitAxis) -> ShellLayoutNode {
+    func splitting(relativeTo: UUID, newId: UUID, axis: SplitAxis) -> TerminalLayoutNode {
         switch self {
         case let .leaf(id):
             if id == relativeTo {
@@ -98,7 +98,7 @@ indirect enum ShellLayoutNode: Equatable, Codable {
     }
 
     /// Replace a leaf UUID (focus swap when layout is full or smart layout is off).
-    func replacing(_ oldId: UUID, with newId: UUID) -> ShellLayoutNode {
+    func replacing(_ oldId: UUID, with newId: UUID) -> TerminalLayoutNode {
         switch self {
         case let .leaf(id):
             return .leaf(id == oldId ? newId : id)
@@ -112,7 +112,7 @@ indirect enum ShellLayoutNode: Equatable, Codable {
     }
 
     /// Remove a leaf and collapse single-child splits.
-    func removing(_ id: UUID) -> ShellLayoutNode? {
+    func removing(_ id: UUID) -> TerminalLayoutNode? {
         switch self {
         case let .leaf(leafId):
             return leafId == id ? nil : self
@@ -133,22 +133,22 @@ indirect enum ShellLayoutNode: Equatable, Codable {
     }
 }
 
-enum ShellLayoutCodec {
-    static func encode(_ node: ShellLayoutNode?) -> Data? {
+enum TerminalLayoutCodec {
+    static func encode(_ node: TerminalLayoutNode?) -> Data? {
         guard let node else { return nil }
         return try? JSONEncoder().encode(node)
     }
 
-    static func decode(_ data: Data) -> ShellLayoutNode? {
-        try? JSONDecoder().decode(ShellLayoutNode.self, from: data)
+    static func decode(_ data: Data) -> TerminalLayoutNode? {
+        try? JSONDecoder().decode(TerminalLayoutNode.self, from: data)
     }
 }
 
-enum ShellLayoutPlanner {
+enum TerminalLayoutPlanner {
     static let maxVisibleLeaves = 4
 
-    /// Mirror Qt `ShellLayoutPlanner::AlternateFocus`: odd docked count → Right (H), even → Bottom (V).
-    static func axisForNewShell(currentLeafCount: Int) -> SplitAxis {
+    /// Mirror Qt `TerminalLayoutPlanner::AlternateFocus`: odd docked count → Right (H), even → Bottom (V).
+    static func axisForNewTerminal(currentLeafCount: Int) -> SplitAxis {
         (currentLeafCount % 2 == 1) ? .horizontal : .vertical
     }
 }

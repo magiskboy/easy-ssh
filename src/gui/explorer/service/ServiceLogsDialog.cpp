@@ -69,7 +69,7 @@ ServiceLogsDialog::ServiceLogsDialog(Session *session, const ServiceInfo &servic
     m_resizeDebounce->setInterval(50);
     connect(m_resizeDebounce, &QTimer::timeout, this, &ServiceLogsDialog::syncPtySize);
 
-    connect(this, &QDialog::finished, this, &ServiceLogsDialog::closeOwnedShell);
+    connect(this, &QDialog::finished, this, &ServiceLogsDialog::closeOwnedTerminal);
 
     if (!m_session || m_session->state() != SessionState::Connected) {
         m_statusLabel->setText(tr("No connected session available for logs."));
@@ -84,20 +84,20 @@ ServiceLogsDialog::ServiceLogsDialog(Session *session, const ServiceInfo &servic
         return;
     }
 
-    connect(m_session, &Session::shellsChanged, this, &ServiceLogsDialog::onShellsChanged);
-    connect(m_session, &Session::shellData, this, &ServiceLogsDialog::onShellData);
+    connect(m_session, &Session::terminalsChanged, this, &ServiceLogsDialog::onTerminalsChanged);
+    connect(m_session, &Session::shellData, this, &ServiceLogsDialog::onTerminalData);
     connect(m_session, &Session::stateChanged, this, &ServiceLogsDialog::onSessionStateChanged);
     connect(m_term, SIGNAL(sendData(const char *, int)), this, SLOT(onSendData(const char *, int)));
 
     // Open with a sane default; real size is synced after the dialog is shown/laid out.
-    m_shellId = m_session->newShell(kDefaultCols, kDefaultRows, {}, true);
-    if (m_shellId.isNull()) {
-        m_statusLabel->setText(tr("Could not open a shell channel for logs."));
+    m_terminalId = m_session->newTerminal(kDefaultCols, kDefaultRows, {}, true);
+    if (m_terminalId.isNull()) {
+        m_statusLabel->setText(tr("Could not open a terminal channel for logs."));
         m_term->setEnabled(false);
         return;
     }
 
-    m_session->renameShell(m_shellId, tr("Logs: %1").arg(m_service.unit));
+    m_session->renameTerminal(m_terminalId, tr("Logs: %1").arg(m_service.unit));
     m_term->startTerminalTeletype();
     m_teletypeStarted = true;
     m_bridge->start(m_term);
@@ -105,7 +105,7 @@ ServiceLogsDialog::ServiceLogsDialog(Session *session, const ServiceInfo &servic
 
 ServiceLogsDialog::~ServiceLogsDialog()
 {
-    closeOwnedShell();
+    closeOwnedTerminal();
 }
 
 bool ServiceLogsDialog::eventFilter(QObject *watched, QEvent *event)
@@ -131,36 +131,36 @@ void ServiceLogsDialog::showEvent(QShowEvent *event)
     QTimer::singleShot(150, this, &ServiceLogsDialog::syncPtySize);
 }
 
-void ServiceLogsDialog::onShellsChanged()
+void ServiceLogsDialog::onTerminalsChanged()
 {
     tryInjectCommand();
 
-    if (m_shellId.isNull() || !m_session || m_closingShell) {
+    if (m_terminalId.isNull() || !m_session || m_closingShell) {
         return;
     }
 
     bool found = false;
-    for (const ShellChannelState &shell : m_session->shells()) {
-        if (shell.id == m_shellId) {
+    for (const TerminalChannelState &shell : m_session->terminals()) {
+        if (shell.id == m_terminalId) {
             found = true;
             if (shell.state == ChannelState::Failed) {
-                m_statusLabel->setText(tr("Log shell failed."));
+                m_statusLabel->setText(tr("Log terminal failed."));
                 m_statusLabel->show();
             }
             break;
         }
     }
     if (!found) {
-        m_shellId = {};
-        m_statusLabel->setText(tr("Log shell closed."));
+        m_terminalId = {};
+        m_statusLabel->setText(tr("Log terminal closed."));
         m_statusLabel->show();
         m_term->setEnabled(false);
     }
 }
 
-void ServiceLogsDialog::onShellData(const QUuid &shellId, const QByteArray &data)
+void ServiceLogsDialog::onTerminalData(const QUuid &terminalId, const QByteArray &data)
 {
-    if (shellId != m_shellId || data.isEmpty() || !m_bridge) {
+    if (terminalId != m_terminalId || data.isEmpty() || !m_bridge) {
         return;
     }
     if (!m_teletypeStarted && m_term) {
@@ -177,10 +177,10 @@ void ServiceLogsDialog::onShellData(const QUuid &shellId, const QByteArray &data
 
 void ServiceLogsDialog::onSendData(const char *data, int length)
 {
-    if (!m_session || m_shellId.isNull() || data == nullptr || length <= 0) {
+    if (!m_session || m_terminalId.isNull() || data == nullptr || length <= 0) {
         return;
     }
-    m_session->writeToShell(m_shellId, QByteArray(data, length));
+    m_session->writeToTerminal(m_terminalId, QByteArray(data, length));
 }
 
 void ServiceLogsDialog::onSessionStateChanged()
@@ -191,12 +191,12 @@ void ServiceLogsDialog::onSessionStateChanged()
     m_statusLabel->setText(tr("Session disconnected."));
     m_statusLabel->show();
     m_term->setEnabled(false);
-    closeOwnedShell();
+    closeOwnedTerminal();
 }
 
 void ServiceLogsDialog::syncPtySize()
 {
-    if (!m_session || m_shellId.isNull() || m_session->state() != SessionState::Connected ||
+    if (!m_session || m_terminalId.isNull() || m_session->state() != SessionState::Connected ||
         !m_term || !m_teletypeStarted) {
         return;
     }
@@ -230,7 +230,7 @@ void ServiceLogsDialog::syncPtySize()
 
     // Remote SSH PTY only. Local emulation/PTY are owned by QTermWidget's resize path;
     // ioctl/setEmulationSize here fights that and can freeze the grid size.
-    m_session->changePtySize(m_shellId, sz.width(), sz.height());
+    m_session->changePtySize(m_terminalId, sz.width(), sz.height());
 }
 
 void ServiceLogsDialog::applySettingsToTerm()
@@ -271,13 +271,13 @@ void ServiceLogsDialog::schedulePtySizeSync()
 
 void ServiceLogsDialog::tryInjectCommand()
 {
-    if (m_commandInjected || m_shellId.isNull() || !m_session) {
+    if (m_commandInjected || m_terminalId.isNull() || !m_session) {
         return;
     }
 
     bool isOpen = false;
-    for (const ShellChannelState &shell : m_session->shells()) {
-        if (shell.id == m_shellId && shell.state == ChannelState::Open) {
+    for (const TerminalChannelState &shell : m_session->terminals()) {
+        if (shell.id == m_terminalId && shell.state == ChannelState::Open) {
             isOpen = true;
             break;
         }
@@ -299,10 +299,10 @@ void ServiceLogsDialog::tryInjectCommand()
     m_commandInjected = true;
     m_statusLabel->hide();
     schedulePtySizeSync();
-    m_session->writeToShell(m_shellId, (command + QLatin1Char('\n')).toUtf8());
+    m_session->writeToTerminal(m_terminalId, (command + QLatin1Char('\n')).toUtf8());
 }
 
-void ServiceLogsDialog::closeOwnedShell()
+void ServiceLogsDialog::closeOwnedTerminal()
 {
     if (m_closingShell) {
         return;
@@ -313,10 +313,10 @@ void ServiceLogsDialog::closeOwnedShell()
         m_bridge->teardown();
     }
 
-    if (m_session && !m_shellId.isNull()) {
-        const QUuid id = m_shellId;
-        m_shellId = {};
-        m_session->closeShell(id);
+    if (m_session && !m_terminalId.isNull()) {
+        const QUuid id = m_terminalId;
+        m_terminalId = {};
+        m_session->closeTerminal(id);
     }
 }
 

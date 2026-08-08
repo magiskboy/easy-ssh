@@ -834,7 +834,7 @@ void MainWindow::setupMenus()
     m_connectionsListMenu = connectionsMenu->addMenu(tr("&List"));
     rebuildConnectionsListMenu();
 
-    auto *shellMenu = menuBar()->addMenu(tr("&Shell"));
+    auto *terminalMenu = menuBar()->addMenu(tr("&Terminal"));
 
     auto addTerminalShortcut = [this](const QString &text, auto method, const QString &actionId) {
         auto *action = new QAction(text, this);
@@ -849,7 +849,7 @@ void MainWindow::setupMenus()
         return action;
     };
 
-    auto *copyAction = shellMenu->addAction(tr("&Copy"));
+    auto *copyAction = terminalMenu->addAction(tr("&Copy"));
     registerAction(QStringLiteral("terminal.copy"), copyAction);
     connect(copyAction, &QAction::triggered, this, [this]() {
         if (auto *page = m_sessionTabs->activeSessionPage()) {
@@ -858,7 +858,7 @@ void MainWindow::setupMenus()
     });
     m_terminalActions.append(copyAction);
 
-    auto *pasteAction = shellMenu->addAction(tr("&Paste"));
+    auto *pasteAction = terminalMenu->addAction(tr("&Paste"));
     registerAction(QStringLiteral("terminal.paste"), pasteAction);
     connect(pasteAction, &QAction::triggered, this, [this]() {
         if (auto *page = m_sessionTabs->activeSessionPage()) {
@@ -877,28 +877,28 @@ void MainWindow::setupMenus()
                         &SessionPage::saveScreenshot,
                         QStringLiteral("terminal.saveScreenshot"));
 
-    auto *newShellAction = new QAction(tr("&New Shell"), this);
-    registerAction(QStringLiteral("session.newSession"), newShellAction);
-    addAction(newShellAction);
-    connect(newShellAction, &QAction::triggered, this, [this]() {
+    auto *newTerminalAction = new QAction(tr("&New Terminal"), this);
+    registerAction(QStringLiteral("session.newSession"), newTerminalAction);
+    addAction(newTerminalAction);
+    connect(newTerminalAction, &QAction::triggered, this, [this]() {
         if (Session *session = m_sessionTabs->activeSession()) {
-            session->newShell();
+            session->newTerminal();
         }
     });
-    m_terminalActions.append(newShellAction);
+    m_terminalActions.append(newTerminalAction);
 
-    auto *closeShellAction = new QAction(tr("Close &Shell"), this);
-    registerAction(QStringLiteral("shell.close"), closeShellAction);
-    addAction(closeShellAction);
-    connect(closeShellAction, &QAction::triggered, this, [this]() {
+    auto *closeTerminalAction = new QAction(tr("Close &Terminal"), this);
+    registerAction(QStringLiteral("terminal.close"), closeTerminalAction);
+    addAction(closeTerminalAction);
+    connect(closeTerminalAction, &QAction::triggered, this, [this]() {
         if (Session *session = m_sessionTabs->activeSession()) {
-            const QUuid id = session->activeShellId();
+            const QUuid id = session->activeTerminalId();
             if (!id.isNull()) {
-                session->closeShell(id);
+                session->closeTerminal(id);
             }
         }
     });
-    m_terminalActions.append(closeShellAction);
+    m_terminalActions.append(closeTerminalAction);
 
     auto *explorerMenu = menuBar()->addMenu(tr("&Explorer"));
 
@@ -949,10 +949,10 @@ void MainWindow::setupMenus()
     addAction(paletteAction);
     connect(paletteAction, &QAction::triggered, this, &MainWindow::openCommandPalette);
 
-    auto *goToShellAction = windowsMenu->addAction(tr("&Go to Shell…"));
-    registerAction(QStringLiteral("session.goToShell"), goToShellAction);
-    addAction(goToShellAction);
-    connect(goToShellAction, &QAction::triggered, this, &MainWindow::openGoToShell);
+    auto *goToTerminalAction = windowsMenu->addAction(tr("&Go to Terminal…"));
+    registerAction(QStringLiteral("session.goToTerminal"), goToTerminalAction);
+    addAction(goToTerminalAction);
+    connect(goToTerminalAction, &QAction::triggered, this, &MainWindow::openGoToTerminal);
 
     windowsMenu->addSeparator();
 
@@ -1067,7 +1067,7 @@ void MainWindow::ensureCommandPalette()
             [this](const QString &actionId) {
                 if (actionId == QLatin1String("general.commandPalette") ||
                     actionId == QLatin1String("general.quickConnect") ||
-                    actionId == QLatin1String("session.goToShell")) {
+                    actionId == QLatin1String("session.goToTerminal")) {
                     return;
                 }
                 if (QAction *action = m_shortcutActions.value(actionId)) {
@@ -1084,7 +1084,8 @@ void MainWindow::ensureCommandPalette()
             &CommandPaletteDialog::createConnectionChosen,
             this,
             &MainWindow::createConnectionFromQuery);
-    connect(m_commandPalette, &CommandPaletteDialog::shellChosen, this, &MainWindow::focusShell);
+    connect(
+        m_commandPalette, &CommandPaletteDialog::terminalChosen, this, &MainWindow::focusTerminal);
 }
 
 void MainWindow::populatePaletteActions()
@@ -1102,7 +1103,7 @@ void MainWindow::populatePaletteActions()
         }
         if (actionId == QLatin1String("general.commandPalette") ||
             actionId == QLatin1String("general.quickConnect") ||
-            actionId == QLatin1String("session.goToShell")) {
+            actionId == QLatin1String("session.goToTerminal")) {
             continue;
         }
 
@@ -1150,17 +1151,17 @@ void MainWindow::populatePaletteConnections()
     m_commandPalette->setConnectionItems(items);
 }
 
-void MainWindow::populatePaletteShells()
+void MainWindow::populatePaletteTerminals()
 {
     if (!m_commandPalette || !m_sessionManager) {
         return;
     }
 
-    QList<CommandPaletteDialog::ShellItem> items;
+    QList<CommandPaletteDialog::TerminalItem> items;
     const QUuid activeConnectionId =
         m_sessionManager->active() ? m_sessionManager->active()->connectionId() : QUuid();
-    const QUuid activeShellId =
-        m_sessionManager->active() ? m_sessionManager->active()->activeShellId() : QUuid();
+    const QUuid activeTerminalId =
+        m_sessionManager->active() ? m_sessionManager->active()->activeTerminalId() : QUuid();
 
     for (Session *session : m_sessionManager->all()) {
         if (!session) {
@@ -1171,23 +1172,23 @@ void MainWindow::populatePaletteShells()
             connection.name.isEmpty()
                 ? QStringLiteral("%1@%2").arg(connection.username, connection.host)
                 : connection.name;
-        for (const ShellChannelState &shell : session->shells()) {
+        for (const TerminalChannelState &shell : session->terminals()) {
             if (shell.auxiliary) {
                 continue;
             }
-            CommandPaletteDialog::ShellItem item;
+            CommandPaletteDialog::TerminalItem item;
             item.connectionId = session->connectionId();
-            item.shellId = shell.id;
-            item.title = shell.title.isEmpty() ? tr("Shell") : shell.title;
+            item.terminalId = shell.id;
+            item.title = shell.title.isEmpty() ? tr("Terminal") : shell.title;
             item.subtitle = sessionLabel;
             item.searchFields = {
                 item.title, sessionLabel, connection.name, connection.host, connection.username};
             item.isActive =
-                session->connectionId() == activeConnectionId && shell.id == activeShellId;
+                session->connectionId() == activeConnectionId && shell.id == activeTerminalId;
             items.append(item);
         }
     }
-    m_commandPalette->setShellItems(items);
+    m_commandPalette->setTerminalItems(items);
 }
 
 void MainWindow::openCommandPalette()
@@ -1204,11 +1205,11 @@ void MainWindow::openQuickConnect()
     m_commandPalette->openMode(CommandPaletteDialog::Mode::Connections);
 }
 
-void MainWindow::openGoToShell()
+void MainWindow::openGoToTerminal()
 {
     ensureCommandPalette();
-    populatePaletteShells();
-    m_commandPalette->openMode(CommandPaletteDialog::Mode::Shells);
+    populatePaletteTerminals();
+    m_commandPalette->openMode(CommandPaletteDialog::Mode::Terminals);
 }
 
 void MainWindow::createConnectionFromQuery(const QString &query)
@@ -1295,16 +1296,16 @@ void MainWindow::connectAfterCreating(const Connection &connection,
     openConnectionById(connection.id);
 }
 
-void MainWindow::focusShell(const QUuid &connectionId, const QUuid &shellId)
+void MainWindow::focusTerminal(const QUuid &connectionId, const QUuid &terminalId)
 {
-    if (!m_sessionTabs || connectionId.isNull() || shellId.isNull()) {
+    if (!m_sessionTabs || connectionId.isNull() || terminalId.isNull()) {
         return;
     }
     if (!m_sessionTabs->activateConnection(connectionId)) {
         return;
     }
     if (SessionPage *page = m_sessionTabs->activeSessionPage()) {
-        page->activateShell(shellId);
+        page->activateTerminal(terminalId);
     }
 }
 
@@ -1581,10 +1582,10 @@ void MainWindow::updateSessionStatusInfo()
     const QString host = connection.host.isEmpty() ? QStringLiteral("—") : connection.host;
     const QString user = connection.username.isEmpty() ? QStringLiteral("—") : connection.username;
 
-    QString shellName = QStringLiteral("—");
-    for (const ShellChannelState &shell : session->shells()) {
-        if (shell.id == session->activeShellId()) {
-            shellName = shell.title;
+    QString terminalName = QStringLiteral("—");
+    for (const TerminalChannelState &shell : session->terminals()) {
+        if (shell.id == session->activeTerminalId()) {
+            terminalName = shell.title;
             break;
         }
     }
@@ -1600,7 +1601,7 @@ void MainWindow::updateSessionStatusInfo()
         m_sessionInfoTimer->stop();
     }
 
-    m_sessionInfoLabel->setText(tr("%1 | %2 | %3 | %4").arg(host, user, shellName, ttl));
+    m_sessionInfoLabel->setText(tr("%1 | %2 | %3 | %4").arg(host, user, terminalName, ttl));
 }
 
 QString MainWindow::formatSessionTtl(qint64 seconds)
